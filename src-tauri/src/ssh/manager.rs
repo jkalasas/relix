@@ -268,6 +268,7 @@ impl SshManager {
             (shells, conn)
         };
 
+        // Only emit for shells we successfully removed (single-owner emission).
         for (id, shell) in removed_shells {
             shell.abort.abort();
             {
@@ -300,12 +301,28 @@ impl SshManager {
         cols: u32,
         rows: u32,
     ) -> Result<OpenShellResult, SshError> {
+        // Clone the Arc so we can re-validate by pointer identity after the await
+        // window (host_id alone is not enough: disconnect + reconnect can insert a
+        // new handle under the same id).
         let handle = {
-            let inner = self.inner.lock().await;
-            let conn = inner.connections.get(&host_id).ok_or_else(|| {
-                SshError::new(SshErrorCode::NotConnected, "Host is not connected")
-            })?;
-            Arc::clone(&conn.handle)
+            let mut inner = self.inner.lock().await;
+            match inner.connections.get(&host_id) {
+                Some(conn) if !conn.handle.is_closed() => Arc::clone(&conn.handle),
+                Some(_) => {
+                    // Stale closed entry: prune and treat as not connected.
+                    inner.connections.remove(&host_id);
+                    return Err(SshError::new(
+                        SshErrorCode::NotConnected,
+                        "Host is not connected",
+                    ));
+                }
+                None => {
+                    return Err(SshError::new(
+                        SshErrorCode::NotConnected,
+                        "Host is not connected",
+                    ));
+                }
+            }
         };
 
         let channel = handle
@@ -333,7 +350,14 @@ impl SshManager {
         let shells_map = Arc::clone(&self.inner);
         let cleanup_sid = session_id.clone();
 
+        // Gate the read loop until the shell is registered in the map so early EOF
+        // cannot emit shell-closed / remove before the frontend has a sessionId.
+        let (start_tx, start_rx) = tokio::sync::oneshot::channel::<()>();
         let join = tokio::spawn(async move {
+            if start_rx.await.is_err() {
+                // Open was aborted before registration completed.
+                return;
+            }
             loop {
                 let msg = read_half.wait().await;
                 match msg {
@@ -357,18 +381,22 @@ impl SshManager {
                             }),
                         );
                     }
-                    Some(ChannelMsg::Eof) | None => {
-                        let _ = app_handle.emit(
-                            "ssh://shell-closed",
-                            serde_json::json!({
-                                "sessionId": sid,
-                                "hostId": hid,
-                                "reason": "eof",
-                            }),
-                        );
-                        // Drop the map entry so close_shell stays idempotent.
-                        let mut inner = shells_map.lock().await;
-                        inner.shells.remove(&cleanup_sid);
+                    Some(ChannelMsg::Eof) | Some(ChannelMsg::Close) | None => {
+                        // Only the task that successfully removes emits shell-closed.
+                        let removed = {
+                            let mut inner = shells_map.lock().await;
+                            inner.shells.remove(&cleanup_sid)
+                        };
+                        if removed.is_some() {
+                            let _ = app_handle.emit(
+                                "ssh://shell-closed",
+                                serde_json::json!({
+                                    "sessionId": sid,
+                                    "hostId": hid,
+                                    "reason": "eof",
+                                }),
+                            );
+                        }
                         break;
                     }
                     _ => {}
@@ -376,22 +404,42 @@ impl SshManager {
             }
         });
 
-        let mut inner = self.inner.lock().await;
-        if !inner.connections.contains_key(&host_id) {
-            join.abort();
-            return Err(SshError::new(
-                SshErrorCode::NotConnected,
-                "Host disconnected while opening shell",
-            ));
+        // Re-validate by handle identity under lock, then register before starting
+        // the reader so events cannot race ahead of map insertion.
+        {
+            let mut inner = self.inner.lock().await;
+            let still_valid = inner
+                .connections
+                .get(&host_id)
+                .map(|conn| Arc::ptr_eq(&conn.handle, &handle) && !conn.handle.is_closed())
+                .unwrap_or(false);
+
+            if !still_valid {
+                join.abort();
+                // Drop the gate so the reader exits if abort races with the await.
+                drop(start_tx);
+                {
+                    let ch = channel_arc.lock().await;
+                    let _ = ch.close().await;
+                }
+                return Err(SshError::new(
+                    SshErrorCode::NotConnected,
+                    "Host disconnected while opening shell",
+                ));
+            }
+
+            inner.shells.insert(
+                session_id.clone(),
+                LiveShell {
+                    host_id,
+                    channel: Arc::clone(&channel_arc),
+                    abort: join.abort_handle(),
+                },
+            );
         }
-        inner.shells.insert(
-            session_id.clone(),
-            LiveShell {
-                host_id,
-                channel: channel_arc,
-                abort: join.abort_handle(),
-            },
-        );
+
+        // Registered: allow the reader to start consuming channel messages.
+        let _ = start_tx.send(());
 
         Ok(OpenShellResult { session_id })
     }
@@ -427,6 +475,7 @@ impl SshManager {
     }
 
     pub async fn close_shell(&self, app: &AppHandle, session_id: &str) -> Result<(), SshError> {
+        // Only the task that successfully removes emits shell-closed.
         let shell = {
             let mut inner = self.inner.lock().await;
             inner.shells.remove(session_id)
