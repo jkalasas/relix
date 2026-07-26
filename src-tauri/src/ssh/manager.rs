@@ -89,10 +89,14 @@ impl SshManager {
     }
 
     pub async fn connect(&self, app: &AppHandle, config: ConnectConfig) -> Result<(), SshError> {
+        // Drop a live connection if already present; prune a dead/stale one and continue.
         {
-            let inner = self.inner.lock().await;
-            if inner.connections.contains_key(&config.host_id) {
-                return Ok(());
+            let mut inner = self.inner.lock().await;
+            if let Some(existing) = inner.connections.get(&config.host_id) {
+                if !existing.handle.is_closed() {
+                    return Ok(());
+                }
+                inner.connections.remove(&config.host_id);
             }
         }
 
@@ -119,9 +123,19 @@ impl SshManager {
             )
         })?;
 
-        let mut handle = client::connect(Arc::new(conf), sock, handler)
-            .await
-            .map_err(|e| SshError::new(SshErrorCode::ConnectFailed, e.to_string()))?;
+        const CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
+        let mut handle = tokio::time::timeout(
+            CONNECT_TIMEOUT,
+            client::connect(Arc::new(conf), sock, handler),
+        )
+        .await
+        .map_err(|_| {
+            SshError::new(
+                SshErrorCode::ConnectFailed,
+                format!("Connection to {addr} timed out after 30s"),
+            )
+        })?
+        .map_err(|e| SshError::new(SshErrorCode::ConnectFailed, e.to_string()))?;
 
         let key = captured.lock().await.take().ok_or_else(|| {
             SshError::new(
@@ -152,41 +166,68 @@ impl SshManager {
 
         authenticate(&mut handle, &config).await?;
 
-        let mut inner = self.inner.lock().await;
-        inner
-            .connections
-            .insert(config.host_id.clone(), LiveConnection { handle });
+        // Re-check under lock to close the TOCTOU race: concurrent connects for the same
+        // host_id can both finish auth; only one may insert. The loser disconnects and
+        // returns Ok(()) (idempotent connect).
+        {
+            let mut inner = self.inner.lock().await;
+            if let Some(existing) = inner.connections.get(&config.host_id) {
+                if !existing.handle.is_closed() {
+                    drop(inner);
+                    let _ = handle
+                        .disconnect(Disconnect::ByApplication, "duplicate connection", "")
+                        .await;
+                    return Ok(());
+                }
+                // Stale entry: replace below.
+                inner.connections.remove(&config.host_id);
+            }
+            inner
+                .connections
+                .insert(config.host_id.clone(), LiveConnection { handle });
+        }
         Ok(())
     }
 
     pub async fn disconnect(&self, app: &AppHandle, host_id: &str) -> Result<(), SshError> {
-        let mut inner = self.inner.lock().await;
-        let session_ids: Vec<SessionId> = inner
-            .shells
-            .iter()
-            .filter(|(_, s)| s.host_id == host_id)
-            .map(|(id, _)| id.clone())
-            .collect();
+        // Remove shells/connection from maps first so we never hold the manager mutex
+        // across network awaits.
+        let (removed_shells, removed_conn) = {
+            let mut inner = self.inner.lock().await;
+            let session_ids: Vec<SessionId> = inner
+                .shells
+                .iter()
+                .filter(|(_, s)| s.host_id == host_id)
+                .map(|(id, _)| id.clone())
+                .collect();
 
-        for id in session_ids {
-            if let Some(shell) = inner.shells.remove(&id) {
-                shell.abort.abort();
-                {
-                    let ch = shell.channel.lock().await;
-                    let _ = ch.close().await;
+            let mut shells = Vec::with_capacity(session_ids.len());
+            for id in session_ids {
+                if let Some(shell) = inner.shells.remove(&id) {
+                    shells.push((id, shell));
                 }
-                let _ = app.emit(
-                    "ssh://shell-closed",
-                    serde_json::json!({
-                        "sessionId": id,
-                        "hostId": host_id,
-                        "reason": "disconnect",
-                    }),
-                );
             }
+            let conn = inner.connections.remove(host_id);
+            (shells, conn)
+        };
+
+        for (id, shell) in removed_shells {
+            shell.abort.abort();
+            {
+                let ch = shell.channel.lock().await;
+                let _ = ch.close().await;
+            }
+            let _ = app.emit(
+                "ssh://shell-closed",
+                serde_json::json!({
+                    "sessionId": id,
+                    "hostId": host_id,
+                    "reason": "disconnect",
+                }),
+            );
         }
 
-        if let Some(conn) = inner.connections.remove(host_id) {
+        if let Some(conn) = removed_conn {
             let _ = conn
                 .handle
                 .disconnect(Disconnect::ByApplication, "user disconnect", "")
