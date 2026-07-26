@@ -81,34 +81,49 @@ function App() {
   }, []);
 
   useEffect(() => {
+    let disposed = false;
     const unsubs: Array<() => void> = [];
-    void listenSshShellClosed((event) => {
-      setSessionsByHost((current) => {
-        const list = (current[event.hostId] ?? []).filter(
-          (s) => s.id !== event.sessionId,
-        );
-        return { ...current, [event.hostId]: list };
-      });
-      setActiveSessionByHost((current) => {
-        if (current[event.hostId] !== event.sessionId) return current;
-        return { ...current, [event.hostId]: null };
-      });
-    }).then((fn) => unsubs.push(fn));
 
-    void listenSshConnectionClosed((event) => {
-      setHosts((current) =>
-        current.map((host) =>
-          host.id === event.hostId ? { ...host, status: "error" } : host,
-        ),
-      );
-      setSessionsByHost((current) => ({ ...current, [event.hostId]: [] }));
-      setActiveSessionByHost((current) => ({
-        ...current,
-        [event.hostId]: null,
-      }));
-    }).then((fn) => unsubs.push(fn));
+    void (async () => {
+      const shellClosed = await listenSshShellClosed((event) => {
+        setSessionsByHost((current) => {
+          const list = (current[event.hostId] ?? []).filter(
+            (s) => s.id !== event.sessionId,
+          );
+          return { ...current, [event.hostId]: list };
+        });
+        setActiveSessionByHost((current) => {
+          if (current[event.hostId] !== event.sessionId) return current;
+          return { ...current, [event.hostId]: null };
+        });
+      });
+      if (disposed) {
+        shellClosed();
+        return;
+      }
+      unsubs.push(shellClosed);
+
+      const connectionClosed = await listenSshConnectionClosed((event) => {
+        setHosts((current) =>
+          current.map((host) =>
+            host.id === event.hostId ? { ...host, status: "error" } : host,
+          ),
+        );
+        setSessionsByHost((current) => ({ ...current, [event.hostId]: [] }));
+        setActiveSessionByHost((current) => ({
+          ...current,
+          [event.hostId]: null,
+        }));
+      });
+      if (disposed) {
+        connectionClosed();
+        return;
+      }
+      unsubs.push(connectionClosed);
+    })();
 
     return () => {
+      disposed = true;
       for (const fn of unsubs) fn();
     };
   }, []);

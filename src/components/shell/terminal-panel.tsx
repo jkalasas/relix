@@ -46,15 +46,24 @@ export function TerminalPanel({
   }, [sessions]);
 
   useEffect(() => {
+    let disposed = false;
     let unlisten: (() => void) | undefined;
-    void listenSshData((event) => {
-      const write = writersRef.current.get(event.sessionId);
-      if (!write) return;
-      write(decodeSshData(event.data));
-    }).then((fn) => {
+
+    void (async () => {
+      const fn = await listenSshData((event) => {
+        const write = writersRef.current.get(event.sessionId);
+        if (!write) return;
+        write(decodeSshData(event.data));
+      });
+      if (disposed) {
+        fn();
+        return;
+      }
       unlisten = fn;
-    });
+    })();
+
     return () => {
+      disposed = true;
       unlisten?.();
     };
   }, []);
