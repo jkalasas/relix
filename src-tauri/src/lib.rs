@@ -1,6 +1,9 @@
 mod ssh;
 
-use ssh::commands::{ssh_connect, ssh_disconnect, ssh_trust_host_key};
+use ssh::commands::{
+    ssh_close_shell, ssh_connect, ssh_disconnect, ssh_open_shell, ssh_resize, ssh_trust_host_key,
+    ssh_write,
+};
 use ssh::manager::SshManager;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -12,6 +15,10 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             ssh_connect,
             ssh_disconnect,
+            ssh_open_shell,
+            ssh_close_shell,
+            ssh_write,
+            ssh_resize,
             ssh_trust_host_key,
         ])
         .run(tauri::generate_context!())

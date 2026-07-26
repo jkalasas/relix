@@ -3,12 +3,15 @@ use std::net::ToSocketAddrs;
 use std::sync::Arc;
 use std::time::Duration;
 
+use base64::engine::general_purpose::STANDARD as B64;
+use base64::Engine as _;
 use russh::client::{self, Handle};
 use russh::keys::{self, PrivateKeyWithHashAlg, PublicKeyBase64};
-use russh::{Channel, Disconnect};
+use russh::{ChannelMsg, ChannelWriteHalf, Disconnect};
 use serde::Deserialize;
 use tauri::{AppHandle, Emitter};
 use tokio::sync::Mutex;
+use uuid::Uuid;
 
 use super::error::{SshError, SshErrorCode};
 use super::known_hosts::{
@@ -75,18 +78,21 @@ impl client::Handler for ClientHandler {
 }
 
 struct LiveConnection {
-    /// russh client handles are cheap to clone (shared session).
-    handle: Handle<ClientHandler>,
+    /// Shared so shell open can clone the Arc and drop the manager lock
+    /// before awaiting channel setup (Handle itself is not Clone in russh 0.54).
+    handle: Arc<Handle<ClientHandler>>,
 }
 
 struct LiveShell {
     host_id: HostId,
-    channel: Arc<Mutex<Channel<client::Msg>>>,
+    /// Write half only; the read half is owned exclusively by the reader task so
+    /// stdin/resize/close never contend with `wait()`.
+    channel: Arc<Mutex<ChannelWriteHalf<client::Msg>>>,
     abort: tokio::task::AbortHandle,
 }
 
 pub struct SshManager {
-    inner: Mutex<SshManagerInner>,
+    inner: Arc<Mutex<SshManagerInner>>,
 }
 
 struct SshManagerInner {
@@ -98,14 +104,20 @@ struct SshManagerInner {
     connect_generations: HashMap<HostId, u64>,
 }
 
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OpenShellResult {
+    pub session_id: String,
+}
+
 impl SshManager {
     pub fn new() -> Self {
         Self {
-            inner: Mutex::new(SshManagerInner {
+            inner: Arc::new(Mutex::new(SshManagerInner {
                 connections: HashMap::new(),
                 shells: HashMap::new(),
                 connect_generations: HashMap::new(),
-            }),
+            })),
         }
     }
 
@@ -218,9 +230,12 @@ impl SshManager {
                 // Stale entry: replace below.
                 inner.connections.remove(&config.host_id);
             }
-            inner
-                .connections
-                .insert(config.host_id.clone(), LiveConnection { handle });
+            inner.connections.insert(
+                config.host_id.clone(),
+                LiveConnection {
+                    handle: Arc::new(handle),
+                },
+            );
         }
         Ok(())
     }
@@ -274,6 +289,163 @@ impl SshManager {
                 .handle
                 .disconnect(Disconnect::ByApplication, "user disconnect", "")
                 .await;
+        }
+        Ok(())
+    }
+
+    pub async fn open_shell(
+        &self,
+        app: &AppHandle,
+        host_id: String,
+        cols: u32,
+        rows: u32,
+    ) -> Result<OpenShellResult, SshError> {
+        let handle = {
+            let inner = self.inner.lock().await;
+            let conn = inner.connections.get(&host_id).ok_or_else(|| {
+                SshError::new(SshErrorCode::NotConnected, "Host is not connected")
+            })?;
+            Arc::clone(&conn.handle)
+        };
+
+        let channel = handle
+            .channel_open_session()
+            .await
+            .map_err(|e| SshError::new(SshErrorCode::Internal, e.to_string()))?;
+
+        channel
+            .request_pty(false, "xterm-256color", cols, rows, 0, 0, &[])
+            .await
+            .map_err(|e| SshError::new(SshErrorCode::Internal, e.to_string()))?;
+        channel
+            .request_shell(true)
+            .await
+            .map_err(|e| SshError::new(SshErrorCode::Internal, e.to_string()))?;
+
+        let session_id = Uuid::new_v4().to_string();
+        let app_handle = app.clone();
+        let sid = session_id.clone();
+        let hid = host_id.clone();
+
+        // Split so the reader can wait without blocking write/resize/close.
+        let (mut read_half, write_half) = channel.split();
+        let channel_arc = Arc::new(Mutex::new(write_half));
+        let shells_map = Arc::clone(&self.inner);
+        let cleanup_sid = session_id.clone();
+
+        let join = tokio::spawn(async move {
+            loop {
+                let msg = read_half.wait().await;
+                match msg {
+                    Some(ChannelMsg::Data { ref data }) => {
+                        let encoded = B64.encode(data.as_ref());
+                        let _ = app_handle.emit(
+                            "ssh://data",
+                            serde_json::json!({
+                                "sessionId": sid,
+                                "data": encoded,
+                            }),
+                        );
+                    }
+                    Some(ChannelMsg::ExtendedData { ref data, .. }) => {
+                        let encoded = B64.encode(data.as_ref());
+                        let _ = app_handle.emit(
+                            "ssh://data",
+                            serde_json::json!({
+                                "sessionId": sid,
+                                "data": encoded,
+                            }),
+                        );
+                    }
+                    Some(ChannelMsg::Eof) | None => {
+                        let _ = app_handle.emit(
+                            "ssh://shell-closed",
+                            serde_json::json!({
+                                "sessionId": sid,
+                                "hostId": hid,
+                                "reason": "eof",
+                            }),
+                        );
+                        // Drop the map entry so close_shell stays idempotent.
+                        let mut inner = shells_map.lock().await;
+                        inner.shells.remove(&cleanup_sid);
+                        break;
+                    }
+                    _ => {}
+                }
+            }
+        });
+
+        let mut inner = self.inner.lock().await;
+        if !inner.connections.contains_key(&host_id) {
+            join.abort();
+            return Err(SshError::new(
+                SshErrorCode::NotConnected,
+                "Host disconnected while opening shell",
+            ));
+        }
+        inner.shells.insert(
+            session_id.clone(),
+            LiveShell {
+                host_id,
+                channel: channel_arc,
+                abort: join.abort_handle(),
+            },
+        );
+
+        Ok(OpenShellResult { session_id })
+    }
+
+    pub async fn write(&self, session_id: &str, data: &str) -> Result<(), SshError> {
+        let channel = {
+            let inner = self.inner.lock().await;
+            let shell = inner.shells.get(session_id).ok_or_else(|| {
+                SshError::new(SshErrorCode::NotConnected, "Shell session not found")
+            })?;
+            Arc::clone(&shell.channel)
+        };
+        let ch = channel.lock().await;
+        ch.data(data.as_bytes())
+            .await
+            .map_err(|e| SshError::new(SshErrorCode::Internal, e.to_string()))?;
+        Ok(())
+    }
+
+    pub async fn resize(&self, session_id: &str, cols: u32, rows: u32) -> Result<(), SshError> {
+        let channel = {
+            let inner = self.inner.lock().await;
+            let shell = inner.shells.get(session_id).ok_or_else(|| {
+                SshError::new(SshErrorCode::NotConnected, "Shell session not found")
+            })?;
+            Arc::clone(&shell.channel)
+        };
+        let ch = channel.lock().await;
+        ch.window_change(cols, rows, 0, 0)
+            .await
+            .map_err(|e| SshError::new(SshErrorCode::Internal, e.to_string()))?;
+        Ok(())
+    }
+
+    pub async fn close_shell(&self, app: &AppHandle, session_id: &str) -> Result<(), SshError> {
+        let shell = {
+            let mut inner = self.inner.lock().await;
+            inner.shells.remove(session_id)
+        };
+        if let Some(shell) = shell {
+            shell.abort.abort();
+            let host_id = shell.host_id.clone();
+            {
+                let ch = shell.channel.lock().await;
+                let _ = ch.close().await;
+            }
+            let _ = app.emit(
+                "ssh://shell-closed",
+                serde_json::json!({
+                    "sessionId": session_id,
+                    "hostId": host_id,
+                    "reason": "closed",
+                }),
+            );
         }
         Ok(())
     }
