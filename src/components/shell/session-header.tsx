@@ -5,15 +5,19 @@ import type { Host } from "@/lib/types";
 
 type SessionHeaderProps = {
   host: Host;
+  connecting?: boolean;
   onConnect: () => void;
   onDisconnect: () => void;
+  onEdit: () => void;
   onBack?: () => void;
 };
 
 export function SessionHeader({
   host,
+  connecting = false,
   onConnect,
   onDisconnect,
+  onEdit,
   onBack,
 }: SessionHeaderProps) {
   const target = `${host.user}@${host.hostname}:${host.port}`;
@@ -44,6 +48,15 @@ export function SessionHeader({
 
       <div className="flex shrink-0 items-center gap-2">
         <SessionChip status={host.status} className="max-sm:hidden" />
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          onClick={onEdit}
+          className="min-h-9 px-3 md:min-h-7"
+        >
+          Edit
+        </Button>
         {isConnected ? (
           <Button
             type="button"
@@ -59,9 +72,10 @@ export function SessionHeader({
             type="button"
             size="sm"
             onClick={onConnect}
+            disabled={connecting}
             className="min-h-9 px-3 md:min-h-7"
           >
-            Connect
+            {connecting ? "Connecting…" : "Connect"}
           </Button>
         )}
       </div>
