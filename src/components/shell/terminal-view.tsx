@@ -19,6 +19,8 @@ export function TerminalView({
   const containerRef = useRef<HTMLDivElement | null>(null);
   const termRef = useRef<Terminal | null>(null);
   const fitRef = useRef<FitAddon | null>(null);
+  const onReadyRef = useRef(onReady);
+  onReadyRef.current = onReady;
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -67,7 +69,7 @@ export function TerminalView({
 
     termRef.current = term;
     fitRef.current = fit;
-    onReady?.({
+    onReadyRef.current?.({
       write: (data) => {
         term.write(data);
       },
@@ -80,7 +82,7 @@ export function TerminalView({
       termRef.current = null;
       fitRef.current = null;
     };
-  }, [sessionId, onReady]);
+  }, [sessionId]);
 
   useEffect(() => {
     if (!active) return;
