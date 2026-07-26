@@ -3,17 +3,37 @@ import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { WebglAddon } from "@xterm/addon-webgl";
 import { sshResize, sshWrite } from "@/lib/ssh";
+import { cn } from "@/lib/utils";
 
 type TerminalViewProps = {
   sessionId: string;
   active: boolean;
-  dataEpoch?: number;
+  visible: boolean;
   onReady?: (api: { write: (data: string | Uint8Array) => void }) => void;
 };
+
+function attachWebgl(term: Terminal) {
+  try {
+    const webgl = new WebglAddon();
+    webgl.onContextLoss(() => {
+      webgl.dispose();
+    });
+    term.loadAddon(webgl);
+  } catch {
+    // canvas fallback if webgl unavailable
+  }
+}
+
+function restoreSurface(term: Terminal, fit: FitAddon, sessionId: string) {
+  fit.fit();
+  term.refresh(0, Math.max(0, term.rows - 1));
+  void sshResize(sessionId, term.cols, term.rows);
+}
 
 export function TerminalView({
   sessionId,
   active,
+  visible,
   onReady,
 }: TerminalViewProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -49,11 +69,7 @@ export function TerminalView({
     const fit = new FitAddon();
     term.loadAddon(fit);
     term.open(containerRef.current);
-    try {
-      term.loadAddon(new WebglAddon());
-    } catch {
-      // canvas fallback if webgl unavailable
-    }
+    attachWebgl(term);
     fit.fit();
     void sshResize(sessionId, term.cols, term.rows);
 
@@ -62,6 +78,7 @@ export function TerminalView({
     });
 
     const ro = new ResizeObserver(() => {
+      if (containerRef.current?.offsetParent === null) return;
       fit.fit();
       void sshResize(sessionId, term.cols, term.rows);
     });
@@ -85,20 +102,26 @@ export function TerminalView({
   }, [sessionId]);
 
   useEffect(() => {
-    if (!active) return;
+    if (!visible) return;
     const term = termRef.current;
     const fit = fitRef.current;
     if (!term || !fit) return;
-    fit.fit();
-    void sshResize(sessionId, term.cols, term.rows);
-    term.focus();
-  }, [active, sessionId]);
+
+    const frame = requestAnimationFrame(() => {
+      restoreSurface(term, fit, sessionId);
+      if (active) term.focus();
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [active, visible, sessionId]);
 
   return (
     <div
-      className="min-h-0 min-w-0 flex-1"
-      style={{ display: active ? "block" : "none" }}
       ref={containerRef}
+      className={cn(
+        "min-h-0 min-w-0",
+        active ? "relative flex-1" : "pointer-events-none absolute inset-0 opacity-0",
+      )}
+      aria-hidden={!active}
     />
   );
 }

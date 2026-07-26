@@ -454,26 +454,12 @@ function App() {
               connecting={connectingId === selectedHost.id}
               onConnect={() => void connectHost(selectedHost.id)}
               onDisconnect={() => void disconnectHost(selectedHost.id)}
-              onEdit={() => setFormMode({ type: "edit", id: selectedHost.id })}
+              onEdit={() =>
+                setFormMode({ type: "edit", id: selectedHost.id })
+              }
               onBack={backToHosts}
             />
             <WorkspaceTabs active={tab} onChange={setTab} />
-            {tab === "terminal" ? (
-              <TerminalPanel
-                host={selectedHost}
-                sessions={selectedSessions}
-                activeSessionId={activeSessionId}
-                onConnect={() => void connectHost(selectedHost.id)}
-                onOpenShell={() => void openShell(selectedHost.id)}
-                onSelectShell={(id) =>
-                  setActiveSessionByHost((current) => ({
-                    ...current,
-                    [selectedHost.id]: id,
-                  }))
-                }
-                onCloseShell={(id) => void closeShell(selectedHost.id, id)}
-              />
-            ) : null}
             {tab === "sftp" ? (
               <SftpPanel
                 host={selectedHost}
@@ -496,6 +482,33 @@ function App() {
             />
           </div>
         )}
+
+        {selectedHost ? (
+          <div
+            className={
+              !formMode && tab === "terminal"
+                ? "flex min-h-0 flex-1 flex-col"
+                : "hidden"
+            }
+            aria-hidden={formMode != null || tab !== "terminal"}
+          >
+            <TerminalPanel
+              host={selectedHost}
+              sessions={selectedSessions}
+              activeSessionId={activeSessionId}
+              visible={!formMode && tab === "terminal"}
+              onConnect={() => void connectHost(selectedHost.id)}
+              onOpenShell={() => void openShell(selectedHost.id)}
+              onSelectShell={(id) =>
+                setActiveSessionByHost((current) => ({
+                  ...current,
+                  [selectedHost.id]: id,
+                }))
+              }
+              onCloseShell={(id) => void closeShell(selectedHost.id, id)}
+            />
+          </div>
+        ) : null}
       </main>
 
       {hostKeyError ? (

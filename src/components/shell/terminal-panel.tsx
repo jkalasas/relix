@@ -10,6 +10,7 @@ type TerminalPanelProps = {
   host: Host;
   sessions: ShellSession[];
   activeSessionId: string | null;
+  visible: boolean;
   onConnect: () => void;
   onOpenShell: () => void;
   onSelectShell: (id: string) => void;
@@ -20,6 +21,7 @@ export function TerminalPanel({
   host,
   sessions,
   activeSessionId,
+  visible,
   onConnect,
   onOpenShell,
   onSelectShell,
@@ -118,6 +120,7 @@ export function TerminalPanel({
             key={session.id}
             sessionId={session.id}
             active={session.id === activeSessionId}
+            visible={visible}
             onReady={(api) => setWriter(session.id, api.write)}
           />
         ))}
