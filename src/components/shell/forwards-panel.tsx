@@ -1,6 +1,9 @@
 import { ArrowLeftRight, Pencil, Play, Plus, Square, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { formatForwardEndpoint } from "@/lib/forwards";
+import {
+  formatForwardSource,
+  formatForwardTarget,
+} from "@/lib/forwards";
 import { cn } from "@/lib/utils";
 import type { Host, PortForward } from "@/lib/types";
 
@@ -64,7 +67,7 @@ export function ForwardsPanel({
               No port forwards yet
             </h3>
             <p className="text-[13px] leading-relaxed text-muted-foreground text-pretty">
-              Map a local port to a remote service through this host.
+              Map ports through this host — local, remote reverse, or SOCKS.
               {!connected
                 ? " Connect the host when you are ready to start a tunnel."
                 : null}
@@ -131,8 +134,9 @@ function ForwardRow({
 }) {
   const active = forward.status === "active";
   const errored = forward.status === "error";
-  const local = formatForwardEndpoint(forward.localHost, forward.localPort);
-  const remote = formatForwardEndpoint(forward.remoteHost, forward.remotePort);
+  const source = formatForwardSource(forward);
+  const target = formatForwardTarget(forward);
+  const label = target ? `${source} → ${target}` : `${source} SOCKS5`;
 
   return (
     <li className="rounded-lg border border-border bg-surface px-3 py-3 font-mono text-xs md:grid md:grid-cols-[2.5rem_minmax(0,1fr)_minmax(0,1fr)_auto_auto] md:items-center md:gap-3 md:py-2.5">
@@ -153,10 +157,10 @@ function ForwardRow({
         </span>
       </div>
       <span className="mt-1.5 block truncate text-foreground md:order-2 md:mt-0">
-        {local}
+        {source}
       </span>
       <span className="mt-0.5 block truncate text-muted-foreground md:order-3 md:mt-0">
-        → {remote}
+        {target ? `→ ${target}` : "SOCKS5"}
       </span>
       {forward.errorMessage ? (
         <p className="mt-1.5 text-[11px] text-destructive md:col-span-full md:order-6 md:mt-1">
@@ -171,7 +175,7 @@ function ForwardRow({
             variant="outline"
             onClick={onStop}
             className="min-h-9 px-2.5 md:min-h-7"
-            aria-label={`Stop tunnel ${local}`}
+            aria-label={`Stop tunnel ${label}`}
           >
             <Square data-icon="inline-start" className="size-3.5" />
             Stop
@@ -183,7 +187,7 @@ function ForwardRow({
             onClick={onStart}
             disabled={!connected}
             className="min-h-9 px-2.5 md:min-h-7"
-            aria-label={`Start tunnel ${local}`}
+            aria-label={`Start tunnel ${label}`}
           >
             <Play data-icon="inline-start" className="size-3.5" />
             Start
@@ -196,7 +200,7 @@ function ForwardRow({
           onClick={onEdit}
           disabled={active}
           className="min-h-9 px-2.5 md:min-h-7"
-          aria-label={`Edit tunnel ${local}`}
+          aria-label={`Edit tunnel ${label}`}
         >
           <Pencil className="size-3.5" />
         </Button>
@@ -206,7 +210,7 @@ function ForwardRow({
           variant="ghost"
           onClick={onDelete}
           className="min-h-9 px-2.5 text-destructive hover:text-destructive md:min-h-7"
-          aria-label={`Delete tunnel ${local}`}
+          aria-label={`Delete tunnel ${label}`}
         >
           <Trash2 className="size-3.5" />
         </Button>

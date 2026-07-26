@@ -2,7 +2,8 @@ mod ssh;
 
 use ssh::commands::{
     ssh_close_shell, ssh_connect, ssh_disconnect, ssh_open_shell, ssh_resize,
-    ssh_start_local_forward, ssh_stop_forward, ssh_trust_host_key, ssh_write,
+    ssh_start_dynamic_forward, ssh_start_local_forward, ssh_start_remote_forward,
+    ssh_stop_forward, ssh_trust_host_key, ssh_write,
 };
 use ssh::manager::SshManager;
 
@@ -21,6 +22,8 @@ pub fn run() {
             ssh_resize,
             ssh_trust_host_key,
             ssh_start_local_forward,
+            ssh_start_remote_forward,
+            ssh_start_dynamic_forward,
             ssh_stop_forward,
         ])
         .run(tauri::generate_context!())

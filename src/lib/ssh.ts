@@ -195,10 +195,38 @@ export type StartLocalForwardPayload = {
   remotePort: number;
 };
 
+export type StartRemoteForwardPayload = {
+  hostId: string;
+  forwardId: string;
+  localHost: string;
+  localPort: number;
+  remoteHost: string;
+  remotePort: number;
+};
+
+export type StartDynamicForwardPayload = {
+  hostId: string;
+  forwardId: string;
+  localHost: string;
+  localPort: number;
+};
+
 export async function sshStartLocalForward(
   config: StartLocalForwardPayload,
 ): Promise<void> {
   await invoke("ssh_start_local_forward", { config });
+}
+
+export async function sshStartRemoteForward(
+  config: StartRemoteForwardPayload,
+): Promise<void> {
+  await invoke("ssh_start_remote_forward", { config });
+}
+
+export async function sshStartDynamicForward(
+  config: StartDynamicForwardPayload,
+): Promise<void> {
+  await invoke("ssh_start_dynamic_forward", { config });
 }
 
 export async function sshStopForward(forwardId: string): Promise<void> {

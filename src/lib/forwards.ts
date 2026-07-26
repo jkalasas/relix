@@ -4,6 +4,21 @@ export function formatForwardEndpoint(host: string, port: number): string {
   return `${host}:${port}`;
 }
 
+export function formatForwardSource(forward: PortForwardConfig): string {
+  if (forward.type === "R") {
+    return formatForwardEndpoint(forward.remoteHost, forward.remotePort);
+  }
+  return formatForwardEndpoint(forward.localHost, forward.localPort);
+}
+
+export function formatForwardTarget(forward: PortForwardConfig): string | null {
+  if (forward.type === "D") return null;
+  if (forward.type === "R") {
+    return formatForwardEndpoint(forward.localHost, forward.localPort);
+  }
+  return formatForwardEndpoint(forward.remoteHost, forward.remotePort);
+}
+
 export function toPortForwardConfig(forward: PortForwardConfig): PortForwardConfig {
   return {
     id: forward.id,

@@ -197,7 +197,7 @@ Hosts (root)                    Session (detail)
 ### Feature surfaces (all platforms)
 
 1. **SSH / Terminal** — session readiness and PTY. Disconnected/error states explain next step and offer Connect / Retry. On mobile, terminal is full-bleed; soft keyboard must not permanently bury the prompt (scroll + visual viewport).
-2. **Port forwards** — desktop: multi-column mono row. Mobile: stacked row (type + status on first line; local → remote below). Cyan on active only.
+2. **Port forwards** — desktop: multi-column mono row. Mobile: stacked row (type + status on first line; endpoints below). L: local → remote; R: remote listen → local target; D: local bind + SOCKS5. Cyan on active only.
 3. **SFTP** — path in mono. Desktop may grow dual-pane later; mobile is single-pane + transfer sheet.
 
 ### Empty states
@@ -331,8 +331,8 @@ When adding UI:
 - [ ] Add / edit host form (auth method, jump host, keys) — full-screen on mobile, sheet/dialog on desktop
 - [ ] Real PTY terminal themed to Relay Night (soft-keyboard safe on mobile)
 - [ ] SFTP browser + transfer queue (single-pane mobile, optional dual-pane desktop)
-- [x] Forward editor (local L + bind address + auto-start) — R/D later
-- [ ] Remote (R) and dynamic SOCKS (D) forwards
+- [x] Forward editor (local L + bind address + auto-start)
+- [x] Remote (R) and dynamic SOCKS (D) forwards
 - [ ] Command palette on desktop (`⌘K`); mobile search sheet for hosts
 - [ ] System back integration on Android / iOS
 - [ ] Optional light theme (true off-white chroma-0 + same amber)

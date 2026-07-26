@@ -1,7 +1,7 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import type { PortForward, PortForwardConfig } from "@/lib/types";
+import type { ForwardType, PortForward, PortForwardConfig } from "@/lib/types";
 
 type ForwardFormProps = {
   initial?: PortForward | null;
@@ -22,6 +22,16 @@ function emptyConfig(): PortForwardConfig {
   };
 }
 
+function descriptionFor(type: ForwardType): string {
+  if (type === "R") {
+    return "Remote forward (R) — listen on the SSH host and forward to a target on this machine.";
+  }
+  if (type === "D") {
+    return "Dynamic SOCKS (D) — SOCKS5 proxy on this machine through the session.";
+  }
+  return "Local forward (L) — bind a port on this machine to a host reachable from the remote session.";
+}
+
 export function ForwardForm({
   initial,
   onSave,
@@ -32,7 +42,7 @@ export function ForwardForm({
     initial
       ? {
           id: initial.id,
-          type: "L",
+          type: initial.type,
           localHost: initial.localHost,
           localPort: initial.localPort,
           remoteHost: initial.remoteHost,
@@ -46,6 +56,16 @@ export function ForwardForm({
   const isEdit = Boolean(initial);
   const title = isEdit ? "Edit tunnel" : "New tunnel";
 
+  const forwardTypes = useMemo(
+    () =>
+      [
+        { id: "L" as ForwardType, label: "Local (L)" },
+        { id: "R" as ForwardType, label: "Remote (R)" },
+        { id: "D" as ForwardType, label: "Dynamic (D)" },
+      ] as const,
+    [],
+  );
+
   function update<K extends keyof PortForwardConfig>(
     key: K,
     value: PortForwardConfig[K],
@@ -54,21 +74,34 @@ export function ForwardForm({
   }
 
   function validate(): string | null {
-    if (!form.localHost.trim()) return "Local bind host is required";
-    if (!form.remoteHost.trim()) return "Remote host is required";
+    if (!form.localHost.trim()) {
+      return form.type === "R"
+        ? "Local target host is required"
+        : "Local bind host is required";
+    }
     if (
       !Number.isInteger(form.localPort) ||
       form.localPort < 1 ||
       form.localPort > 65535
     ) {
-      return "Local port must be between 1 and 65535";
+      return form.type === "R"
+        ? "Local target port must be between 1 and 65535"
+        : "Local port must be between 1 and 65535";
+    }
+    if (form.type === "D") return null;
+    if (!form.remoteHost.trim()) {
+      return form.type === "R"
+        ? "Remote listen host is required"
+        : "Remote host is required";
     }
     if (
       !Number.isInteger(form.remotePort) ||
       form.remotePort < 1 ||
       form.remotePort > 65535
     ) {
-      return "Remote port must be between 1 and 65535";
+      return form.type === "R"
+        ? "Remote listen port must be between 1 and 65535"
+        : "Remote port must be between 1 and 65535";
     }
     return null;
   }
@@ -83,14 +116,23 @@ export function ForwardForm({
     setError(null);
     onSave({
       id: form.id,
-      type: "L",
+      type: form.type,
       localHost: form.localHost.trim(),
       localPort: form.localPort,
-      remoteHost: form.remoteHost.trim(),
-      remotePort: form.remotePort,
+      remoteHost: form.type === "D" ? "" : form.remoteHost.trim(),
+      remotePort: form.type === "D" ? 0 : form.remotePort,
       autoStart: form.autoStart,
     });
   }
+
+  const showRemote = form.type !== "D";
+  const localHostLabel =
+    form.type === "R" ? "Local target host" : "Local bind host";
+  const localPortLabel = form.type === "R" ? "Local target port" : "Local port";
+  const remoteHostLabel =
+    form.type === "R" ? "Remote listen host" : "Remote host";
+  const remotePortLabel =
+    form.type === "R" ? "Remote listen port" : "Remote port";
 
   return (
     <div className="flex min-h-0 flex-1 flex-col bg-background">
@@ -112,53 +154,119 @@ export function ForwardForm({
         className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-4 py-4 pb-[max(1rem,env(safe-area-inset-bottom))]"
       >
         <p className="text-[13px] text-muted-foreground">
-          Local forward (L) — bind a port on this machine to a host reachable
-          from the remote session.
+          {descriptionFor(form.type)}
         </p>
 
-        <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Local bind host">
-            <Input
-              value={form.localHost}
-              onChange={(e) => update("localHost", e.target.value)}
-              placeholder="127.0.0.1"
-              autoComplete="off"
-              className="font-mono"
-            />
-          </Field>
-          <Field label="Local port">
-            <Input
-              type="number"
-              min={1}
-              max={65535}
-              value={form.localPort}
-              onChange={(e) => update("localPort", Number(e.target.value))}
-              className="font-mono"
-            />
-          </Field>
+        <div className="flex flex-wrap gap-2">
+          {forwardTypes.map((method) => (
+            <Button
+              key={method.id}
+              type="button"
+              size="sm"
+              variant={form.type === method.id ? "default" : "outline"}
+              onClick={() => update("type", method.id)}
+              className="min-h-9 px-3 md:min-h-7"
+            >
+              {method.label}
+            </Button>
+          ))}
         </div>
 
-        <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Remote host">
-            <Input
-              value={form.remoteHost}
-              onChange={(e) => update("remoteHost", e.target.value)}
-              placeholder="127.0.0.1"
-              autoComplete="off"
-              className="font-mono"
-            />
-          </Field>
-          <Field label="Remote port">
-            <Input
-              type="number"
-              min={1}
-              max={65535}
-              value={form.remotePort}
-              onChange={(e) => update("remotePort", Number(e.target.value))}
-              className="font-mono"
-            />
-          </Field>
-        </div>
+        {form.type === "R" ? (
+          <>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field label={remoteHostLabel}>
+                <Input
+                  value={form.remoteHost}
+                  onChange={(e) => update("remoteHost", e.target.value)}
+                  placeholder="127.0.0.1"
+                  autoComplete="off"
+                  className="font-mono"
+                />
+              </Field>
+              <Field label={remotePortLabel}>
+                <Input
+                  type="number"
+                  min={1}
+                  max={65535}
+                  value={form.remotePort}
+                  onChange={(e) => update("remotePort", Number(e.target.value))}
+                  className="font-mono"
+                />
+              </Field>
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field label={localHostLabel}>
+                <Input
+                  value={form.localHost}
+                  onChange={(e) => update("localHost", e.target.value)}
+                  placeholder="127.0.0.1"
+                  autoComplete="off"
+                  className="font-mono"
+                />
+              </Field>
+              <Field label={localPortLabel}>
+                <Input
+                  type="number"
+                  min={1}
+                  max={65535}
+                  value={form.localPort}
+                  onChange={(e) => update("localPort", Number(e.target.value))}
+                  className="font-mono"
+                />
+              </Field>
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field label={localHostLabel}>
+                <Input
+                  value={form.localHost}
+                  onChange={(e) => update("localHost", e.target.value)}
+                  placeholder="127.0.0.1"
+                  autoComplete="off"
+                  className="font-mono"
+                />
+              </Field>
+              <Field label={localPortLabel}>
+                <Input
+                  type="number"
+                  min={1}
+                  max={65535}
+                  value={form.localPort}
+                  onChange={(e) => update("localPort", Number(e.target.value))}
+                  className="font-mono"
+                />
+              </Field>
+            </div>
+            {showRemote ? (
+              <div className="grid gap-4 sm:grid-cols-2">
+                <Field label={remoteHostLabel}>
+                  <Input
+                    value={form.remoteHost}
+                    onChange={(e) => update("remoteHost", e.target.value)}
+                    placeholder="127.0.0.1"
+                    autoComplete="off"
+                    className="font-mono"
+                  />
+                </Field>
+                <Field label={remotePortLabel}>
+                  <Input
+                    type="number"
+                    min={1}
+                    max={65535}
+                    value={form.remotePort}
+                    onChange={(e) =>
+                      update("remotePort", Number(e.target.value))
+                    }
+                    className="font-mono"
+                  />
+                </Field>
+              </div>
+            ) : null}
+          </>
+        )}
 
         <label className="flex min-h-11 cursor-pointer items-center gap-3 rounded-lg border border-border bg-surface px-3 py-2 md:min-h-9">
           <input

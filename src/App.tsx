@@ -34,7 +34,9 @@ import {
   sshConnect,
   sshDisconnect,
   sshOpenShell,
+  sshStartDynamicForward,
   sshStartLocalForward,
+  sshStartRemoteForward,
   sshStopForward,
   sshTrustHostKey,
 } from "@/lib/ssh";
@@ -277,14 +279,32 @@ function App() {
   const startForward = useCallback(
     async (hostId: string, forward: PortForward) => {
       try {
-        await sshStartLocalForward({
-          hostId,
-          forwardId: forward.id,
-          localHost: forward.localHost,
-          localPort: forward.localPort,
-          remoteHost: forward.remoteHost,
-          remotePort: forward.remotePort,
-        });
+        if (forward.type === "R") {
+          await sshStartRemoteForward({
+            hostId,
+            forwardId: forward.id,
+            localHost: forward.localHost,
+            localPort: forward.localPort,
+            remoteHost: forward.remoteHost,
+            remotePort: forward.remotePort,
+          });
+        } else if (forward.type === "D") {
+          await sshStartDynamicForward({
+            hostId,
+            forwardId: forward.id,
+            localHost: forward.localHost,
+            localPort: forward.localPort,
+          });
+        } else {
+          await sshStartLocalForward({
+            hostId,
+            forwardId: forward.id,
+            localHost: forward.localHost,
+            localPort: forward.localPort,
+            remoteHost: forward.remoteHost,
+            remotePort: forward.remotePort,
+          });
+        }
         updateForwardStatus(hostId, forward.id, "active");
       } catch (error) {
         const parsed = parseSshError(error);
@@ -298,10 +318,7 @@ function App() {
     async (hostId: string) => {
       const list = forwardsByHost[hostId] ?? [];
       const pending = list.filter(
-        (forward) =>
-          forward.autoStart &&
-          forward.type === "L" &&
-          forward.status !== "active",
+        (forward) => forward.autoStart && forward.status !== "active",
       );
       await Promise.allSettled(
         pending.map((forward) => startForward(hostId, forward)),

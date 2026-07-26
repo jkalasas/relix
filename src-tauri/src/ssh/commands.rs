@@ -1,7 +1,10 @@
 use tauri::{AppHandle, State};
 
 use super::error::SshError;
-use super::manager::{ConnectConfig, OpenShellResult, SshManager, StartLocalForwardConfig};
+use super::manager::{
+    ConnectConfig, OpenShellResult, SshManager, StartDynamicForwardConfig,
+    StartLocalForwardConfig, StartRemoteForwardConfig,
+};
 
 #[tauri::command]
 pub async fn ssh_connect(
@@ -83,6 +86,24 @@ pub async fn ssh_start_local_forward(
     config: StartLocalForwardConfig,
 ) -> Result<(), SshError> {
     state.start_local_forward(&app, config).await
+}
+
+#[tauri::command]
+pub async fn ssh_start_remote_forward(
+    app: AppHandle,
+    state: State<'_, SshManager>,
+    config: StartRemoteForwardConfig,
+) -> Result<(), SshError> {
+    state.start_remote_forward(&app, config).await
+}
+
+#[tauri::command]
+pub async fn ssh_start_dynamic_forward(
+    app: AppHandle,
+    state: State<'_, SshManager>,
+    config: StartDynamicForwardConfig,
+) -> Result<(), SshError> {
+    state.start_dynamic_forward(&app, config).await
 }
 
 #[tauri::command]
