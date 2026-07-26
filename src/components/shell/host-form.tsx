@@ -117,7 +117,13 @@ export function HostForm({ initial, onSave, onCancel, onDelete }: HostFormProps)
     <div className="flex min-h-0 flex-1 flex-col bg-background">
       <div className="flex h-12 shrink-0 items-center justify-between border-b border-border px-4 pt-[env(safe-area-inset-top)] md:pt-0">
         <h2 className="text-sm font-semibold tracking-tight">{title}</h2>
-        <Button type="button" variant="ghost" size="sm" onClick={onCancel}>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          onClick={onCancel}
+          className="min-h-9 px-3 md:min-h-7"
+        >
           Cancel
         </Button>
       </div>
@@ -177,6 +183,7 @@ export function HostForm({ initial, onSave, onCancel, onDelete }: HostFormProps)
                 size="sm"
                 variant={form.authMethod === method.id ? "default" : "outline"}
                 onClick={() => update("authMethod", method.id)}
+                className="min-h-9 px-3 md:min-h-7"
               >
                 {method.label}
               </Button>
@@ -202,7 +209,7 @@ export function HostForm({ initial, onSave, onCancel, onDelete }: HostFormProps)
                 rows={6}
                 spellCheck={false}
                 className={cn(
-                  "w-full rounded-lg border border-input bg-transparent px-2.5 py-2 font-mono text-sm",
+                  "w-full rounded-lg border border-input bg-transparent px-2.5 py-2 font-mono text-base md:text-sm",
                   "outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50",
                 )}
                 placeholder="-----BEGIN OPENSSH PRIVATE KEY-----"
@@ -234,7 +241,7 @@ export function HostForm({ initial, onSave, onCancel, onDelete }: HostFormProps)
         ) : null}
 
         <div className="mt-auto flex flex-wrap items-center gap-2 pt-2">
-          <Button type="submit" size="sm">
+          <Button type="submit" size="sm" className="min-h-9 px-3 md:min-h-7">
             {isEdit ? "Save host" : "Add host"}
           </Button>
           {isEdit && onDelete ? (
@@ -245,6 +252,7 @@ export function HostForm({ initial, onSave, onCancel, onDelete }: HostFormProps)
                   size="sm"
                   variant="destructive"
                   onClick={() => onDelete(form.id)}
+                  className="min-h-9 px-3 md:min-h-7"
                 >
                   Confirm delete
                 </Button>
@@ -253,6 +261,7 @@ export function HostForm({ initial, onSave, onCancel, onDelete }: HostFormProps)
                   size="sm"
                   variant="ghost"
                   onClick={() => setConfirmDelete(false)}
+                  className="min-h-9 px-3 md:min-h-7"
                 >
                   Keep
                 </Button>
@@ -263,6 +272,7 @@ export function HostForm({ initial, onSave, onCancel, onDelete }: HostFormProps)
                 size="sm"
                 variant="outline"
                 onClick={() => setConfirmDelete(true)}
+                className="min-h-9 px-3 md:min-h-7"
               >
                 Delete
               </Button>
