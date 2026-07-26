@@ -19,7 +19,7 @@ use super::known_hosts::{
 pub type HostId = String;
 pub type SessionId = String;
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ConnectConfig {
     pub host_id: String,
@@ -31,6 +31,22 @@ pub struct ConnectConfig {
     pub private_key: Option<String>,
     pub private_key_path: Option<String>,
     pub passphrase: Option<String>,
+}
+
+impl std::fmt::Debug for ConnectConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ConnectConfig")
+            .field("host_id", &self.host_id)
+            .field("user", &self.user)
+            .field("hostname", &self.hostname)
+            .field("port", &self.port)
+            .field("auth_method", &self.auth_method)
+            .field("password", &self.password.as_ref().map(|_| "***"))
+            .field("private_key", &self.private_key.as_ref().map(|_| "***"))
+            .field("private_key_path", &self.private_key_path)
+            .field("passphrase", &self.passphrase.as_ref().map(|_| "***"))
+            .finish()
+    }
 }
 
 struct CapturedKey {
@@ -76,6 +92,10 @@ pub struct SshManager {
 struct SshManagerInner {
     connections: HashMap<HostId, LiveConnection>,
     shells: HashMap<SessionId, LiveShell>,
+    /// Per-host generation used to cancel in-flight connects.
+    /// Bumped on connect start and on disconnect; a connect may only insert
+    /// if its captured generation still matches.
+    connect_generations: HashMap<HostId, u64>,
 }
 
 impl SshManager {
@@ -84,13 +104,15 @@ impl SshManager {
             inner: Mutex::new(SshManagerInner {
                 connections: HashMap::new(),
                 shells: HashMap::new(),
+                connect_generations: HashMap::new(),
             }),
         }
     }
 
     pub async fn connect(&self, app: &AppHandle, config: ConnectConfig) -> Result<(), SshError> {
-        // Drop a live connection if already present; prune a dead/stale one and continue.
-        {
+        // Under lock: return if already live; prune closed; claim a generation so
+        // disconnect (or a newer connect) can cancel this attempt.
+        let generation = {
             let mut inner = self.inner.lock().await;
             if let Some(existing) = inner.connections.get(&config.host_id) {
                 if !existing.handle.is_closed() {
@@ -98,7 +120,13 @@ impl SshManager {
                 }
                 inner.connections.remove(&config.host_id);
             }
-        }
+            let entry = inner
+                .connect_generations
+                .entry(config.host_id.clone())
+                .or_insert(0);
+            *entry = entry.wrapping_add(1);
+            *entry
+        };
 
         let known = load_known_hosts(app)?;
         let captured = Arc::new(Mutex::new(None));
@@ -166,11 +194,19 @@ impl SshManager {
 
         authenticate(&mut handle, &config).await?;
 
-        // Re-check under lock to close the TOCTOU race: concurrent connects for the same
-        // host_id can both finish auth; only one may insert. The loser disconnects and
-        // returns Ok(()) (idempotent connect).
+        // Only insert if our generation is still current. A disconnect (or a newer
+        // connect for the same host) will have bumped it; discard this handle.
+        // Also close the concurrent-connect race: only one live entry may win.
         {
             let mut inner = self.inner.lock().await;
+            let current = inner.connect_generations.get(&config.host_id).copied();
+            if current != Some(generation) {
+                drop(inner);
+                let _ = handle
+                    .disconnect(Disconnect::ByApplication, "connect cancelled", "")
+                    .await;
+                return Ok(());
+            }
             if let Some(existing) = inner.connections.get(&config.host_id) {
                 if !existing.handle.is_closed() {
                     drop(inner);
@@ -190,8 +226,8 @@ impl SshManager {
     }
 
     pub async fn disconnect(&self, app: &AppHandle, host_id: &str) -> Result<(), SshError> {
-        // Remove shells/connection from maps first so we never hold the manager mutex
-        // across network awaits.
+        // Remove shells/connection and invalidate in-flight connect generation under
+        // the same lock so a slow connect cannot re-insert after we return.
         let (removed_shells, removed_conn) = {
             let mut inner = self.inner.lock().await;
             let session_ids: Vec<SessionId> = inner
@@ -208,6 +244,12 @@ impl SshManager {
                 }
             }
             let conn = inner.connections.remove(host_id);
+            // Bump generation so any in-flight connect for this host is cancelled.
+            let entry = inner
+                .connect_generations
+                .entry(host_id.to_string())
+                .or_insert(0);
+            *entry = entry.wrapping_add(1);
             (shells, conn)
         };
 
