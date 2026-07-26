@@ -10,6 +10,9 @@ pub enum SshErrorCode {
     KeyUnreadable,
     InvalidKey,
     NotConnected,
+    BindFailed,
+    ForwardFailed,
+    NotFound,
     Internal,
 }
 

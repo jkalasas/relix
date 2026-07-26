@@ -5,9 +5,19 @@ import { WorkspaceTabs } from "@/components/shell/workspace-tabs";
 import { TerminalPanel } from "@/components/shell/terminal-panel";
 import { SftpPanel } from "@/components/shell/sftp-panel";
 import { ForwardsPanel } from "@/components/shell/forwards-panel";
+import { ForwardForm } from "@/components/shell/forward-form";
 import { EmptyWorkspace } from "@/components/shell/empty-workspace";
 import { HostForm } from "@/components/shell/host-form";
 import { HostKeyDialog } from "@/components/shell/host-key-dialog";
+import {
+  configsToForwards,
+  idleForwards,
+  toPortForwardConfig,
+} from "@/lib/forwards";
+import {
+  loadForwardsByHost,
+  saveForwardsByHost,
+} from "@/lib/forwards-store";
 import {
   configsToHosts,
   loadHostConfigs,
@@ -16,18 +26,23 @@ import {
 } from "@/lib/hosts-store";
 import {
   listenSshConnectionClosed,
+  listenSshForwardClosed,
+  listenSshForwardError,
   listenSshShellClosed,
   parseSshError,
   sshCloseShell,
   sshConnect,
   sshDisconnect,
   sshOpenShell,
+  sshStartLocalForward,
+  sshStopForward,
   sshTrustHostKey,
 } from "@/lib/ssh";
 import type {
   Host,
   HostConfig,
   PortForward,
+  PortForwardConfig,
   ShellSession,
   SshCommandError,
   WorkspaceTab,
@@ -35,10 +50,19 @@ import type {
 
 type MobilePane = "hosts" | "session";
 type FormMode = { type: "add" } | { type: "edit"; id: string } | null;
+type ForwardFormMode = { type: "add" } | { type: "edit"; id: string } | null;
 
 function nextShellTitle(existing: ShellSession[]): string {
   if (existing.length === 0) return "shell";
   return `shell ${existing.length + 1}`;
+}
+
+function persistForwardMap(map: Record<string, PortForward[]>) {
+  const configs: Record<string, PortForwardConfig[]> = {};
+  for (const [hostId, list] of Object.entries(map)) {
+    configs[hostId] = list.map(toPortForwardConfig);
+  }
+  return saveForwardsByHost(configs);
 }
 
 function App() {
@@ -50,6 +74,7 @@ function App() {
   const [tab, setTab] = useState<WorkspaceTab>("terminal");
   const [mobilePane, setMobilePane] = useState<MobilePane>("hosts");
   const [formMode, setFormMode] = useState<FormMode>(null);
+  const [forwardFormMode, setForwardFormMode] = useState<ForwardFormMode>(null);
   const [connectingId, setConnectingId] = useState<string | null>(null);
   const [hostKeyError, setHostKeyError] = useState<SshCommandError | null>(null);
   const [pendingTrustHostId, setPendingTrustHostId] = useState<string | null>(
@@ -66,11 +91,21 @@ function App() {
   useEffect(() => {
     let cancelled = false;
     void (async () => {
-      const configs = await loadHostConfigs();
+      const [configs, savedForwards] = await Promise.all([
+        loadHostConfigs(),
+        loadForwardsByHost(),
+      ]);
       if (cancelled) return;
       setHosts(configsToHosts(configs));
       const forwards: Record<string, PortForward[]> = {};
-      for (const config of configs) forwards[config.id] = [];
+      for (const config of configs) {
+        forwards[config.id] = configsToForwards(savedForwards[config.id] ?? []);
+      }
+      for (const hostId of Object.keys(savedForwards)) {
+        if (!(hostId in forwards)) {
+          forwards[hostId] = configsToForwards(savedForwards[hostId] ?? []);
+        }
+      }
       setForwardsByHost(forwards);
       setSelectedId(configs[0]?.id ?? null);
       setBooting(false);
@@ -78,6 +113,14 @@ function App() {
     return () => {
       cancelled = true;
     };
+  }, []);
+
+  const markHostForwardsIdle = useCallback((hostId: string) => {
+    setForwardsByHost((current) => {
+      const list = current[hostId];
+      if (!list || list.length === 0) return current;
+      return { ...current, [hostId]: idleForwards(list) };
+    });
   }, []);
 
   useEffect(() => {
@@ -114,21 +157,69 @@ function App() {
           ...current,
           [event.hostId]: null,
         }));
+        markHostForwardsIdle(event.hostId);
       });
       if (disposed) {
         connectionClosed();
         return;
       }
       unsubs.push(connectionClosed);
+
+      const forwardClosed = await listenSshForwardClosed((event) => {
+        setForwardsByHost((current) => {
+          const list = current[event.hostId];
+          if (!list) return current;
+          return {
+            ...current,
+            [event.hostId]: list.map((forward) =>
+              forward.id === event.forwardId
+                ? {
+                    ...toPortForwardConfig(forward),
+                    status: "idle" as const,
+                    errorMessage: undefined,
+                  }
+                : forward,
+            ),
+          };
+        });
+      });
+      if (disposed) {
+        forwardClosed();
+        return;
+      }
+      unsubs.push(forwardClosed);
+
+      const forwardError = await listenSshForwardError((event) => {
+        setForwardsByHost((current) => {
+          const list = current[event.hostId];
+          if (!list) return current;
+          return {
+            ...current,
+            [event.hostId]: list.map((forward) =>
+              forward.id === event.forwardId
+                ? {
+                    ...forward,
+                    // Keep listening; surface the last connection failure.
+                    errorMessage: event.message,
+                  }
+                : forward,
+            ),
+          };
+        });
+      });
+      if (disposed) {
+        forwardError();
+        return;
+      }
+      unsubs.push(forwardError);
     })();
 
     return () => {
       disposed = true;
       for (const fn of unsubs) fn();
     };
-  }, []);
+  }, [markHostForwardsIdle]);
 
-  // After shell list updates, if active is null but sessions remain, select first
   useEffect(() => {
     if (!selectedId) return;
     const sessions = sessionsByHost[selectedId] ?? [];
@@ -156,6 +247,69 @@ function App() {
     );
   }, []);
 
+  const updateForwardStatus = useCallback(
+    (
+      hostId: string,
+      forwardId: string,
+      status: PortForward["status"],
+      errorMessage?: string,
+    ) => {
+      setForwardsByHost((current) => {
+        const list = current[hostId];
+        if (!list) return current;
+        return {
+          ...current,
+          [hostId]: list.map((forward) =>
+            forward.id === forwardId
+              ? {
+                  ...toPortForwardConfig(forward),
+                  status,
+                  errorMessage,
+                }
+              : forward,
+          ),
+        };
+      });
+    },
+    [],
+  );
+
+  const startForward = useCallback(
+    async (hostId: string, forward: PortForward) => {
+      try {
+        await sshStartLocalForward({
+          hostId,
+          forwardId: forward.id,
+          localHost: forward.localHost,
+          localPort: forward.localPort,
+          remoteHost: forward.remoteHost,
+          remotePort: forward.remotePort,
+        });
+        updateForwardStatus(hostId, forward.id, "active");
+      } catch (error) {
+        const parsed = parseSshError(error);
+        updateForwardStatus(hostId, forward.id, "error", parsed.message);
+      }
+    },
+    [updateForwardStatus],
+  );
+
+  const autoStartForwards = useCallback(
+    async (hostId: string) => {
+      const list = forwardsByHost[hostId] ?? [];
+      const pending = list.filter(
+        (forward) =>
+          forward.autoStart &&
+          forward.type === "L" &&
+          forward.status !== "active",
+      );
+      await Promise.allSettled(
+        pending.map((forward) => startForward(hostId, forward)),
+      );
+    },
+    [forwardsByHost, startForward],
+  );
+
   const connectHost = useCallback(
     async (id: string) => {
       const host = hosts.find((item) => item.id === id);
@@ -165,6 +319,7 @@ function App() {
       try {
         await sshConnect(host);
         setHostStatus(id, "connected");
+        await autoStartForwards(id);
       } catch (error) {
         const parsed = parseSshError(error);
         if (
@@ -180,7 +335,7 @@ function App() {
         setConnectingId(null);
       }
     },
-    [hosts, setHostStatus],
+    [autoStartForwards, hosts, setHostStatus],
   );
 
   const acceptHostKey = useCallback(async () => {
@@ -232,9 +387,10 @@ function App() {
       }
       setSessionsByHost((current) => ({ ...current, [id]: [] }));
       setActiveSessionByHost((current) => ({ ...current, [id]: null }));
+      markHostForwardsIdle(id);
       setHostStatus(id, "idle");
     },
-    [sessionsByHost, setHostStatus],
+    [markHostForwardsIdle, sessionsByHost, setHostStatus],
   );
 
   const openShell = useCallback(async (hostId: string) => {
@@ -274,12 +430,14 @@ function App() {
   const selectHost = useCallback((id: string) => {
     setSelectedId(id);
     setFormMode(null);
+    setForwardFormMode(null);
     setMobilePane("session");
   }, []);
 
   const backToHosts = useCallback(() => {
     setMobilePane("hosts");
     setFormMode(null);
+    setForwardFormMode(null);
   }, []);
 
   const saveHost = useCallback(
@@ -296,11 +454,15 @@ function App() {
         void persistHosts(next);
         return next;
       });
-      setForwardsByHost((current) =>
-        current[config.id] ? current : { ...current, [config.id]: [] },
-      );
+      setForwardsByHost((current) => {
+        if (current[config.id]) return current;
+        const next = { ...current, [config.id]: [] };
+        void persistForwardMap(next);
+        return next;
+      });
       setSelectedId(config.id);
       setFormMode(null);
+      setForwardFormMode(null);
       setTab("terminal");
       setMobilePane("session");
     },
@@ -318,6 +480,7 @@ function App() {
       setForwardsByHost((current) => {
         const next = { ...current };
         delete next[id];
+        void persistForwardMap(next);
         return next;
       });
       setSessionsByHost((current) => {
@@ -327,26 +490,86 @@ function App() {
       });
       setSelectedId((current) => (current === id ? null : current));
       setFormMode(null);
+      setForwardFormMode(null);
       setMobilePane("hosts");
     },
     [disconnectHost, persistHosts],
   );
 
-  const addForward = useCallback(() => {
-    if (!selectedHost || selectedHost.status !== "connected") return;
-    const id = `fwd-${selectedHost.id}-${Date.now()}`;
-    const next: PortForward = {
-      id,
-      type: "L",
-      local: "localhost:8080",
-      remote: "127.0.0.1:8080",
-      status: "idle",
-    };
-    setForwardsByHost((current) => ({
-      ...current,
-      [selectedHost.id]: [...(current[selectedHost.id] ?? []), next],
-    }));
-  }, [selectedHost]);
+  const saveForward = useCallback(
+    (config: PortForwardConfig) => {
+      if (!selectedHost) return;
+      setForwardsByHost((current) => {
+        const list = current[selectedHost.id] ?? [];
+        const exists = list.some((forward) => forward.id === config.id);
+        const nextList: PortForward[] = exists
+          ? list.map((forward) =>
+              forward.id === config.id
+                ? {
+                    ...config,
+                    status:
+                      forward.status === "active"
+                        ? ("active" as const)
+                        : ("idle" as const),
+                    errorMessage: undefined,
+                  }
+                : forward,
+            )
+          : [...list, { ...config, status: "idle" as const }];
+        const next = { ...current, [selectedHost.id]: nextList };
+        void persistForwardMap(next);
+        return next;
+      });
+      setForwardFormMode(null);
+      setTab("forwards");
+    },
+    [selectedHost],
+  );
+
+  const deleteForward = useCallback(
+    async (forwardId: string) => {
+      if (!selectedHost) return;
+      const existing = (forwardsByHost[selectedHost.id] ?? []).find(
+        (forward) => forward.id === forwardId,
+      );
+      if (existing?.status === "active") {
+        try {
+          await sshStopForward(forwardId);
+        } catch {
+          // still remove locally
+        }
+      }
+      setForwardsByHost((current) => {
+        const next = {
+          ...current,
+          [selectedHost.id]: (current[selectedHost.id] ?? []).filter(
+            (forward) => forward.id !== forwardId,
+          ),
+        };
+        void persistForwardMap(next);
+        return next;
+      });
+      setForwardFormMode(null);
+    },
+    [forwardsByHost, selectedHost],
+  );
+
+  const stopForward = useCallback(
+    async (hostId: string, forwardId: string) => {
+      try {
+        await sshStopForward(forwardId);
+        updateForwardStatus(hostId, forwardId, "idle");
+      } catch (error) {
+        const parsed = parseSshError(error);
+        if (parsed.code === "not_found") {
+          updateForwardStatus(hostId, forwardId, "idle");
+          return;
+        }
+        updateForwardStatus(hostId, forwardId, "error", parsed.message);
+      }
+    },
+    [updateForwardStatus],
+  );
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
@@ -374,6 +597,10 @@ function App() {
       }
 
       if (event.key === "Escape" && mobilePane === "session") {
+        if (forwardFormMode) {
+          setForwardFormMode(null);
+          return;
+        }
         setMobilePane("hosts");
         setFormMode(null);
         return;
@@ -393,11 +620,12 @@ function App() {
       );
       setSelectedId(hosts[nextIndex].id);
       setFormMode(null);
+      setForwardFormMode(null);
     }
 
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [hosts, selectedId, mobilePane]);
+  }, [hosts, selectedId, mobilePane, forwardFormMode]);
 
   const showHostRail =
     mobilePane === "hosts" ? "flex" : "hidden md:flex";
@@ -425,6 +653,11 @@ function App() {
     formMode?.type === "edit"
       ? (hosts.find((host) => host.id === formMode.id) ?? null)
       : null;
+  const editingForward =
+    forwardFormMode?.type === "edit"
+      ? (selectedForwards.find((forward) => forward.id === forwardFormMode.id) ??
+        null)
+      : null;
 
   return (
     <div className="flex h-svh overflow-hidden bg-background text-foreground">
@@ -434,6 +667,7 @@ function App() {
         onSelect={selectHost}
         onAddHost={() => {
           setFormMode({ type: "add" });
+          setForwardFormMode(null);
           setMobilePane("session");
         }}
         className={showHostRail}
@@ -446,6 +680,17 @@ function App() {
             onSave={saveHost}
             onCancel={() => setFormMode(null)}
             onDelete={formMode.type === "edit" ? deleteHost : undefined}
+          />
+        ) : forwardFormMode && selectedHost ? (
+          <ForwardForm
+            initial={editingForward}
+            onSave={saveForward}
+            onCancel={() => setForwardFormMode(null)}
+            onDelete={
+              forwardFormMode.type === "edit"
+                ? (id) => void deleteForward(id)
+                : undefined
+            }
           />
         ) : selectedHost ? (
           <>
@@ -471,7 +716,18 @@ function App() {
                 host={selectedHost}
                 forwards={selectedForwards}
                 onConnect={() => void connectHost(selectedHost.id)}
-                onAddForward={addForward}
+                onAddForward={() => setForwardFormMode({ type: "add" })}
+                onStartForward={(id) => {
+                  const forward = selectedForwards.find((item) => item.id === id);
+                  if (forward) void startForward(selectedHost.id, forward);
+                }}
+                onStopForward={(id) =>
+                  void stopForward(selectedHost.id, id)
+                }
+                onEditForward={(id) =>
+                  setForwardFormMode({ type: "edit", id })
+                }
+                onDeleteForward={(id) => void deleteForward(id)}
               />
             ) : null}
           </>
@@ -486,17 +742,19 @@ function App() {
         {selectedHost ? (
           <div
             className={
-              !formMode && tab === "terminal"
+              !formMode && !forwardFormMode && tab === "terminal"
                 ? "flex min-h-0 flex-1 flex-col"
                 : "hidden"
             }
-            aria-hidden={formMode != null || tab !== "terminal"}
+            aria-hidden={
+              formMode != null || forwardFormMode != null || tab !== "terminal"
+            }
           >
             <TerminalPanel
               host={selectedHost}
               sessions={selectedSessions}
               activeSessionId={activeSessionId}
-              visible={!formMode && tab === "terminal"}
+              visible={!formMode && !forwardFormMode && tab === "terminal"}
               onConnect={() => void connectHost(selectedHost.id)}
               onOpenShell={() => void openShell(selectedHost.id)}
               onSelectShell={(id) =>

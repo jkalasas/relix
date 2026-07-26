@@ -28,6 +28,9 @@ const KNOWN_SSH_ERROR_CODES: ReadonlySet<string> = new Set([
   "key_unreadable",
   "invalid_key",
   "not_connected",
+  "bind_failed",
+  "forward_failed",
+  "not_found",
   "internal",
 ]);
 
@@ -183,6 +186,25 @@ export async function sshTrustHostKey(input: {
   await invoke("ssh_trust_host_key", input);
 }
 
+export type StartLocalForwardPayload = {
+  hostId: string;
+  forwardId: string;
+  localHost: string;
+  localPort: number;
+  remoteHost: string;
+  remotePort: number;
+};
+
+export async function sshStartLocalForward(
+  config: StartLocalForwardPayload,
+): Promise<void> {
+  await invoke("ssh_start_local_forward", { config });
+}
+
+export async function sshStopForward(forwardId: string): Promise<void> {
+  await invoke("ssh_stop_forward", { forwardId });
+}
+
 export type SshDataEvent = { sessionId: string; data: string };
 export type SshShellClosedEvent = {
   sessionId: string;
@@ -190,6 +212,16 @@ export type SshShellClosedEvent = {
   reason?: string;
 };
 export type SshConnectionClosedEvent = { hostId: string; reason?: string };
+export type SshForwardClosedEvent = {
+  hostId: string;
+  forwardId: string;
+  reason?: string;
+};
+export type SshForwardErrorEvent = {
+  hostId: string;
+  forwardId: string;
+  message: string;
+};
 export type SshErrorEvent = {
   hostId: string;
   sessionId?: string;
@@ -221,6 +253,22 @@ export async function listenSshConnectionClosed(
   handler: (event: SshConnectionClosedEvent) => void,
 ): Promise<UnlistenFn> {
   return listen<SshConnectionClosedEvent>("ssh://connection-closed", (e) =>
+    handler(e.payload),
+  );
+}
+
+export async function listenSshForwardClosed(
+  handler: (event: SshForwardClosedEvent) => void,
+): Promise<UnlistenFn> {
+  return listen<SshForwardClosedEvent>("ssh://forward-closed", (e) =>
+    handler(e.payload),
+  );
+}
+
+export async function listenSshForwardError(
+  handler: (event: SshForwardErrorEvent) => void,
+): Promise<UnlistenFn> {
+  return listen<SshForwardErrorEvent>("ssh://forward-error", (e) =>
     handler(e.payload),
   );
 }

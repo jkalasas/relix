@@ -7,9 +7,11 @@ use base64::engine::general_purpose::STANDARD as B64;
 use base64::Engine as _;
 use russh::client::{self, Handle};
 use russh::keys::{self, PrivateKeyWithHashAlg, PublicKeyBase64};
-use russh::{ChannelMsg, ChannelWriteHalf, Disconnect};
+use russh::{Channel, ChannelMsg, ChannelWriteHalf, Disconnect};
 use serde::Deserialize;
 use tauri::{AppHandle, Emitter};
+use tokio::io::AsyncWriteExt;
+use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::Mutex;
 use uuid::Uuid;
 
@@ -91,6 +93,14 @@ struct LiveShell {
     abort: tokio::task::AbortHandle,
 }
 
+pub type ForwardId = String;
+
+struct LiveForward {
+    host_id: HostId,
+    abort: tokio::task::AbortHandle,
+    children: Arc<Mutex<Vec<tokio::task::AbortHandle>>>,
+}
+
 pub struct SshManager {
     inner: Arc<Mutex<SshManagerInner>>,
 }
@@ -98,6 +108,7 @@ pub struct SshManager {
 struct SshManagerInner {
     connections: HashMap<HostId, LiveConnection>,
     shells: HashMap<SessionId, LiveShell>,
+    forwards: HashMap<ForwardId, LiveForward>,
     /// Per-host generation used to cancel in-flight connects.
     /// Bumped on connect start and on disconnect; a connect may only insert
     /// if its captured generation still matches.
@@ -110,12 +121,24 @@ pub struct OpenShellResult {
     pub session_id: String,
 }
 
+#[derive(Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StartLocalForwardConfig {
+    pub host_id: String,
+    pub forward_id: String,
+    pub local_host: String,
+    pub local_port: u16,
+    pub remote_host: String,
+    pub remote_port: u16,
+}
+
 impl SshManager {
     pub fn new() -> Self {
         Self {
             inner: Arc::new(Mutex::new(SshManagerInner {
                 connections: HashMap::new(),
                 shells: HashMap::new(),
+                forwards: HashMap::new(),
                 connect_generations: HashMap::new(),
             })),
         }
@@ -241,9 +264,9 @@ impl SshManager {
     }
 
     pub async fn disconnect(&self, app: &AppHandle, host_id: &str) -> Result<(), SshError> {
-        // Remove shells/connection and invalidate in-flight connect generation under
+        // Remove shells/forwards/connection and invalidate in-flight connect generation under
         // the same lock so a slow connect cannot re-insert after we return.
-        let (removed_shells, removed_conn) = {
+        let (removed_shells, removed_forwards, removed_conn) = {
             let mut inner = self.inner.lock().await;
             let session_ids: Vec<SessionId> = inner
                 .shells
@@ -258,6 +281,21 @@ impl SshManager {
                     shells.push((id, shell));
                 }
             }
+
+            let forward_ids: Vec<ForwardId> = inner
+                .forwards
+                .iter()
+                .filter(|(_, f)| f.host_id == host_id)
+                .map(|(id, _)| id.clone())
+                .collect();
+
+            let mut forwards = Vec::with_capacity(forward_ids.len());
+            for id in forward_ids {
+                if let Some(forward) = inner.forwards.remove(&id) {
+                    forwards.push((id, forward));
+                }
+            }
+
             let conn = inner.connections.remove(host_id);
             // Bump generation so any in-flight connect for this host is cancelled.
             let entry = inner
@@ -265,7 +303,7 @@ impl SshManager {
                 .entry(host_id.to_string())
                 .or_insert(0);
             *entry = entry.wrapping_add(1);
-            (shells, conn)
+            (shells, forwards, conn)
         };
 
         // Only emit for shells we successfully removed (single-owner emission).
@@ -279,6 +317,18 @@ impl SshManager {
                 "ssh://shell-closed",
                 serde_json::json!({
                     "sessionId": id,
+                    "hostId": host_id,
+                    "reason": "disconnect",
+                }),
+            );
+        }
+
+        for (id, forward) in removed_forwards {
+            abort_forward(&forward).await;
+            let _ = app.emit(
+                "ssh://forward-closed",
+                serde_json::json!({
+                    "forwardId": id,
                     "hostId": host_id,
                     "reason": "disconnect",
                 }),
@@ -523,6 +573,237 @@ impl SshManager {
             },
         );
         save_known_hosts(app, &known)
+    }
+
+    pub async fn start_local_forward(
+        &self,
+        app: &AppHandle,
+        config: StartLocalForwardConfig,
+    ) -> Result<(), SshError> {
+        let handle = {
+            let mut inner = self.inner.lock().await;
+            if inner.forwards.contains_key(&config.forward_id) {
+                return Err(SshError::new(
+                    SshErrorCode::ForwardFailed,
+                    "Tunnel is already active",
+                ));
+            }
+            match inner.connections.get(&config.host_id) {
+                Some(conn) if !conn.handle.is_closed() => Arc::clone(&conn.handle),
+                Some(_) => {
+                    inner.connections.remove(&config.host_id);
+                    return Err(SshError::new(
+                        SshErrorCode::NotConnected,
+                        "Host is not connected",
+                    ));
+                }
+                None => {
+                    return Err(SshError::new(
+                        SshErrorCode::NotConnected,
+                        "Host is not connected",
+                    ));
+                }
+            }
+        };
+
+        let bind_addr = format!("{}:{}", config.local_host, config.local_port);
+        let listener = TcpListener::bind(&bind_addr).await.map_err(|e| {
+            SshError::new(
+                SshErrorCode::BindFailed,
+                format!("Could not bind {bind_addr}: {e}"),
+            )
+        })?;
+
+        let children = Arc::new(Mutex::new(Vec::new()));
+        let children_for_task = Arc::clone(&children);
+        let host_id = config.host_id.clone();
+        let forward_id = config.forward_id.clone();
+        let remote_host = config.remote_host.clone();
+        let remote_port = u32::from(config.remote_port);
+        let app_handle = app.clone();
+        let manager = Arc::clone(&self.inner);
+        let handle_for_task = Arc::clone(&handle);
+
+        let join = tokio::spawn(async move {
+            loop {
+                let accepted = listener.accept().await;
+                let (mut stream, originator) = match accepted {
+                    Ok(pair) => pair,
+                    Err(_) => break,
+                };
+
+                if let Err(err) = stream.set_nodelay(true) {
+                    eprintln!("relix: set_nodelay failed: {err}");
+                }
+
+                // Some servers are picky about originator address form; keep it simple.
+                let originator_ip = match originator {
+                    std::net::SocketAddr::V4(v4) => v4.ip().to_string(),
+                    std::net::SocketAddr::V6(v6) => {
+                        if let Some(v4) = v6.ip().to_ipv4_mapped() {
+                            v4.to_string()
+                        } else {
+                            "127.0.0.1".to_string()
+                        }
+                    }
+                };
+
+                let channel = match handle_for_task
+                    .channel_open_direct_tcpip(
+                        remote_host.clone(),
+                        remote_port,
+                        originator_ip,
+                        u32::from(originator.port()),
+                    )
+                    .await
+                {
+                    Ok(channel) => channel,
+                    Err(err) => {
+                        let message = forward_open_error_message(
+                            &remote_host,
+                            remote_port,
+                            &err,
+                        );
+                        eprintln!("relix: {message}");
+                        let _ = app_handle.emit(
+                            "ssh://forward-error",
+                            serde_json::json!({
+                                "forwardId": forward_id,
+                                "hostId": host_id,
+                                "message": message,
+                            }),
+                        );
+                        // Prefer FIN over RST when the channel never opened.
+                        let _ = stream.shutdown().await;
+                        continue;
+                    }
+                };
+
+                let child = tokio::spawn(async move {
+                    relay_tcp_channel(stream, channel).await;
+                });
+                children_for_task.lock().await.push(child.abort_handle());
+            }
+
+            let removed = {
+                let mut inner = manager.lock().await;
+                inner.forwards.remove(&forward_id)
+            };
+            if removed.is_some() {
+                let _ = app_handle.emit(
+                    "ssh://forward-closed",
+                    serde_json::json!({
+                        "forwardId": forward_id,
+                        "hostId": host_id,
+                        "reason": "listener_closed",
+                    }),
+                );
+            }
+        });
+
+        let registered = {
+            let mut inner = self.inner.lock().await;
+            let still_valid = inner
+                .connections
+                .get(&config.host_id)
+                .map(|conn| Arc::ptr_eq(&conn.handle, &handle) && !conn.handle.is_closed())
+                .unwrap_or(false);
+
+            if still_valid && !inner.forwards.contains_key(&config.forward_id) {
+                inner.forwards.insert(
+                    config.forward_id.clone(),
+                    LiveForward {
+                        host_id: config.host_id.clone(),
+                        abort: join.abort_handle(),
+                        children,
+                    },
+                );
+                true
+            } else {
+                false
+            }
+        };
+
+        if !registered {
+            join.abort();
+            return Err(SshError::new(
+                SshErrorCode::NotConnected,
+                "Host disconnected while starting tunnel",
+            ));
+        }
+
+        Ok(())
+    }
+
+    pub async fn stop_forward(
+        &self,
+        app: &AppHandle,
+        forward_id: &str,
+    ) -> Result<(), SshError> {
+        let forward = {
+            let mut inner = self.inner.lock().await;
+            inner.forwards.remove(forward_id)
+        };
+
+        let Some(forward) = forward else {
+            return Err(SshError::new(
+                SshErrorCode::NotFound,
+                "Tunnel is not active",
+            ));
+        };
+
+        let host_id = forward.host_id.clone();
+        abort_forward(&forward).await;
+        let _ = app.emit(
+            "ssh://forward-closed",
+            serde_json::json!({
+                "forwardId": forward_id,
+                "hostId": host_id,
+                "reason": "stopped",
+            }),
+        );
+        Ok(())
+    }
+}
+
+async fn abort_forward(forward: &LiveForward) {
+    forward.abort.abort();
+    let children = {
+        let mut guard = forward.children.lock().await;
+        std::mem::take(&mut *guard)
+    };
+    for child in children {
+        child.abort();
+    }
+}
+
+async fn relay_tcp_channel(mut stream: TcpStream, channel: Channel<client::Msg>) {
+    let mut chan_stream = channel.into_stream();
+    match tokio::io::copy_bidirectional(&mut stream, &mut chan_stream).await {
+        Ok(_) => {}
+        Err(err) => {
+            eprintln!("relix: forward relay ended: {err}");
+        }
+    }
+    let _ = stream.shutdown().await;
+}
+
+fn forward_open_error_message(remote_host: &str, remote_port: u32, err: &russh::Error) -> String {
+    let target = format!("{remote_host}:{remote_port}");
+    match err {
+        russh::Error::ChannelOpenFailure(russh::ChannelOpenFailure::ConnectFailed) => {
+            format!(
+                "Remote {target} refused the connection (nothing listening there on the SSH host, or wrong host/port)"
+            )
+        }
+        russh::Error::ChannelOpenFailure(
+            russh::ChannelOpenFailure::AdministrativelyProhibited,
+        ) => {
+            format!(
+                "SSH server blocked the tunnel to {target} (AllowTcpForwarding / PermitOpen)"
+            )
+        }
+        other => format!("Could not open tunnel to {target}: {other}"),
     }
 }
 

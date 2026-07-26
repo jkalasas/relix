@@ -4,7 +4,7 @@ export type WorkspaceTab = "terminal" | "sftp" | "forwards";
 
 export type ForwardType = "L" | "R" | "D";
 
-export type ForwardStatus = "active" | "idle";
+export type ForwardStatus = "active" | "idle" | "error";
 
 export type AuthMethod = "password" | "private_key";
 
@@ -25,12 +25,19 @@ export type Host = HostConfig & {
   status: HostStatus;
 };
 
-export type PortForward = {
+export type PortForwardConfig = {
   id: string;
   type: ForwardType;
-  local: string;
-  remote: string;
+  localHost: string;
+  localPort: number;
+  remoteHost: string;
+  remotePort: number;
+  autoStart: boolean;
+};
+
+export type PortForward = PortForwardConfig & {
   status: ForwardStatus;
+  errorMessage?: string;
 };
 
 export type ShellSession = {
@@ -52,6 +59,9 @@ export type SshErrorCode =
   | "key_unreadable"
   | "invalid_key"
   | "not_connected"
+  | "bind_failed"
+  | "forward_failed"
+  | "not_found"
   | "internal";
 
 export type SshCommandError = {

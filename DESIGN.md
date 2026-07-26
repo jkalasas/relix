@@ -238,6 +238,7 @@ Task-specific, one primary action, no fake metrics. Icon in a quiet bordered til
 |---|---|
 | `active` | cyan `--status-tunnel` |
 | `idle` | `--status-idle` |
+| `error` | rose `--destructive` |
 
 ---
 
@@ -330,7 +331,8 @@ When adding UI:
 - [ ] Add / edit host form (auth method, jump host, keys) — full-screen on mobile, sheet/dialog on desktop
 - [ ] Real PTY terminal themed to Relay Night (soft-keyboard safe on mobile)
 - [ ] SFTP browser + transfer queue (single-pane mobile, optional dual-pane desktop)
-- [ ] Forward editor (L/R/D, bind address, auto-start)
+- [x] Forward editor (local L + bind address + auto-start) — R/D later
+- [ ] Remote (R) and dynamic SOCKS (D) forwards
 - [ ] Command palette on desktop (`⌘K`); mobile search sheet for hosts
 - [ ] System back integration on Android / iOS
 - [ ] Optional light theme (true off-white chroma-0 + same amber)
