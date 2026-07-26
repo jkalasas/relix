@@ -1,4 +1,7 @@
-use base64::{engine::general_purpose::STANDARD as B64, Engine as _};
+use base64::{
+    engine::general_purpose::{STANDARD as B64, STANDARD_NO_PAD as B64_NO_PAD},
+    Engine as _,
+};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
@@ -23,7 +26,8 @@ pub fn host_key_id(hostname: &str, port: u16) -> String {
 
 pub fn fingerprint_sha256(key_bytes: &[u8]) -> String {
     let digest = Sha256::digest(key_bytes);
-    format!("SHA256:{}", B64.encode(digest))
+    // OpenSSH SHA256 fingerprints use unpadded base64 (ssh-keygen -lf).
+    format!("SHA256:{}", B64_NO_PAD.encode(digest))
 }
 
 pub enum HostKeyCheck {
@@ -127,8 +131,12 @@ mod tests {
     }
 
     #[test]
-    fn fingerprint_is_prefixed() {
+    fn fingerprint_is_prefixed_unpadded() {
         let fp = fingerprint_sha256(b"abc");
         assert!(fp.starts_with("SHA256:"));
+        // OpenSSH fingerprints are unpadded base64 — no trailing '='.
+        assert!(!fp.ends_with('='), "fingerprint must not have base64 padding: {fp}");
+        // Known SHA256 of b"abc" as unpadded base64.
+        assert_eq!(fp, "SHA256:ungWv48Bz+pBQUDeXa4iI7ADYaOWF3qctBD/YfIAFa0");
     }
 }
