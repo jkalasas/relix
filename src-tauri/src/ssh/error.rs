@@ -68,5 +68,6 @@ impl std::fmt::Display for SshError {
 
 impl std::error::Error for SshError {}
 
-// Tauri serializes Err(InvokeError) from Serialize errors when using Result<T, SshError>
-// if SshError implements Serialize — return Result<T, SshError> from commands.
+// Tauri 2 converts `Result<T, E>` errors via `impl<T: Serialize> From<T> for InvokeError`,
+// which does `serde_json::to_value`. So `Result<T, SshError>` round-trips as a structured
+// JSON object to the frontend (not just Display/message). Keep returning SshError directly.
