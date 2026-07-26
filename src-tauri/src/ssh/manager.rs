@@ -405,8 +405,9 @@ impl SshManager {
         });
 
         // Re-validate by handle identity under lock, then register before starting
-        // the reader so events cannot race ahead of map insertion.
-        {
+        // the reader so events cannot race ahead of map insertion. Do not await
+        // channel.close() while holding the manager lock.
+        let registered = {
             let mut inner = self.inner.lock().await;
             let still_valid = inner
                 .connections
@@ -414,31 +415,37 @@ impl SshManager {
                 .map(|conn| Arc::ptr_eq(&conn.handle, &handle) && !conn.handle.is_closed())
                 .unwrap_or(false);
 
-            if !still_valid {
-                join.abort();
-                // Drop the gate so the reader exits if abort races with the await.
-                drop(start_tx);
-                {
-                    let ch = channel_arc.lock().await;
-                    let _ = ch.close().await;
-                }
-                return Err(SshError::new(
-                    SshErrorCode::NotConnected,
-                    "Host disconnected while opening shell",
-                ));
+            if still_valid {
+                inner.shells.insert(
+                    session_id.clone(),
+                    LiveShell {
+                        host_id,
+                        channel: Arc::clone(&channel_arc),
+                        abort: join.abort_handle(),
+                    },
+                );
+                true
+            } else {
+                false
             }
+        };
 
-            inner.shells.insert(
-                session_id.clone(),
-                LiveShell {
-                    host_id,
-                    channel: Arc::clone(&channel_arc),
-                    abort: join.abort_handle(),
-                },
-            );
+        if !registered {
+            join.abort();
+            // Drop the gate so the reader exits if abort races with the await.
+            drop(start_tx);
+            {
+                let ch = channel_arc.lock().await;
+                let _ = ch.close().await;
+            }
+            return Err(SshError::new(
+                SshErrorCode::NotConnected,
+                "Host disconnected while opening shell",
+            ));
         }
 
         // Registered: allow the reader to start consuming channel messages.
+        // Send immediately after insert so the cancel window is tiny (oneshot send is sync).
         let _ = start_tx.send(());
 
         Ok(OpenShellResult { session_id })
