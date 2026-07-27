@@ -70,17 +70,19 @@ export function HostForm({ initial, onSave, onCancel, onDelete }: HostFormProps)
 
   return (
     <div className="flex min-h-0 flex-1 flex-col bg-background">
-      <div className="flex h-12 shrink-0 items-center justify-between border-b border-border px-4 pt-[env(safe-area-inset-top)] md:pt-0">
-        <h2 className="text-sm font-semibold tracking-tight">{title}</h2>
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          onClick={onCancel}
-          className="min-h-9 px-3 md:min-h-7"
-        >
-          Cancel
-        </Button>
+      <div className="shrink-0 border-b border-border pt-[env(safe-area-inset-top,0px)] md:pt-0">
+        <div className="flex h-12 items-center justify-between px-4">
+          <h2 className="text-sm font-semibold tracking-tight">{title}</h2>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={onCancel}
+            className="min-h-9 px-3 md:min-h-7"
+          >
+            Cancel
+          </Button>
+        </div>
       </div>
 
       <form

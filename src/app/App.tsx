@@ -163,14 +163,14 @@ function App() {
 
   if (hosts.booting) {
     return (
-      <div className="flex h-svh items-center justify-center bg-background text-sm text-muted-foreground">
+      <div className="flex h-full items-center justify-center bg-background text-sm text-muted-foreground">
         Loading hosts…
       </div>
     );
   }
 
   return (
-    <div className="flex h-svh overflow-hidden bg-background text-foreground">
+    <div className="flex h-full overflow-hidden bg-background text-foreground">
       <HostRail
         hosts={hosts.hosts}
         selectedId={workspace.selectedId}

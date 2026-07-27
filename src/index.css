@@ -144,16 +144,16 @@
   }
 
   html {
-    @apply font-sans antialiased;
+    @apply h-full font-sans antialiased;
     color-scheme: dark;
   }
 
   body {
-    @apply bg-background text-foreground;
+    @apply h-full overflow-hidden bg-background text-foreground;
   }
 
   #root {
-    @apply min-h-svh;
+    @apply h-full min-h-0;
   }
 
   button,

@@ -1,6 +1,13 @@
 <resources xmlns:tools="http://schemas.android.com/tools">
-    <!-- Base application theme. -->
     <style name="Theme.relix" parent="Theme.MaterialComponents.DayNight.NoActionBar">
-        <!-- Customize your theme here. -->
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowBackground">@color/relix_background</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowLightNavigationBar" tools:targetApi="27">false</item>
+        <item name="colorPrimary">@color/relix_primary</item>
+        <item name="colorPrimaryVariant">@color/relix_background</item>
+        <item name="colorOnPrimary">@color/relix_background</item>
+        <item name="android:colorBackground">@color/relix_background</item>
     </style>
 </resources>
