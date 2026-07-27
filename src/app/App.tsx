@@ -11,6 +11,7 @@ import {
   useForwards,
 } from "@/features/forwards";
 import {
+  AuthCheckDialog,
   HostForm,
   HostKeyDialog,
   HostRail,
@@ -62,7 +63,7 @@ function App() {
       try {
         await shells.openShell(hostId, launchId);
       } catch {
-        hosts.setHostStatus(hostId, "error");
+        hosts.setHostStatus(hostId, "error", "Failed to open shell");
       }
     },
     [hosts.setHostStatus, shells.openShell],
@@ -285,6 +286,14 @@ function App() {
           busy={hosts.connectingId !== null}
           onAccept={() => void hosts.acceptHostKey()}
           onCancel={hosts.cancelHostKey}
+        />
+      ) : null}
+
+      {hosts.authCheck ? (
+        <AuthCheckDialog
+          prompt={hosts.authCheck}
+          busy={hosts.connectingId !== null}
+          onCancel={() => void hosts.cancelAuthCheck()}
         />
       ) : null}
     </div>

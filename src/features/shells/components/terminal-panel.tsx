@@ -83,7 +83,8 @@ export function TerminalPanel({
         }
         description={
           host.status === "error"
-            ? `Could not reach ${host.user}@${host.hostname}. Check the host, port, or credentials, then try again.`
+            ? (host.lastError ??
+              `Could not reach ${host.user}@${host.hostname}. Check the host, port, or credentials, then try again.`)
             : `Connect to ${host.name} to open a shell session.`
         }
         actionLabel={host.status === "error" ? "Retry connect" : "Connect"}

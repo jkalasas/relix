@@ -7,7 +7,11 @@ import {
 } from "@/features/ssh";
 
 type UseSshLifecycleOptions = {
-  setHostStatus: (id: string, status: "connected" | "idle" | "error") => void;
+  setHostStatus: (
+    id: string,
+    status: "connected" | "idle" | "error",
+    lastError?: string,
+  ) => void;
   markHostForwardsIdle: (hostId: string) => void;
   markForwardClosed: (hostId: string, forwardId: string) => void;
   markForwardError: (hostId: string, forwardId: string, message: string) => void;
@@ -38,7 +42,7 @@ export function useSshLifecycle({
       unsubs.push(shellClosed);
 
       const connectionClosed = await listenSshConnectionClosed((event) => {
-        setHostStatus(event.hostId, "error");
+        setHostStatus(event.hostId, "error", "SSH connection closed");
         clearSessionsForHost(event.hostId);
         markHostForwardsIdle(event.hostId);
       });

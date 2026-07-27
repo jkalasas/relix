@@ -17,4 +17,5 @@ export type HostConfig = {
 
 export type Host = HostConfig & {
   status: HostStatus;
+  lastError?: string;
 };

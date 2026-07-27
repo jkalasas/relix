@@ -1,8 +1,8 @@
 mod ssh;
 
 use ssh::commands::{
-    ssh_close_shell, ssh_connect, ssh_disconnect, ssh_open_shell, ssh_resize, ssh_sftp_list,
-    ssh_sftp_mkdir, ssh_sftp_read, ssh_sftp_remove, ssh_sftp_rename, ssh_sftp_write,
+    ssh_cancel_connect, ssh_close_shell, ssh_connect, ssh_disconnect, ssh_open_shell, ssh_resize,
+    ssh_sftp_list, ssh_sftp_mkdir, ssh_sftp_read, ssh_sftp_remove, ssh_sftp_rename, ssh_sftp_write,
     ssh_start_dynamic_forward, ssh_start_local_forward, ssh_start_remote_forward, ssh_stop_forward,
     ssh_trust_host_key, ssh_write,
 };
@@ -19,6 +19,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             ssh_connect,
             ssh_disconnect,
+            ssh_cancel_connect,
             ssh_open_shell,
             ssh_close_shell,
             ssh_write,

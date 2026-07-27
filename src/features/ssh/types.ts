@@ -102,3 +102,9 @@ export type SshErrorEvent = {
   sessionId?: string;
   message: string;
 };
+
+export type SshAuthBannerEvent = {
+  hostId: string;
+  message: string;
+  checkUrl?: string | null;
+};

@@ -29,6 +29,14 @@ pub async fn ssh_disconnect(
 }
 
 #[tauri::command]
+pub async fn ssh_cancel_connect(
+    state: State<'_, SshManager>,
+    host_id: String,
+) -> Result<(), SshError> {
+    state.cancel_connect(&host_id).await
+}
+
+#[tauri::command]
 pub async fn ssh_open_shell(
     app: AppHandle,
     state: State<'_, SshManager>,

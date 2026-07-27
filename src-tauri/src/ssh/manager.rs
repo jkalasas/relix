@@ -31,6 +31,7 @@ pub(crate) struct SshManagerInner {
     pub(crate) forwards: HashMap<ForwardId, LiveForward>,
     pub(crate) sftp: HashMap<HostId, LiveSftp>,
     pub(crate) connect_generations: HashMap<HostId, u64>,
+    pub(crate) connect_cancels: HashMap<HostId, tokio::sync::oneshot::Sender<()>>,
 }
 
 impl SshManager {
@@ -42,13 +43,35 @@ impl SshManager {
                 forwards: HashMap::new(),
                 sftp: HashMap::new(),
                 connect_generations: HashMap::new(),
+                connect_cancels: HashMap::new(),
             })),
         }
+    }
+
+    pub async fn cancel_connect(&self, host_id: &str) -> Result<(), SshError> {
+        let mut inner = self.inner.lock().await;
+        if let Some(tx) = inner.connect_cancels.remove(host_id) {
+            let _ = tx.send(());
+        }
+        let entry = inner
+            .connect_generations
+            .entry(host_id.to_string())
+            .or_insert(0);
+        *entry = entry.wrapping_add(1);
+        Ok(())
+    }
+
+    pub(crate) async fn clear_connect_cancel(&self, host_id: &str) {
+        let mut inner = self.inner.lock().await;
+        inner.connect_cancels.remove(host_id);
     }
 
     pub async fn disconnect(&self, app: &AppHandle, host_id: &str) -> Result<(), SshError> {
         let (removed_shells, removed_forwards, removed_sftp, removed_conn) = {
             let mut inner = self.inner.lock().await;
+            if let Some(tx) = inner.connect_cancels.remove(host_id) {
+                let _ = tx.send(());
+            }
             let session_ids: Vec<SessionId> = inner
                 .shells
                 .iter()

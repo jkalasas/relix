@@ -31,6 +31,10 @@ export async function sshDisconnect(hostId: string): Promise<void> {
   await invoke("ssh_disconnect", { hostId });
 }
 
+export async function sshCancelConnect(hostId: string): Promise<void> {
+  await invoke("ssh_cancel_connect", { hostId });
+}
+
 export async function sshOpenShell(
   hostId: string,
   options?: {

@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::net::ToSocketAddrs;
+use std::net::{SocketAddr, ToSocketAddrs};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -67,13 +67,89 @@ pub(crate) struct RemoteRoute {
 pub(crate) type RemoteRoutes = Arc<Mutex<HashMap<(String, u32), RemoteRoute>>>;
 pub(crate) type SharedHandle = Arc<Mutex<Handle<ClientHandler>>>;
 
+#[derive(Clone)]
 pub(crate) struct ClientHandler {
     captured: Arc<Mutex<Option<CapturedKey>>>,
     remote_routes: RemoteRoutes,
+    app: AppHandle,
+    host_id: String,
+}
+
+const CONNECT_TIMEOUT: Duration = Duration::from_secs(15);
+const AUTH_TIMEOUT: Duration = Duration::from_secs(30);
+const AUTH_CHECK_TIMEOUT: Duration = Duration::from_secs(15 * 60);
+const RESOLVE_TIMEOUT: Duration = Duration::from_secs(8);
+
+fn extract_tailscale_check_url(text: &str) -> Option<String> {
+    const MARKER: &str = "https://login.tailscale.com/a/";
+    let idx = text.find(MARKER)?;
+    let after = &text[idx + MARKER.len()..];
+    let token_len = after
+        .chars()
+        .take_while(|c| c.is_ascii_alphanumeric())
+        .count();
+    if token_len == 0 {
+        return None;
+    }
+    Some(format!("{MARKER}{}", &after[..token_len]))
+}
+
+fn emit_auth_banner(app: &AppHandle, host_id: &str, banner: &str) {
+    let check_url = extract_tailscale_check_url(banner);
+    let _ = app.emit(
+        "ssh://auth-banner",
+        serde_json::json!({
+            "hostId": host_id,
+            "message": banner,
+            "checkUrl": check_url,
+        }),
+    );
+}
+
+async fn resolve_connect_addrs(
+    addr: &str,
+    hostname: &str,
+) -> Result<Vec<SocketAddr>, SshError> {
+    let resolved = tokio::time::timeout(RESOLVE_TIMEOUT, tokio::net::lookup_host(addr.to_string()))
+        .await
+        .map_err(|_| {
+            SshError::new(
+                SshErrorCode::ConnectFailed,
+                format!("Timed out resolving {hostname}"),
+            )
+        })?
+        .map_err(|e| SshError::new(SshErrorCode::ConnectFailed, e.to_string()))?;
+
+    let mut socks: Vec<SocketAddr> = resolved.collect();
+    if socks.is_empty() {
+        // Blocking fallback for platforms where lookup_host is incomplete.
+        socks = addr
+            .to_socket_addrs()
+            .map_err(|e| SshError::new(SshErrorCode::ConnectFailed, e.to_string()))?
+            .collect();
+    }
+    if socks.is_empty() {
+        return Err(SshError::new(
+            SshErrorCode::ConnectFailed,
+            format!("Could not resolve {hostname}"),
+        ));
+    }
+
+    socks.sort_by_key(|sock| !sock.is_ipv4());
+    Ok(socks)
 }
 
 impl client::Handler for ClientHandler {
     type Error = russh::Error;
+
+    async fn auth_banner(
+        &mut self,
+        banner: &str,
+        _session: &mut client::Session,
+    ) -> Result<(), Self::Error> {
+        emit_auth_banner(&self.app, &self.host_id, banner);
+        Ok(())
+    }
 
     async fn check_server_key(
         &mut self,
@@ -167,27 +243,75 @@ pub(crate) async fn relay_tcp_channel(mut stream: TcpStream, channel: Channel<cl
     let _ = stream.shutdown().await;
 }
 
+async fn auth_with_timeout<T, E, F>(
+    timeout: Duration,
+    cancel: &mut tokio::sync::oneshot::Receiver<()>,
+    fut: F,
+) -> Result<T, SshError>
+where
+    E: std::fmt::Display,
+    F: std::future::Future<Output = Result<T, E>>,
+{
+    tokio::select! {
+        _ = &mut *cancel => Err(SshError::new(
+            SshErrorCode::AuthFailed,
+            "Authentication cancelled",
+        )),
+        result = tokio::time::timeout(timeout, fut) => {
+            match result {
+                Ok(Ok(value)) => Ok(value),
+                Ok(Err(err)) => Err(SshError::new(
+                    SshErrorCode::AuthFailed,
+                    err.to_string(),
+                )),
+                Err(_) => Err(SshError::new(
+                    SshErrorCode::AuthFailed,
+                    "Authentication timed out waiting for approval",
+                )),
+            }
+        }
+    }
+}
+
 pub(crate) async fn authenticate(
     handle: &mut Handle<ClientHandler>,
+    app: &AppHandle,
     config: &ConnectConfig,
+    cancel: &mut tokio::sync::oneshot::Receiver<()>,
 ) -> Result<(), SshError> {
+    use russh::client::KeyboardInteractiveAuthResponse;
+
     let user = config.user.clone();
+
+    // Tailscale SSH authenticates via method "none" + auth banners / check URL.
+    let none = auth_with_timeout(
+        AUTH_CHECK_TIMEOUT,
+        cancel,
+        handle.authenticate_none(user.clone()),
+    )
+    .await;
+    match none {
+        Ok(res) if res.success() => return Ok(()),
+        Ok(_) => {}
+        Err(err) if err.message == "Authentication cancelled" => return Err(err),
+        Err(err) if err.message.contains("timed out") => return Err(err),
+        Err(_) => {}
+    }
+
     match config.auth_method.as_str() {
         "password" => {
             let password = config.password.clone().ok_or_else(|| {
                 SshError::new(SshErrorCode::AuthFailed, "Password is required")
             })?;
-            let res = handle
-                .authenticate_password(user, password)
-                .await
-                .map_err(|e| SshError::new(SshErrorCode::AuthFailed, e.to_string()))?;
-            if !res.success() {
-                return Err(SshError::new(
-                    SshErrorCode::AuthFailed,
-                    "Authentication failed",
-                ));
+            let res = auth_with_timeout(
+                AUTH_CHECK_TIMEOUT,
+                cancel,
+                handle.authenticate_password(user.clone(), password),
+            )
+            .await?;
+            if res.success() {
+                return Ok(());
             }
-            Ok(())
         }
         "private_key" => {
             let key = load_private_key(config)?;
@@ -196,22 +320,98 @@ pub(crate) async fn authenticate(
                 .await
                 .map_err(|e| SshError::new(SshErrorCode::AuthFailed, e.to_string()))?
                 .flatten();
-            let res = handle
-                .authenticate_publickey(user, PrivateKeyWithHashAlg::new(Arc::new(key), hash))
-                .await
-                .map_err(|e| SshError::new(SshErrorCode::AuthFailed, e.to_string()))?;
-            if !res.success() {
+            let res = auth_with_timeout(
+                AUTH_CHECK_TIMEOUT,
+                cancel,
+                handle.authenticate_publickey(
+                    user.clone(),
+                    PrivateKeyWithHashAlg::new(Arc::new(key), hash),
+                ),
+            )
+            .await?;
+            if res.success() {
+                return Ok(());
+            }
+        }
+        other => {
+            return Err(SshError::new(
+                SshErrorCode::InvalidKey,
+                format!("Unknown auth method: {other}"),
+            ));
+        }
+    }
+
+    let kbd = auth_with_timeout(
+        AUTH_TIMEOUT,
+        cancel,
+        handle.authenticate_keyboard_interactive_start(user, None),
+    )
+    .await;
+    match kbd {
+        Ok(KeyboardInteractiveAuthResponse::Success) => Ok(()),
+        Ok(response) => {
+            complete_keyboard_interactive_with_app(handle, app, config, cancel, response).await
+        }
+        Err(err) if err.message == "Authentication cancelled" => Err(err),
+        Err(_) => Err(SshError::new(
+            SshErrorCode::AuthFailed,
+            "Authentication failed",
+        )),
+    }
+}
+
+async fn complete_keyboard_interactive_with_app(
+    handle: &mut Handle<ClientHandler>,
+    app: &AppHandle,
+    config: &ConnectConfig,
+    cancel: &mut tokio::sync::oneshot::Receiver<()>,
+    mut response: russh::client::KeyboardInteractiveAuthResponse,
+) -> Result<(), SshError> {
+    use russh::client::KeyboardInteractiveAuthResponse;
+
+    loop {
+        match response {
+            KeyboardInteractiveAuthResponse::Success => return Ok(()),
+            KeyboardInteractiveAuthResponse::Failure { .. } => {
                 return Err(SshError::new(
                     SshErrorCode::AuthFailed,
                     "Authentication failed",
                 ));
             }
-            Ok(())
+            KeyboardInteractiveAuthResponse::InfoRequest {
+                name,
+                instructions,
+                prompts,
+            } => {
+                let text = format!("{name}\n{instructions}").trim().to_string();
+                if !text.is_empty() {
+                    emit_auth_banner(app, &config.host_id, &text);
+                }
+                for prompt in &prompts {
+                    if !prompt.prompt.trim().is_empty() {
+                        emit_auth_banner(app, &config.host_id, &prompt.prompt);
+                    }
+                }
+
+                let answers: Vec<String> = prompts
+                    .iter()
+                    .map(|prompt| {
+                        if prompt.echo {
+                            String::new()
+                        } else {
+                            config.password.clone().unwrap_or_default()
+                        }
+                    })
+                    .collect();
+
+                response = auth_with_timeout(
+                    AUTH_CHECK_TIMEOUT,
+                    cancel,
+                    handle.authenticate_keyboard_interactive_respond(answers),
+                )
+                .await?;
+            }
         }
-        other => Err(SshError::new(
-            SshErrorCode::InvalidKey,
-            format!("Unknown auth method: {other}"),
-        )),
     }
 }
 
@@ -303,45 +503,79 @@ impl SshManager {
         let handler = ClientHandler {
             captured: Arc::clone(&captured),
             remote_routes: Arc::clone(&remote_routes),
+            app: app.clone(),
+            host_id: config.host_id.clone(),
         };
 
-        let conf = client::Config {
+        let (cancel_tx, mut cancel_rx) = tokio::sync::oneshot::channel();
+        {
+            let mut inner = self.inner.lock().await;
+            if let Some(prev) = inner.connect_cancels.remove(&config.host_id) {
+                let _ = prev.send(());
+            }
+            inner
+                .connect_cancels
+                .insert(config.host_id.clone(), cancel_tx);
+        }
+
+        let conf = Arc::new(client::Config {
             inactivity_timeout: None,
             keepalive_interval: Some(Duration::from_secs(30)),
             ..Default::default()
-        };
+        });
 
         let addr = format!("{}:{}", config.hostname, config.port);
-        let mut addrs = addr
-            .to_socket_addrs()
-            .map_err(|e| SshError::new(SshErrorCode::ConnectFailed, e.to_string()))?;
-        let sock = addrs.next().ok_or_else(|| {
-            SshError::new(
-                SshErrorCode::ConnectFailed,
-                format!("Could not resolve {}", config.hostname),
-            )
-        })?;
+        let socks = match resolve_connect_addrs(&addr, &config.hostname).await {
+            Ok(socks) => socks,
+            Err(err) => {
+                self.clear_connect_cancel(&config.host_id).await;
+                return Err(err);
+            }
+        };
 
-        const CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
-        let mut handle = tokio::time::timeout(
-            CONNECT_TIMEOUT,
-            client::connect(Arc::new(conf), sock, handler),
-        )
-        .await
-        .map_err(|_| {
-            SshError::new(
-                SshErrorCode::ConnectFailed,
-                format!("Connection to {addr} timed out after 30s"),
+        let mut handle = None;
+        let mut last_err = None;
+        for sock in socks {
+            match tokio::time::timeout(
+                CONNECT_TIMEOUT,
+                client::connect(Arc::clone(&conf), sock, handler.clone()),
             )
-        })?
-        .map_err(|e| SshError::new(SshErrorCode::ConnectFailed, e.to_string()))?;
+            .await
+            {
+                Ok(Ok(h)) => {
+                    handle = Some(h);
+                    break;
+                }
+                Ok(Err(e)) => last_err = Some(e.to_string()),
+                Err(_) => {
+                    last_err = Some(format!("Connection to {sock} timed out after 15s"));
+                }
+            }
+        }
+        let mut handle = match handle {
+            Some(h) => h,
+            None => {
+                self.clear_connect_cancel(&config.host_id).await;
+                return Err(SshError::new(
+                    SshErrorCode::ConnectFailed,
+                    last_err.unwrap_or_else(|| format!("Connection to {addr} failed")),
+                ));
+            }
+        };
 
-        let key = captured.lock().await.take().ok_or_else(|| {
-            SshError::new(
-                SshErrorCode::Internal,
-                "Server host key was not presented",
-            )
-        })?;
+        let key = match captured.lock().await.take() {
+            Some(k) => k,
+            None => {
+                self.clear_connect_cancel(&config.host_id).await;
+                let _ = handle
+                    .disconnect(Disconnect::ByApplication, "no host key", "")
+                    .await;
+                return Err(SshError::new(
+                    SshErrorCode::Internal,
+                    "Server host key was not presented",
+                ));
+            }
+        };
 
         let check = check_host_key(
             &known,
@@ -357,13 +591,21 @@ impl SshManager {
             &key.algorithm,
             &key.bytes,
         ) {
+            self.clear_connect_cancel(&config.host_id).await;
             let _ = handle
                 .disconnect(Disconnect::ByApplication, "host key not trusted", "")
                 .await;
             return Err(err);
         }
 
-        authenticate(&mut handle, &config).await?;
+        let auth_result = authenticate(&mut handle, app, &config, &mut cancel_rx).await;
+        self.clear_connect_cancel(&config.host_id).await;
+        if let Err(err) = auth_result {
+            let _ = handle
+                .disconnect(Disconnect::ByApplication, "auth failed", "")
+                .await;
+            return Err(err);
+        }
 
         {
             let mut inner = self.inner.lock().await;

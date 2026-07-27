@@ -1,5 +1,6 @@
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type {
+  SshAuthBannerEvent,
   SshConnectionClosedEvent,
   SshDataEvent,
   SshErrorEvent,
@@ -57,4 +58,12 @@ export async function listenSshError(
   handler: (event: SshErrorEvent) => void,
 ): Promise<UnlistenFn> {
   return listen<SshErrorEvent>("ssh://error", (e) => handler(e.payload));
+}
+
+export async function listenSshAuthBanner(
+  handler: (event: SshAuthBannerEvent) => void,
+): Promise<UnlistenFn> {
+  return listen<SshAuthBannerEvent>("ssh://auth-banner", (e) =>
+    handler(e.payload),
+  );
 }
