@@ -33,8 +33,13 @@ function App() {
   const shells = useShells();
 
   const onConnected = useCallback(
-    (hostId: string) => forwards.autoStartForwards(hostId),
-    [forwards.autoStartForwards],
+    async (host: HostConfig) => {
+      await forwards.autoStartForwards(host.id);
+      if (host.shellMode === "tmux") {
+        await shells.bootstrapTmux(host.id, host.tmuxSession);
+      }
+    },
+    [forwards.autoStartForwards, shells.bootstrapTmux],
   );
 
   const onDisconnecting = useCallback(
@@ -60,14 +65,30 @@ function App() {
   });
 
   const openShell = useCallback(
-    async (hostId: string, launchId?: Parameters<typeof shells.openShell>[1]) => {
+    async (
+      hostId: string,
+      launchId?: Parameters<typeof shells.openShell>[1],
+    ) => {
+      const host = hosts.hosts.find((item) => item.id === hostId);
       try {
-        await shells.openShell(hostId, launchId);
+        await shells.openShell(hostId, launchId, {
+          shellMode: host?.shellMode,
+          tmuxSession: host?.tmuxSession,
+        });
       } catch {
         hosts.setHostStatus(hostId, "error", "Failed to open shell");
       }
     },
-    [hosts.setHostStatus, shells.openShell],
+    [hosts.hosts, hosts.setHostStatus, shells.openShell],
+  );
+
+  const selectShell = useCallback(
+    (hostId: string, sessionId: string) => {
+      void shells.selectShell(hostId, sessionId).catch(() => {
+        hosts.setHostStatus(hostId, "error", "Failed to attach shell");
+      });
+    },
+    [hosts.setHostStatus, shells.selectShell],
   );
 
   const workspace = useWorkspace({ hosts: hosts.hosts });
@@ -85,7 +106,7 @@ function App() {
     markHostForwardsIdle: forwards.markHostForwardsIdle,
     markForwardClosed: forwards.markForwardClosed,
     markForwardError: forwards.markForwardError,
-    removeSession: shells.removeSession,
+    handleChannelClosed: shells.handleChannelClosed,
     clearSessionsForHost: shells.clearSessionsForHost,
   });
 
@@ -93,7 +114,7 @@ function App() {
     workspace.selectedId,
     shells.sessionsByHost,
     shells.activeSessionByHost,
-    shells.selectShell,
+    selectShell,
   );
 
   const selectedHost = useMemo(
@@ -110,9 +131,9 @@ function App() {
 
   const selectShellTab = useCallback(
     (id: string) => {
-      if (selectedHost) shells.selectShell(selectedHost.id, id);
+      if (selectedHost) selectShell(selectedHost.id, id);
     },
-    [selectedHost, shells.selectShell],
+    [selectedHost, selectShell],
   );
 
   useShellTabShortcuts({
@@ -291,7 +312,7 @@ function App() {
               onOpenShell={(launchId) =>
                 void openShell(selectedHost.id, launchId)
               }
-              onSelectShell={(id) => shells.selectShell(selectedHost.id, id)}
+              onSelectShell={(id) => selectShell(selectedHost.id, id)}
               onCloseShell={(id) => void shells.closeShell(selectedHost.id, id)}
               onSessionCwd={shells.setSessionCwd}
             />

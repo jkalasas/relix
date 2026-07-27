@@ -35,17 +35,21 @@ export function TerminalPanel({
   );
 
   const setWriter = useCallback(
-    (sessionId: string, write: (data: string | Uint8Array) => void) => {
-      writersRef.current.set(sessionId, write);
+    (channelId: string, write: (data: string | Uint8Array) => void) => {
+      writersRef.current.set(channelId, write);
     },
     [],
   );
 
   useEffect(() => {
-    const activeIds = new Set(sessions.map((session) => session.id));
-    for (const sessionId of writersRef.current.keys()) {
-      if (!activeIds.has(sessionId)) {
-        writersRef.current.delete(sessionId);
+    const activeIds = new Set(
+      sessions
+        .map((session) => session.channelId)
+        .filter((id): id is string => Boolean(id)),
+    );
+    for (const channelId of writersRef.current.keys()) {
+      if (!activeIds.has(channelId)) {
+        writersRef.current.delete(channelId);
       }
     }
   }, [sessions]);
@@ -94,15 +98,23 @@ export function TerminalPanel({
   }
 
   if (sessions.length === 0) {
+    const tmux = host.shellMode === "tmux";
     return (
       <EmptyTerminal
-        title="No open shells"
-        description={`Connection to ${host.name} is up. Open a shell to start a PTY session.`}
-        actionLabel="Open a shell"
+        title={tmux ? "No tmux windows" : "No open shells"}
+        description={
+          tmux
+            ? `Connection to ${host.name} is up. Open a window to attach a tmux session.`
+            : `Connection to ${host.name} is up. Open a shell to start a PTY session.`
+        }
+        actionLabel={tmux ? "Open a window" : "Open a shell"}
         onAction={onOpenShell}
       />
     );
   }
+
+  const activeSession =
+    sessions.find((session) => session.id === activeSessionId) ?? null;
 
   return (
     <div
@@ -119,16 +131,24 @@ export function TerminalPanel({
         onNew={(launchId) => onOpenShell(launchId)}
       />
       <div className="relative flex min-h-0 flex-1 flex-col bg-[oklch(0.12_0.012_250)]">
-        {sessions.map((session) => (
-          <TerminalView
-            key={session.id}
-            sessionId={session.id}
-            active={session.id === activeSessionId}
-            visible={visible}
-            onReady={(api) => setWriter(session.id, api.write)}
-            onCwdChange={(cwd) => onSessionCwd(session.id, cwd)}
-          />
-        ))}
+        {sessions.map((session) => {
+          if (!session.channelId) return null;
+          return (
+            <TerminalView
+              key={session.channelId}
+              sessionId={session.channelId}
+              active={session.id === activeSessionId}
+              visible={visible}
+              onReady={(api) => setWriter(session.channelId!, api.write)}
+              onCwdChange={(cwd) => onSessionCwd(session.id, cwd)}
+            />
+          );
+        })}
+        {activeSession && !activeSession.channelId ? (
+          <div className="flex flex-1 items-center justify-center px-4 text-sm text-muted-foreground">
+            Attaching {activeSession.title}…
+          </div>
+        ) : null}
       </div>
     </div>
   );

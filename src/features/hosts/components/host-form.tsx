@@ -3,11 +3,16 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Field } from "@/components/workspace/field";
 import { HostFormAuth } from "@/features/hosts/components/host-form-auth";
-import type { Host, HostConfig } from "@/features/hosts/types";
+import type { Host, HostConfig, ShellMode } from "@/features/hosts/types";
 import {
   normalizeHostConfig,
   validateHostConfig,
 } from "@/features/hosts/validate";
+
+const SHELL_MODES = [
+  { id: "plain" as ShellMode, label: "Plain" },
+  { id: "tmux" as ShellMode, label: "Tmux" },
+] as const;
 
 type HostFormProps = {
   initial?: Host | null;
@@ -28,6 +33,8 @@ function emptyConfig(): HostConfig {
     privateKey: "",
     privateKeyPath: "",
     passphrase: "",
+    shellMode: "plain",
+    tmuxSession: "",
   };
 }
 
@@ -45,6 +52,8 @@ export function HostForm({ initial, onSave, onCancel, onDelete }: HostFormProps)
           privateKey: initial.privateKey ?? "",
           privateKeyPath: initial.privateKeyPath ?? "",
           passphrase: initial.passphrase ?? "",
+          shellMode: initial.shellMode ?? "plain",
+          tmuxSession: initial.tmuxSession ?? "",
         }
       : emptyConfig(),
   );
@@ -129,6 +138,42 @@ export function HostForm({ initial, onSave, onCancel, onDelete }: HostFormProps)
         </Field>
 
         <HostFormAuth form={form} onUpdate={update} />
+
+        <fieldset className="space-y-2">
+          <legend className="text-[11px] font-medium text-muted-foreground">
+            Shell
+          </legend>
+          <div className="flex gap-2">
+            {SHELL_MODES.map((mode) => (
+              <Button
+                key={mode.id}
+                type="button"
+                size="sm"
+                variant={
+                  (form.shellMode ?? "plain") === mode.id
+                    ? "default"
+                    : "outline"
+                }
+                onClick={() => update("shellMode", mode.id)}
+                className="min-h-9 px-3 md:min-h-7"
+              >
+                {mode.label}
+              </Button>
+            ))}
+          </div>
+        </fieldset>
+
+        {(form.shellMode ?? "plain") === "tmux" ? (
+          <Field label="Tmux session">
+            <Input
+              value={form.tmuxSession ?? ""}
+              onChange={(e) => update("tmuxSession", e.target.value)}
+              placeholder="relix"
+              autoComplete="off"
+              className="font-mono"
+            />
+          </Field>
+        ) : null}
 
         {error ? (
           <p className="text-[13px] text-destructive" role="alert">

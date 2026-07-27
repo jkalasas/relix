@@ -15,7 +15,7 @@ type UseSshLifecycleOptions = {
   markHostForwardsIdle: (hostId: string) => void;
   markForwardClosed: (hostId: string, forwardId: string) => void;
   markForwardError: (hostId: string, forwardId: string, message: string) => void;
-  removeSession: (hostId: string, sessionId: string) => void;
+  handleChannelClosed: (hostId: string, channelId: string) => void;
   clearSessionsForHost: (hostId: string) => void;
 };
 
@@ -24,7 +24,7 @@ export function useSshLifecycle({
   markHostForwardsIdle,
   markForwardClosed,
   markForwardError,
-  removeSession,
+  handleChannelClosed,
   clearSessionsForHost,
 }: UseSshLifecycleOptions) {
   useEffect(() => {
@@ -33,7 +33,7 @@ export function useSshLifecycle({
 
     void (async () => {
       const shellClosed = await listenSshShellClosed((event) => {
-        removeSession(event.hostId, event.sessionId);
+        handleChannelClosed(event.hostId, event.sessionId);
       });
       if (disposed) {
         shellClosed();
@@ -77,10 +77,10 @@ export function useSshLifecycle({
     };
   }, [
     clearSessionsForHost,
+    handleChannelClosed,
     markForwardClosed,
     markForwardError,
     markHostForwardsIdle,
-    removeSession,
     setHostStatus,
   ]);
 }

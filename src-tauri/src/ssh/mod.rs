@@ -7,3 +7,4 @@ pub mod manager;
 pub mod sftp;
 pub mod shell;
 pub mod socks;
+pub mod tmux;

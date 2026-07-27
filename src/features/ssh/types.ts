@@ -31,6 +31,18 @@ export type OpenShellResult = {
   sessionId: string;
 };
 
+export type TmuxWindow = {
+  id: string;
+  index: number;
+  name: string;
+  active: boolean;
+};
+
+export type TmuxBootstrapResult = {
+  session: string;
+  windows: TmuxWindow[];
+};
+
 export type SshConnectPayload = {
   hostId: string;
   user: string;

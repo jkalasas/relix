@@ -14,7 +14,7 @@ import {
 } from "@/features/ssh";
 
 type UseHostsOptions = {
-  onConnected?: (hostId: string) => void | Promise<void>;
+  onConnected?: (host: HostConfig) => void | Promise<void>;
   onDisconnecting?: (hostId: string) => void | Promise<void>;
   onDeleted?: (hostId: string) => void;
 };
@@ -101,7 +101,18 @@ export function useHosts(options: UseHostsOptions = {}) {
         await sshConnect(host);
         setAuthCheck(null);
         setHostStatus(id, "connected");
-        await onConnected?.(id);
+        try {
+          await onConnected?.(toHostConfig(host));
+        } catch (postError) {
+          const parsed = parseSshError(postError);
+          try {
+            await sshDisconnect(id);
+          } catch {
+            // still surface the post-connect failure
+          }
+          setHostStatus(id, "error", parsed.message);
+          await onDisconnecting?.(id);
+        }
       } catch (error) {
         const parsed = parseSshError(error);
         setAuthCheck(null);
@@ -120,7 +131,7 @@ export function useHosts(options: UseHostsOptions = {}) {
         setConnectingId(null);
       }
     },
-    [hosts, onConnected, setHostStatus],
+    [hosts, onConnected, onDisconnecting, setHostStatus],
   );
 
   const acceptHostKey = useCallback(async () => {

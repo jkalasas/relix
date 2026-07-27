@@ -7,6 +7,8 @@ import type {
   StartDynamicForwardPayload,
   StartLocalForwardPayload,
   StartRemoteForwardPayload,
+  TmuxBootstrapResult,
+  TmuxWindow,
 } from "@/features/ssh/types";
 
 export function hostToConnectPayload(host: HostConfig): SshConnectPayload {
@@ -153,4 +155,82 @@ export async function sshSftpRename(
   to: string,
 ): Promise<void> {
   await invoke("ssh_sftp_rename", { config: { hostId, from, to } });
+}
+
+export async function sshTmuxBootstrap(
+  hostId: string,
+  session?: string,
+): Promise<TmuxBootstrapResult> {
+  return invoke<TmuxBootstrapResult>("ssh_tmux_bootstrap", {
+    hostId,
+    session,
+  });
+}
+
+export async function sshTmuxNewWindow(
+  hostId: string,
+  options?: {
+    session?: string;
+    name?: string;
+    command?: string;
+    cwd?: string;
+    sourceWindowId?: string;
+  },
+): Promise<TmuxWindow> {
+  return invoke<TmuxWindow>("ssh_tmux_new_window", {
+    hostId,
+    session: options?.session,
+    name: options?.name,
+    command: options?.command,
+    cwd: options?.cwd,
+    sourceWindowId: options?.sourceWindowId,
+  });
+}
+
+export async function sshTmuxListWindows(
+  hostId: string,
+  session?: string,
+): Promise<TmuxBootstrapResult> {
+  return invoke<TmuxBootstrapResult>("ssh_tmux_list_windows", {
+    hostId,
+    session,
+  });
+}
+
+export async function sshTmuxKillWindow(
+  hostId: string,
+  session: string | undefined,
+  windowId: string,
+): Promise<void> {
+  await invoke("ssh_tmux_kill_window", {
+    hostId,
+    session,
+    windowId,
+  });
+}
+
+function shSingleQuote(value: string): string {
+  return `'${value.replace(/'/g, `'"'"'`)}'`;
+}
+
+function tmuxClientSession(session: string, windowId: string): string {
+  const id = windowId.trim().replace(/^@/, "");
+  return `${session}_w${id}`;
+}
+
+/** One grouped client session per window so tabs keep independent views. */
+export function tmuxAttachCommand(session: string, windowId: string): string {
+  const client = tmuxClientSession(session, windowId);
+  const clientQ = shSingleQuote(client);
+  const baseQ = shSingleQuote(session);
+  const win = windowId.trim();
+  const script = [
+    `tmux has-session -t ${clientQ} 2>/dev/null || tmux new-session -d -s ${clientQ} -t ${baseQ}`,
+    `tmux set-option -t ${clientQ} status off`,
+    `tmux set-option -t ${baseQ} status off`,
+    `tmux set-option -t ${clientQ} set-titles off`,
+    `tmux select-window -t ${clientQ}:${win}`,
+    `exec tmux attach-session -t ${clientQ}`,
+  ].join("; ");
+  return `bash -lc ${shSingleQuote(script)}`;
 }

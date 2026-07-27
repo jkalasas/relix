@@ -9,6 +9,7 @@ use super::sftp::{
     SftpListConfig, SftpListResult, SftpMkdirConfig, SftpReadConfig, SftpRemoveConfig,
     SftpRenameConfig, SftpWriteConfig,
 };
+use super::tmux::{TmuxBootstrapResult, TmuxWindow};
 
 #[tauri::command]
 pub async fn ssh_connect(
@@ -188,4 +189,47 @@ pub async fn ssh_sftp_rename(
     config: SftpRenameConfig,
 ) -> Result<(), SshError> {
     state.sftp_rename(&app, config).await
+}
+
+#[tauri::command]
+pub async fn ssh_tmux_bootstrap(
+    state: State<'_, SshManager>,
+    host_id: String,
+    session: Option<String>,
+) -> Result<TmuxBootstrapResult, SshError> {
+    state.tmux_bootstrap(host_id, session).await
+}
+
+#[tauri::command]
+pub async fn ssh_tmux_new_window(
+    state: State<'_, SshManager>,
+    host_id: String,
+    session: Option<String>,
+    name: Option<String>,
+    command: Option<String>,
+    cwd: Option<String>,
+    source_window_id: Option<String>,
+) -> Result<TmuxWindow, SshError> {
+    state
+        .tmux_new_window(host_id, session, name, command, cwd, source_window_id)
+        .await
+}
+
+#[tauri::command]
+pub async fn ssh_tmux_list_windows(
+    state: State<'_, SshManager>,
+    host_id: String,
+    session: Option<String>,
+) -> Result<TmuxBootstrapResult, SshError> {
+    state.tmux_list_windows(host_id, session).await
+}
+
+#[tauri::command]
+pub async fn ssh_tmux_kill_window(
+    state: State<'_, SshManager>,
+    host_id: String,
+    session: Option<String>,
+    window_id: String,
+) -> Result<(), SshError> {
+    state.tmux_kill_window(host_id, session, window_id).await
 }

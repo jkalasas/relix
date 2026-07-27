@@ -21,6 +21,11 @@ export function validateHostConfig(form: HostConfig): string | null {
 }
 
 export function normalizeHostConfig(form: HostConfig): HostConfig {
+  const shellMode = form.shellMode === "tmux" ? "tmux" : "plain";
+  const tmuxSession =
+    shellMode === "tmux"
+      ? form.tmuxSession?.trim() || undefined
+      : undefined;
   return {
     ...form,
     name: form.name.trim(),
@@ -40,5 +45,7 @@ export function normalizeHostConfig(form: HostConfig): HostConfig {
       form.authMethod === "private_key"
         ? form.passphrase?.trim() || undefined
         : undefined,
+    shellMode,
+    tmuxSession,
   };
 }

@@ -12,6 +12,8 @@ export function toHostConfig(host: HostConfig): HostConfig {
     privateKey: host.privateKey,
     privateKeyPath: host.privateKeyPath,
     passphrase: host.passphrase,
+    shellMode: host.shellMode,
+    tmuxSession: host.tmuxSession,
   };
 }
 

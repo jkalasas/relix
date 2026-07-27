@@ -2,6 +2,8 @@ export type HostStatus = "connected" | "idle" | "error";
 
 export type AuthMethod = "password" | "private_key";
 
+export type ShellMode = "plain" | "tmux";
+
 export type HostConfig = {
   id: string;
   name: string;
@@ -13,6 +15,8 @@ export type HostConfig = {
   privateKey?: string;
   privateKeyPath?: string;
   passphrase?: string;
+  shellMode?: ShellMode;
+  tmuxSession?: string;
 };
 
 export type Host = HostConfig & {
