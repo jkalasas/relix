@@ -59,7 +59,7 @@ export function ForwardsPanel({
           </div>
           <div className="max-w-sm space-y-1.5">
             <h3 className="text-sm font-medium text-balance">
-              No port forwards yet
+              No ports yet
             </h3>
             <p className="text-[13px] leading-relaxed text-muted-foreground text-pretty">
               Map ports through this host — local, remote reverse, or SOCKS.
@@ -95,7 +95,7 @@ export function ForwardsPanel({
         </div>
       ) : (
         <div className="min-h-0 flex-1 overflow-y-auto p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
-          <ul className="flex flex-col gap-1.5" aria-label="Port forwards">
+          <ul className="flex flex-col gap-1.5" aria-label="Ports">
             {forwards.map((forward) => (
               <ForwardRow
                 key={forward.id}

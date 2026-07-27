@@ -16,8 +16,8 @@ export function EmptyWorkspace({ onAddHost }: EmptyWorkspaceProps) {
           Pick a host to open a session
         </h2>
         <p className="text-[13px] leading-relaxed text-muted-foreground text-pretty">
-          Relix keeps SSH, port forwards, and SFTP in one session. Select a host
-          from the rail, or add a new one to get started.
+          Relix keeps SSH, ports, and files in one session. Select a host from
+          the rail, or add a new one to get started.
         </p>
       </div>
       <Button type="button" size="sm" onClick={onAddHost}>

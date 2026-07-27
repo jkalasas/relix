@@ -10,3 +10,7 @@ export {
   type AuthCheckPrompt,
 } from "@/features/hosts/components/auth-check-dialog";
 export { SessionHeader } from "@/features/hosts/components/session-header";
+export {
+  DisconnectDialog,
+  type DisconnectChoice,
+} from "@/features/hosts/components/disconnect-dialog";

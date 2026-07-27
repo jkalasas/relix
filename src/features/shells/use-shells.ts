@@ -10,6 +10,7 @@ import {
   sshCloseShell,
   sshOpenShell,
   sshTmuxBootstrap,
+  sshTmuxKillSession,
   sshTmuxKillWindow,
   sshTmuxListWindows,
   sshTmuxNewWindow,
@@ -305,6 +306,29 @@ export function useShells(options: UseShellsOptions = {}) {
     [],
   );
 
+  const killTmuxSession = useCallback(
+    async (hostId: string, tmuxSession?: string) => {
+      const sessions = sessionsByHostRef.current[hostId] ?? [];
+      const sessionName = resolveTmuxSession(
+        tmuxSession ??
+          sessions.find((session) => session.tmuxSession)?.tmuxSession,
+      );
+      try {
+        await sshTmuxKillSession(hostId, sessionName);
+      } finally {
+        for (const session of sessions) {
+          await closeChannel(session.channelId);
+        }
+        setSessionsByHost((current) => ({ ...current, [hostId]: [] }));
+        setActiveSessionByHost((current) => ({
+          ...current,
+          [hostId]: null,
+        }));
+      }
+    },
+    [],
+  );
+
   const selectShell = useCallback(
     async (hostId: string, sessionId: string) => {
       const session = (sessionsByHostRef.current[hostId] ?? []).find(
@@ -442,6 +466,7 @@ export function useShells(options: UseShellsOptions = {}) {
     openShell,
     setSessionCwd,
     closeShell,
+    killTmuxSession,
     selectShell,
     clearHostShells,
     removeHostShells,

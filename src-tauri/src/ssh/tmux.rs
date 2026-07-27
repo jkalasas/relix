@@ -87,6 +87,41 @@ fn kill_window_command(session: &str, window_id: &str) -> String {
     )
 }
 
+fn kill_session_command(session: &str) -> String {
+    // Relix tabs attach via grouped client sessions named `{base}_w{windowId}`.
+    // Killing the base first transfers windows into a remaining group member, so
+    // clients must die before the base. The script is wrapped in bash -lc with
+    // single quotes — session must be double-quoted inside, not sh_single_quote,
+    // or the outer quotes break (base='relix' inside '…' is invalid).
+    let session_escaped = session
+        .replace('\\', "\\\\")
+        .replace('"', "\\\"")
+        .replace('$', "\\$")
+        .replace('`', "\\`");
+    let script = format!(
+        "set +e; base=\"{session_escaped}\"; \
+for s in $(tmux list-sessions -F '#{{session_name}}' 2>/dev/null); do \
+  case \"$s\" in \
+    \"${{base}}_w\"*) tmux kill-session -t \"$s\" 2>/dev/null ;; \
+  esac; \
+done; \
+if tmux has-session -t \"$base\" 2>/dev/null; then \
+  for w in $(tmux list-windows -t \"$base\" -F '#{{window_id}}' 2>/dev/null); do \
+    tmux kill-window -t \"$base:$w\" 2>/dev/null; \
+  done; \
+  tmux kill-session -t \"$base\" 2>/dev/null; \
+fi; \
+for s in $(tmux list-sessions -F '#{{session_name}}' 2>/dev/null); do \
+  case \"$s\" in \
+    \"$base\"|\"${{base}}_w\"*) tmux kill-session -t \"$s\" 2>/dev/null ;; \
+  esac; \
+done; \
+if tmux has-session -t \"$base\" 2>/dev/null; then exit 1; fi; \
+exit 0"
+    );
+    format!("bash -lc {}", sh_single_quote(&script))
+}
+
 fn list_windows_command(session: &str) -> String {
     format!(
         "tmux list-windows -t {} -F '#{{window_id}}\t#{{window_index}}\t#{{window_name}}\t#{{window_active}}'",
@@ -380,14 +415,28 @@ impl SshManager {
             Err(error) => Err(error),
         }
     }
+
+    pub async fn tmux_kill_session(
+        &self,
+        host_id: String,
+        session: Option<String>,
+    ) -> Result<(), SshError> {
+        let session = resolve_session(session)?;
+        let handle = self.live_handle(&host_id).await?;
+        match exec_capture(&handle, &kill_session_command(&session)).await {
+            Ok(_) => Ok(()),
+            Err(error) if is_missing_session_error(&error.message) => Ok(()),
+            Err(error) => Err(error),
+        }
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::{
-        attach_command, configure_session_command, ensure_session_command, kill_window_command,
-        list_windows_command, new_window_command, pane_path_command, parse_window_line,
-        parse_windows, parse_windows_stdout, resolve_session, sh_single_quote,
+        attach_command, configure_session_command, ensure_session_command, kill_session_command,
+        kill_window_command, list_windows_command, new_window_command, pane_path_command,
+        parse_window_line, parse_windows, parse_windows_stdout, resolve_session, sh_single_quote,
     };
 
     #[test]
@@ -413,6 +462,15 @@ mod tests {
         assert!(configure_session_command("relix").contains("status off"));
         assert!(kill_window_command("relix", "@3").contains("kill-window -t relix:@3"));
         assert!(kill_window_command("relix", "@3").contains("kill-session -t 'relix_w3'"));
+        let kill = kill_session_command("relix");
+        assert!(kill.starts_with("bash -lc "));
+        assert!(kill.contains("base=\"relix\""));
+        assert!(kill.contains("kill-session"));
+        assert!(kill.contains("#{session_name}"));
+        assert!(kill.contains("#{window_id}"));
+        assert!(kill.contains("${base}_w"));
+        // Must not embed single-quoted session inside the outer bash -lc quotes.
+        assert!(!kill.contains("base='relix'"));
     }
 
     #[test]

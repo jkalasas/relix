@@ -209,6 +209,16 @@ export async function sshTmuxKillWindow(
   });
 }
 
+export async function sshTmuxKillSession(
+  hostId: string,
+  session?: string,
+): Promise<void> {
+  await invoke("ssh_tmux_kill_session", {
+    hostId,
+    session,
+  });
+}
+
 export async function sshTmuxWindowPath(
   hostId: string,
   session: string | undefined,

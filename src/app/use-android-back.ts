@@ -18,15 +18,19 @@ export function useAndroidBack({ handleBack }: UseAndroidBackOptions) {
       } catch {
         // desktop / unsupported — ignore
       }
-    }).then((listener) => {
-      if (disposed) {
-        void listener.unregister();
-        return;
-      }
-      unlisten = () => {
-        void listener.unregister();
-      };
-    });
+    })
+      .then((listener) => {
+        if (disposed) {
+          void listener.unregister();
+          return;
+        }
+        unlisten = () => {
+          void listener.unregister();
+        };
+      })
+      .catch(() => {
+        // app.registerListener is mobile-only; desktop rejects this command
+      });
 
     return () => {
       disposed = true;

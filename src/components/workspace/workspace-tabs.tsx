@@ -3,8 +3,8 @@ import type { WorkspaceTab } from "@/app/types";
 
 const tabs: { id: WorkspaceTab; label: string; shortcut: string }[] = [
   { id: "terminal", label: "Terminal", shortcut: "1" },
-  { id: "sftp", label: "SFTP", shortcut: "2" },
-  { id: "forwards", label: "Forwards", shortcut: "3" },
+  { id: "sftp", label: "Files", shortcut: "2" },
+  { id: "forwards", label: "Ports", shortcut: "3" },
 ];
 
 type WorkspaceTabsProps = {

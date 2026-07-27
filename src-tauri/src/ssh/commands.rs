@@ -243,3 +243,12 @@ pub async fn ssh_tmux_kill_window(
 ) -> Result<(), SshError> {
     state.tmux_kill_window(host_id, session, window_id).await
 }
+
+#[tauri::command]
+pub async fn ssh_tmux_kill_session(
+    state: State<'_, SshManager>,
+    host_id: String,
+    session: Option<String>,
+) -> Result<(), SshError> {
+    state.tmux_kill_session(host_id, session).await
+}

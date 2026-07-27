@@ -52,7 +52,7 @@ export function SftpPanel({
           <FolderOpen className="size-5" aria-hidden />
         </div>
         <div className="max-w-sm space-y-1.5">
-          <h3 className="text-sm font-medium text-balance">SFTP unavailable</h3>
+          <h3 className="text-sm font-medium text-balance">Files unavailable</h3>
           <p className="text-[13px] leading-relaxed text-muted-foreground text-pretty">
             Connect to {host.name} before browsing or transferring files.
           </p>

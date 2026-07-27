@@ -1,4 +1,4 @@
-import { useCallback, useMemo } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useAndroidBack } from "@/app/use-android-back";
 import { useBoot } from "@/app/use-boot";
 import { useSshLifecycle } from "@/app/use-ssh-lifecycle";
@@ -12,16 +12,19 @@ import {
 } from "@/features/forwards";
 import {
   AuthCheckDialog,
+  DisconnectDialog,
+  type DisconnectChoice,
   HostForm,
   HostKeyDialog,
   HostRail,
   SessionHeader,
   useHosts,
 } from "@/features/hosts";
-import type { HostConfig } from "@/features/hosts/types";
+import type { Host, HostConfig } from "@/features/hosts/types";
 import type { PortForwardConfig } from "@/features/forwards/types";
 import { SftpPanel } from "@/features/sftp";
 import {
+  DEFAULT_TMUX_SESSION,
   TerminalPanel,
   useActiveShellFallback,
   useShells,
@@ -31,6 +34,11 @@ import {
 function App() {
   const forwards = useForwards();
   const shells = useShells();
+  const [disconnectPrompt, setDisconnectPrompt] = useState<{
+    hostId: string;
+    sessionName: string;
+  } | null>(null);
+  const [disconnectBusy, setDisconnectBusy] = useState(false);
 
   const onConnected = useCallback(
     async (host: HostConfig) => {
@@ -91,8 +99,50 @@ function App() {
     [hosts.setHostStatus, shells.selectShell],
   );
 
+  const requestDisconnect = useCallback((host: Host) => {
+    if (host.shellMode === "tmux") {
+      setDisconnectPrompt({
+        hostId: host.id,
+        sessionName: host.tmuxSession?.trim() || DEFAULT_TMUX_SESSION,
+      });
+      return;
+    }
+    void hosts.disconnectHost(host.id);
+  }, [hosts.disconnectHost]);
+
+  const confirmDisconnect = useCallback(
+    async (choice: DisconnectChoice) => {
+      if (!disconnectPrompt) return;
+      const { hostId, sessionName } = disconnectPrompt;
+      setDisconnectBusy(true);
+      try {
+        if (choice === "kill") {
+          try {
+            await shells.killTmuxSession(hostId, sessionName);
+          } catch {
+            // still disconnect the SSH link
+          }
+        }
+        await hosts.disconnectHost(hostId);
+        setDisconnectPrompt(null);
+      } finally {
+        setDisconnectBusy(false);
+      }
+    },
+    [disconnectPrompt, hosts.disconnectHost, shells.killTmuxSession],
+  );
+
   const workspace = useWorkspace({ hosts: hosts.hosts });
-  useAndroidBack({ handleBack: workspace.handleBack });
+
+  const handleBack = useCallback(() => {
+    if (disconnectPrompt && !disconnectBusy) {
+      setDisconnectPrompt(null);
+      return true;
+    }
+    return workspace.handleBack();
+  }, [disconnectBusy, disconnectPrompt, workspace.handleBack]);
+
+  useAndroidBack({ handleBack });
 
   useBoot({
     setHosts: hosts.setHosts,
@@ -252,7 +302,7 @@ function App() {
               host={selectedHost}
               connecting={hosts.connectingId === selectedHost.id}
               onConnect={() => void hosts.connectHost(selectedHost.id)}
-              onDisconnect={() => void hosts.disconnectHost(selectedHost.id)}
+              onDisconnect={() => requestDisconnect(selectedHost)}
               onEdit={() => workspace.openEditHost(selectedHost.id)}
               onBack={workspace.backToHosts}
             />
@@ -342,6 +392,16 @@ function App() {
           onCancel={() => void hosts.cancelAuthCheck()}
         />
       ) : null}
+
+      <DisconnectDialog
+        open={disconnectPrompt != null}
+        sessionName={disconnectPrompt?.sessionName ?? DEFAULT_TMUX_SESSION}
+        busy={disconnectBusy}
+        onOpenChange={(open) => {
+          if (!open && !disconnectBusy) setDisconnectPrompt(null);
+        }}
+        onConfirm={(choice) => void confirmDisconnect(choice)}
+      />
     </div>
   );
 }

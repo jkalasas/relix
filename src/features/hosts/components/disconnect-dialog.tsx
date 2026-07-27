@@ -1,0 +1,134 @@
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  Drawer,
+  DrawerContent,
+  DrawerDescription,
+  DrawerFooter,
+  DrawerHeader,
+  DrawerTitle,
+} from "@/components/ui/drawer";
+import { useMediaQuery } from "@/hooks/use-media-query";
+
+export type DisconnectChoice = "disconnect" | "kill";
+
+type DisconnectDialogProps = {
+  open: boolean;
+  sessionName: string;
+  busy?: boolean;
+  onOpenChange: (open: boolean) => void;
+  onConfirm: (choice: DisconnectChoice) => void;
+};
+
+function DisconnectActions({
+  busy,
+  onCancel,
+  onConfirm,
+}: {
+  busy?: boolean;
+  onCancel: () => void;
+  onConfirm: (choice: DisconnectChoice) => void;
+}) {
+  return (
+    <>
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        onClick={onCancel}
+        disabled={busy}
+        className="min-h-11 w-full md:min-h-7 md:w-auto"
+      >
+        Cancel
+      </Button>
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        onClick={() => onConfirm("disconnect")}
+        disabled={busy}
+        className="min-h-11 w-full md:min-h-7 md:w-auto"
+      >
+        Disconnect
+      </Button>
+      <Button
+        type="button"
+        variant="destructive"
+        size="sm"
+        onClick={() => onConfirm("kill")}
+        disabled={busy}
+        className="min-h-11 w-full md:min-h-7 md:w-auto"
+      >
+        Kill session
+      </Button>
+    </>
+  );
+}
+
+export function DisconnectDialog({
+  open,
+  sessionName,
+  busy = false,
+  onOpenChange,
+  onConfirm,
+}: DisconnectDialogProps) {
+  const isDesktop = useMediaQuery("(min-width: 768px)");
+  const title = "Disconnect host?";
+  const description = (
+    <>
+      Leave remote tmux session{" "}
+      <span className="font-mono text-foreground">{sessionName}</span> running,
+      or kill it and destroy every window.
+    </>
+  );
+
+  if (isDesktop) {
+    return (
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent showCloseButton={!busy} className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>{title}</DialogTitle>
+            <DialogDescription>{description}</DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2 sm:gap-2">
+            <DisconnectActions
+              busy={busy}
+              onCancel={() => onOpenChange(false)}
+              onConfirm={onConfirm}
+            />
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    );
+  }
+
+  return (
+    <Drawer
+      open={open}
+      onOpenChange={onOpenChange}
+      swipeDirection="down"
+      showSwipeHandle
+    >
+      <DrawerContent>
+        <DrawerHeader className="text-left">
+          <DrawerTitle>{title}</DrawerTitle>
+          <DrawerDescription>{description}</DrawerDescription>
+        </DrawerHeader>
+        <DrawerFooter className="pb-[max(1rem,env(safe-area-inset-bottom))]">
+          <DisconnectActions
+            busy={busy}
+            onCancel={() => onOpenChange(false)}
+            onConfirm={onConfirm}
+          />
+        </DrawerFooter>
+      </DrawerContent>
+    </Drawer>
+  );
+}
