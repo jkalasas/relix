@@ -78,6 +78,27 @@ export function useWorkspace({ hosts }: UseWorkspaceOptions) {
     setTab("forwards");
   }, []);
 
+  const handleBack = useCallback(() => {
+    if (forwardFormMode) {
+      setForwardFormMode(null);
+      return true;
+    }
+    if (formMode) {
+      setFormMode(null);
+      if (!selectedId) {
+        setMobilePane("hosts");
+      }
+      return true;
+    }
+    if (mobilePane === "session") {
+      setMobilePane("hosts");
+      setFormMode(null);
+      setForwardFormMode(null);
+      return true;
+    }
+    return false;
+  }, [forwardFormMode, formMode, mobilePane, selectedId]);
+
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
       const target = event.target as HTMLElement | null;
@@ -103,13 +124,10 @@ export function useWorkspace({ hosts }: UseWorkspaceOptions) {
         return;
       }
 
-      if (event.key === "Escape" && mobilePane === "session") {
-        if (forwardFormMode) {
-          setForwardFormMode(null);
-          return;
+      if (event.key === "Escape") {
+        if (handleBack()) {
+          event.preventDefault();
         }
-        setMobilePane("hosts");
-        setFormMode(null);
         return;
       }
 
@@ -132,7 +150,7 @@ export function useWorkspace({ hosts }: UseWorkspaceOptions) {
 
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [hosts, selectedId, mobilePane, forwardFormMode]);
+  }, [handleBack, hosts, selectedId]);
 
   return {
     selectedId,
@@ -144,6 +162,7 @@ export function useWorkspace({ hosts }: UseWorkspaceOptions) {
     forwardFormMode,
     selectHost,
     backToHosts,
+    handleBack,
     openAddHost,
     openEditHost,
     closeHostForm,

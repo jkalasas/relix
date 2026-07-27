@@ -10,6 +10,7 @@ const KNOWN_SSH_ERROR_CODES: ReadonlySet<string> = new Set([
   "not_connected",
   "bind_failed",
   "forward_failed",
+  "transfer_failed",
   "not_found",
   "internal",
 ]);

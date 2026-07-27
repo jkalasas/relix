@@ -99,6 +99,15 @@ export function TerminalView({
     });
     ro.observe(containerRef.current);
 
+    const onViewportChange = () => {
+      if (containerRef.current?.offsetParent === null) return;
+      fit.fit();
+      void sshResize(sessionId, term.cols, term.rows);
+    };
+    const viewport = window.visualViewport;
+    viewport?.addEventListener("resize", onViewportChange);
+    viewport?.addEventListener("scroll", onViewportChange);
+
     termRef.current = term;
     fitRef.current = fit;
     lastCwdRef.current = null;
@@ -112,6 +121,8 @@ export function TerminalView({
       dataSub.dispose();
       osc7Sub.dispose();
       ro.disconnect();
+      viewport?.removeEventListener("resize", onViewportChange);
+      viewport?.removeEventListener("scroll", onViewportChange);
       term.dispose();
       termRef.current = null;
       fitRef.current = null;

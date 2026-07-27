@@ -82,8 +82,13 @@ When adding UI:
 
 ```bash
 bun install
-bun run dev          # Vite only
-bun run build        # tsc + vite build
-bun run tauri dev    # full Tauri app
-bun run tauri build
+bun run dev              # Vite only
+bun run build            # tsc + vite build
+bun tauri dev            # desktop
+bun tauri build
+bun tauri android init   # once
+bun tauri android dev    # Android emulator / device
+bun tauri android build  # APK / AAB
 ```
+
+Android needs SDK/NDK + `ANDROID_HOME` / `NDK_HOME` / `JAVA_HOME` (Studio JBR). See README.md and https://v2.tauri.app/start/prerequisites/#android.

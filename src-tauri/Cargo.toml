@@ -29,4 +29,7 @@ uuid = { version = "1", features = ["v4", "serde"] }
 base64 = "0.22"
 thiserror = "2"
 sha2 = "0.10"
+tauri-plugin-dialog = "2.7.2"
+tauri-plugin-fs = "2.5.1"
+russh-sftp = "2.3"
 

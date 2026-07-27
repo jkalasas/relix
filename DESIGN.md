@@ -328,13 +328,15 @@ When adding UI:
 
 ## Open product work (design-adjacent)
 
-- [ ] Add / edit host form (auth method, jump host, keys) — full-screen on mobile, sheet/dialog on desktop
-- [ ] Real PTY terminal themed to Relay Night (soft-keyboard safe on mobile)
-- [ ] SFTP browser + transfer queue (single-pane mobile, optional dual-pane desktop)
+- [x] Add / edit host form (auth method, keys, import key on mobile) — full-screen on mobile
+- [x] Real PTY terminal themed to Relay Night (soft-keyboard safe on mobile via visualViewport)
+- [x] SFTP browser + transfer status (single-pane; dual-pane desktop later)
 - [x] Forward editor (local L + bind address + auto-start)
 - [x] Remote (R) and dynamic SOCKS (D) forwards
 - [ ] Command palette on desktop (`⌘K`); mobile search sheet for hosts
-- [ ] System back integration on Android / iOS
+- [x] System back integration on Android
+- [ ] System back / gesture polish on iOS
+- [x] Android project scaffold (`tauri android init`)
 - [ ] Optional light theme (true off-white chroma-0 + same amber)
 
 ---
@@ -345,3 +347,4 @@ When adding UI:
 |---|---|
 | 2026-03-26 | Initial system: Relay Night, shell IA, tokens, status language |
 | 2026-03-26 | Multi-platform: desktop split + mobile list/detail, touch & safe-area rules |
+| 2026-03-27 | Android scaffold, system back, key import, SFTP, soft-keyboard terminal |

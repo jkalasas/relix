@@ -136,7 +136,9 @@ impl SshManager {
         let listener = TcpListener::bind(&bind_addr).await.map_err(|e| {
             SshError::new(
                 SshErrorCode::BindFailed,
-                format!("Could not bind {bind_addr}: {e}"),
+                format!(
+                    "Could not bind {bind_addr}: {e}. On mobile, use ports above 1024; 0.0.0.0 listens for LAN clients."
+                ),
             )
         })?;
 
@@ -341,7 +343,9 @@ impl SshManager {
         let listener = TcpListener::bind(&bind_addr).await.map_err(|e| {
             SshError::new(
                 SshErrorCode::BindFailed,
-                format!("Could not bind {bind_addr}: {e}"),
+                format!(
+                    "Could not bind {bind_addr}: {e}. On mobile, use ports above 1024; 0.0.0.0 listens for LAN clients."
+                ),
             )
         })?;
 

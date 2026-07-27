@@ -5,6 +5,10 @@ use super::manager::{
     ConnectConfig, OpenShellResult, SshManager, StartDynamicForwardConfig,
     StartLocalForwardConfig, StartRemoteForwardConfig,
 };
+use super::sftp::{
+    SftpListConfig, SftpListResult, SftpMkdirConfig, SftpReadConfig, SftpRemoveConfig,
+    SftpRenameConfig, SftpWriteConfig,
+};
 
 #[tauri::command]
 pub async fn ssh_connect(
@@ -122,4 +126,58 @@ pub async fn ssh_stop_forward(
     forward_id: String,
 ) -> Result<(), SshError> {
     state.stop_forward(&app, &forward_id).await
+}
+
+#[tauri::command]
+pub async fn ssh_sftp_list(
+    app: AppHandle,
+    state: State<'_, SshManager>,
+    config: SftpListConfig,
+) -> Result<SftpListResult, SshError> {
+    state.sftp_list(&app, config).await
+}
+
+#[tauri::command]
+pub async fn ssh_sftp_read(
+    app: AppHandle,
+    state: State<'_, SshManager>,
+    config: SftpReadConfig,
+) -> Result<Vec<u8>, SshError> {
+    state.sftp_read(&app, config).await
+}
+
+#[tauri::command]
+pub async fn ssh_sftp_write(
+    app: AppHandle,
+    state: State<'_, SshManager>,
+    config: SftpWriteConfig,
+) -> Result<(), SshError> {
+    state.sftp_write(&app, config).await
+}
+
+#[tauri::command]
+pub async fn ssh_sftp_mkdir(
+    app: AppHandle,
+    state: State<'_, SshManager>,
+    config: SftpMkdirConfig,
+) -> Result<(), SshError> {
+    state.sftp_mkdir(&app, config).await
+}
+
+#[tauri::command]
+pub async fn ssh_sftp_remove(
+    app: AppHandle,
+    state: State<'_, SshManager>,
+    config: SftpRemoveConfig,
+) -> Result<(), SshError> {
+    state.sftp_remove(&app, config).await
+}
+
+#[tauri::command]
+pub async fn ssh_sftp_rename(
+    app: AppHandle,
+    state: State<'_, SshManager>,
+    config: SftpRenameConfig,
+) -> Result<(), SshError> {
+    state.sftp_rename(&app, config).await
 }

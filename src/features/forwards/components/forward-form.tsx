@@ -123,6 +123,22 @@ export function ForwardForm({
 
         <ForwardTypeFields form={form} onUpdate={update} />
 
+        {form.type === "L" || form.type === "D" ? (
+          <label className="flex min-h-11 cursor-pointer items-center gap-3 rounded-lg border border-border bg-surface px-3 py-2 md:min-h-9">
+            <input
+              type="checkbox"
+              checked={form.localHost === "0.0.0.0"}
+              onChange={(e) =>
+                update("localHost", e.target.checked ? "0.0.0.0" : "127.0.0.1")
+              }
+              className="size-4 accent-[var(--primary)]"
+            />
+            <span className="text-[13px] text-foreground">
+              Listen on all interfaces (0.0.0.0)
+            </span>
+          </label>
+        ) : null}
+
         <label className="flex min-h-11 cursor-pointer items-center gap-3 rounded-lg border border-border bg-surface px-3 py-2 md:min-h-9">
           <input
             type="checkbox"

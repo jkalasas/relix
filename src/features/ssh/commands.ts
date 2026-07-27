@@ -2,6 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import type { HostConfig } from "@/features/hosts/types";
 import type {
   OpenShellResult,
+  SftpListResult,
   SshConnectPayload,
   StartDynamicForwardPayload,
   StartLocalForwardPayload,
@@ -93,4 +94,59 @@ export async function sshStartDynamicForward(
 
 export async function sshStopForward(forwardId: string): Promise<void> {
   await invoke("ssh_stop_forward", { forwardId });
+}
+
+export async function sshSftpList(
+  hostId: string,
+  path: string,
+): Promise<SftpListResult> {
+  return invoke<SftpListResult>("ssh_sftp_list", {
+    config: { hostId, path },
+  });
+}
+
+export async function sshSftpRead(
+  hostId: string,
+  path: string,
+): Promise<number[]> {
+  return invoke<number[]>("ssh_sftp_read", {
+    config: { hostId, path },
+  });
+}
+
+export async function sshSftpWrite(
+  hostId: string,
+  path: string,
+  data: number[] | Uint8Array,
+): Promise<void> {
+  await invoke("ssh_sftp_write", {
+    config: {
+      hostId,
+      path,
+      data: Array.from(data),
+    },
+  });
+}
+
+export async function sshSftpMkdir(
+  hostId: string,
+  path: string,
+): Promise<void> {
+  await invoke("ssh_sftp_mkdir", { config: { hostId, path } });
+}
+
+export async function sshSftpRemove(
+  hostId: string,
+  path: string,
+  isDir: boolean,
+): Promise<void> {
+  await invoke("ssh_sftp_remove", { config: { hostId, path, isDir } });
+}
+
+export async function sshSftpRename(
+  hostId: string,
+  from: string,
+  to: string,
+): Promise<void> {
+  await invoke("ssh_sftp_rename", { config: { hostId, from, to } });
 }

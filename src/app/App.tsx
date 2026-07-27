@@ -1,4 +1,5 @@
 import { useCallback, useMemo } from "react";
+import { useAndroidBack } from "@/app/use-android-back";
 import { useBoot } from "@/app/use-boot";
 import { useSshLifecycle } from "@/app/use-ssh-lifecycle";
 import { useWorkspace } from "@/app/use-workspace";
@@ -68,6 +69,7 @@ function App() {
   );
 
   const workspace = useWorkspace({ hosts: hosts.hosts });
+  useAndroidBack({ handleBack: workspace.handleBack });
 
   useBoot({
     setHosts: hosts.setHosts,

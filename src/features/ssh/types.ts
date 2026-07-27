@@ -13,6 +13,7 @@ export type SshErrorCode =
   | "not_connected"
   | "bind_failed"
   | "forward_failed"
+  | "transfer_failed"
   | "not_found"
   | "internal";
 
@@ -65,6 +66,18 @@ export type StartDynamicForwardPayload = {
   forwardId: string;
   localHost: string;
   localPort: number;
+};
+
+export type SftpEntry = {
+  name: string;
+  path: string;
+  isDir: boolean;
+  size: number;
+};
+
+export type SftpListResult = {
+  path: string;
+  entries: SftpEntry[];
 };
 
 export type SshDataEvent = { sessionId: string; data: string };

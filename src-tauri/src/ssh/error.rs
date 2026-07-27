@@ -12,6 +12,7 @@ pub enum SshErrorCode {
     NotConnected,
     BindFailed,
     ForwardFailed,
+    TransferFailed,
     NotFound,
     Internal,
 }

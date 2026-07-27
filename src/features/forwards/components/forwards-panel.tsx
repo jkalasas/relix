@@ -63,6 +63,8 @@ export function ForwardsPanel({
             </h3>
             <p className="text-[13px] leading-relaxed text-muted-foreground text-pretty">
               Map ports through this host — local, remote reverse, or SOCKS.
+              Local binds stay on this device (127.0.0.1) unless you listen on
+              all interfaces.
               {!connected
                 ? " Connect the host when you are ready to start a tunnel."
                 : null}

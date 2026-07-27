@@ -4,5 +4,6 @@ pub mod error;
 pub mod forward;
 pub mod known_hosts;
 pub mod manager;
+pub mod sftp;
 pub mod shell;
 pub mod socks;

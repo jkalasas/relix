@@ -8,6 +8,7 @@ use tokio::sync::Mutex;
 use super::connection::{handle_is_closed, LiveConnection, SharedHandle};
 use super::error::{SshError, SshErrorCode};
 use super::forward::{abort_forward, LiveForward};
+use super::sftp::LiveSftp;
 use super::shell::LiveShell;
 
 pub type HostId = String;
@@ -28,6 +29,7 @@ pub(crate) struct SshManagerInner {
     pub(crate) connections: HashMap<HostId, LiveConnection>,
     pub(crate) shells: HashMap<SessionId, LiveShell>,
     pub(crate) forwards: HashMap<ForwardId, LiveForward>,
+    pub(crate) sftp: HashMap<HostId, LiveSftp>,
     pub(crate) connect_generations: HashMap<HostId, u64>,
 }
 
@@ -38,13 +40,14 @@ impl SshManager {
                 connections: HashMap::new(),
                 shells: HashMap::new(),
                 forwards: HashMap::new(),
+                sftp: HashMap::new(),
                 connect_generations: HashMap::new(),
             })),
         }
     }
 
     pub async fn disconnect(&self, app: &AppHandle, host_id: &str) -> Result<(), SshError> {
-        let (removed_shells, removed_forwards, removed_conn) = {
+        let (removed_shells, removed_forwards, removed_sftp, removed_conn) = {
             let mut inner = self.inner.lock().await;
             let session_ids: Vec<SessionId> = inner
                 .shells
@@ -74,13 +77,14 @@ impl SshManager {
                 }
             }
 
+            let sftp = inner.sftp.remove(host_id);
             let conn = inner.connections.remove(host_id);
             let entry = inner
                 .connect_generations
                 .entry(host_id.to_string())
                 .or_insert(0);
             *entry = entry.wrapping_add(1);
-            (shells, forwards, conn)
+            (shells, forwards, sftp, conn)
         };
 
         for (id, shell) in removed_shells {
@@ -109,6 +113,10 @@ impl SshManager {
                     "reason": "disconnect",
                 }),
             );
+        }
+
+        if let Some(sftp) = removed_sftp {
+            let _ = sftp.session.close().await;
         }
 
         if let Some(conn) = removed_conn {
