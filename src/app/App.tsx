@@ -179,7 +179,7 @@ function App() {
         className={showHostRail}
       />
 
-      <main className={`min-w-0 flex-1 flex-col ${showSession}`}>
+      <main className={`min-h-0 min-w-0 flex-1 flex-col ${showSession}`}>
         {workspace.formMode ? (
           <HostForm
             initial={editingHost}

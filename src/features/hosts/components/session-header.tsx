@@ -24,7 +24,7 @@ export function SessionHeader({
   const isConnected = host.status === "connected";
 
   return (
-    <header className="shrink-0 border-b border-border pt-[env(safe-area-inset-top,0px)] md:pt-0">
+    <header className="shrink-0 border-b border-border">
       <div className="flex min-h-12 flex-wrap items-center justify-between gap-x-3 gap-y-2 px-3 py-2 sm:px-4 md:h-12 md:flex-nowrap md:py-0">
         <div className="flex min-w-0 flex-1 items-center gap-2">
           {onBack ? (

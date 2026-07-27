@@ -14,7 +14,16 @@ type TerminalViewProps = {
   onCwdChange?: (cwd: string) => void;
 };
 
+function isTouchUi(): boolean {
+  if (typeof window === "undefined") return false;
+  if (window.matchMedia("(hover: none) and (pointer: coarse)").matches) {
+    return true;
+  }
+  return /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+}
+
 function attachWebgl(term: Terminal) {
+  if (isTouchUi()) return;
   try {
     const webgl = new WebglAddon();
     webgl.onContextLoss(() => {
@@ -30,6 +39,113 @@ function restoreSurface(term: Terminal, fit: FitAddon, sessionId: string) {
   fit.fit();
   term.refresh(0, Math.max(0, term.rows - 1));
   void sshResize(sessionId, term.cols, term.rows);
+}
+
+function cellHeightPx(term: Terminal, element: HTMLElement): number {
+  const measured = element.clientHeight / Math.max(1, term.rows);
+  if (Number.isFinite(measured) && measured > 0) return measured;
+  return Math.max(1, (term.options.fontSize ?? 12) * (term.options.lineHeight ?? 1));
+}
+
+function focusTerminal(term: Terminal) {
+  term.focus();
+  const textarea = term.element?.querySelector(
+    ".xterm-helper-textarea",
+  ) as HTMLTextAreaElement | null;
+  textarea?.focus({ preventScroll: true });
+}
+
+function attachMobileScroll(term: Terminal, container: HTMLElement): () => void {
+  if (!isTouchUi()) return () => {};
+
+  const layer = document.createElement("div");
+  layer.className = "xterm-mobile-scroll";
+  layer.setAttribute("aria-hidden", "true");
+  container.appendChild(layer);
+
+  const dragThresholdPx = 10;
+  let tracking = false;
+  let scrolling = false;
+  let startY = 0;
+  let lastY = 0;
+  let remainder = 0;
+
+  const scrollByDelta = (deltaY: number) => {
+    const scrollTarget =
+      term.element?.querySelector(".xterm-scrollable-element") ?? term.element;
+    if (scrollTarget) {
+      scrollTarget.dispatchEvent(
+        new WheelEvent("wheel", {
+          deltaY: -deltaY,
+          deltaMode: WheelEvent.DOM_DELTA_PIXEL,
+          bubbles: true,
+          cancelable: true,
+        }),
+      );
+      return;
+    }
+
+    const linePx = cellHeightPx(term, container);
+    remainder += deltaY;
+    const lines = Math.trunc(remainder / linePx);
+    if (lines === 0) return;
+    remainder -= lines * linePx;
+    term.scrollLines(-lines);
+  };
+
+  const onTouchStart = (event: TouchEvent) => {
+    if (event.touches.length !== 1) {
+      tracking = false;
+      scrolling = false;
+      return;
+    }
+    tracking = true;
+    scrolling = false;
+    startY = event.touches[0].clientY;
+    lastY = startY;
+    remainder = 0;
+  };
+
+  const onTouchMove = (event: TouchEvent) => {
+    if (!tracking || event.touches.length !== 1) return;
+    const y = event.touches[0].clientY;
+
+    // Ignore jitter so taps still open the keyboard.
+    if (!scrolling) {
+      if (Math.abs(y - startY) < dragThresholdPx) return;
+      scrolling = true;
+      lastY = y;
+    }
+
+    const delta = y - lastY;
+    lastY = y;
+    if (delta === 0) return;
+    scrollByDelta(delta);
+    event.preventDefault();
+    event.stopPropagation();
+  };
+
+  const onTouchEnd = () => {
+    if (!tracking) return;
+    const wasTap = !scrolling;
+    tracking = false;
+    scrolling = false;
+    remainder = 0;
+    if (wasTap) focusTerminal(term);
+  };
+
+  layer.addEventListener("touchstart", onTouchStart, { passive: true });
+  layer.addEventListener("touchmove", onTouchMove, { passive: false });
+  layer.addEventListener("touchend", onTouchEnd, { passive: true });
+  layer.addEventListener("touchcancel", onTouchEnd, { passive: true });
+
+  return () => {
+    layer.removeEventListener("touchstart", onTouchStart);
+    layer.removeEventListener("touchmove", onTouchMove);
+    layer.removeEventListener("touchend", onTouchEnd);
+    layer.removeEventListener("touchcancel", onTouchEnd);
+    layer.remove();
+  };
 }
 
 export function TerminalView({
@@ -54,8 +170,9 @@ export function TerminalView({
     const term = new Terminal({
       cursorBlink: true,
       fontFamily: '"Geist Mono Variable", ui-monospace, monospace',
-      fontSize: 12.5,
-      lineHeight: 1.35,
+      fontSize: 13,
+      lineHeight: 1.3,
+      scrollback: 5000,
       theme: {
         background: "oklch(0.12 0.012 250)",
         foreground: "oklch(0.93 0.012 250)",
@@ -78,6 +195,7 @@ export function TerminalView({
     attachWebgl(term);
     fit.fit();
     void sshResize(sessionId, term.cols, term.rows);
+    const detachMobileScroll = attachMobileScroll(term, containerRef.current);
 
     const dataSub = term.onData((data) => {
       void sshWrite(sessionId, data);
@@ -92,21 +210,24 @@ export function TerminalView({
       return true;
     });
 
-    const ro = new ResizeObserver(() => {
+    let fitFrame = 0;
+    const scheduleFit = () => {
       if (containerRef.current?.offsetParent === null) return;
-      fit.fit();
-      void sshResize(sessionId, term.cols, term.rows);
-    });
+      cancelAnimationFrame(fitFrame);
+      fitFrame = requestAnimationFrame(() => {
+        fit.fit();
+        void sshResize(sessionId, term.cols, term.rows);
+      });
+    };
+
+    const ro = new ResizeObserver(() => scheduleFit());
     ro.observe(containerRef.current);
 
-    const onViewportChange = () => {
-      if (containerRef.current?.offsetParent === null) return;
-      fit.fit();
-      void sshResize(sessionId, term.cols, term.rows);
-    };
-    const viewport = window.visualViewport;
-    viewport?.addEventListener("resize", onViewportChange);
-    viewport?.addEventListener("scroll", onViewportChange);
+    // Only refit on viewport *resize* (keyboard open/close). Refitting on
+    // visualViewport scroll fights drag-to-scroll and Android IME pan.
+    const onViewportResize = () => scheduleFit();
+    window.addEventListener("resize", onViewportResize);
+    window.visualViewport?.addEventListener("resize", onViewportResize);
 
     termRef.current = term;
     fitRef.current = fit;
@@ -120,9 +241,11 @@ export function TerminalView({
     return () => {
       dataSub.dispose();
       osc7Sub.dispose();
+      detachMobileScroll();
       ro.disconnect();
-      viewport?.removeEventListener("resize", onViewportChange);
-      viewport?.removeEventListener("scroll", onViewportChange);
+      cancelAnimationFrame(fitFrame);
+      window.removeEventListener("resize", onViewportResize);
+      window.visualViewport?.removeEventListener("resize", onViewportResize);
       term.dispose();
       termRef.current = null;
       fitRef.current = null;
@@ -146,9 +269,9 @@ export function TerminalView({
     <div
       ref={containerRef}
       className={cn(
-        "min-h-0 min-w-0",
+        "relative min-h-0 min-w-0 overflow-hidden",
         active
-          ? "relative flex-1"
+          ? "flex-1"
           : "pointer-events-none absolute inset-0 opacity-0",
       )}
       aria-hidden={!active}

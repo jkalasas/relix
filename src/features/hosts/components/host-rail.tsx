@@ -27,7 +27,7 @@ export function HostRail({
         className,
       )}
     >
-      <div className="shrink-0 border-b border-sidebar-border pt-[env(safe-area-inset-top,0px)] md:pt-0">
+      <div className="shrink-0 border-b border-sidebar-border">
         <div className="flex h-12 items-center gap-2 px-4">
           <div className="flex size-6 items-center justify-center rounded-md bg-primary/15 text-primary">
             <Server className="size-3.5" aria-hidden />

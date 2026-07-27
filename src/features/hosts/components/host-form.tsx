@@ -70,7 +70,7 @@ export function HostForm({ initial, onSave, onCancel, onDelete }: HostFormProps)
 
   return (
     <div className="flex min-h-0 flex-1 flex-col bg-background">
-      <div className="shrink-0 border-b border-border pt-[env(safe-area-inset-top,0px)] md:pt-0">
+      <div className="shrink-0 border-b border-border">
         <div className="flex h-12 items-center justify-between px-4">
           <h2 className="text-sm font-semibold tracking-tight">{title}</h2>
           <Button
