@@ -40,6 +40,11 @@ import {
   sshStopForward,
   sshTrustHostKey,
 } from "@/lib/ssh";
+import {
+  nextSessionTitle,
+  shellLaunchById,
+  type ShellLaunchId,
+} from "@/lib/shell-launch";
 import type {
   Host,
   HostConfig,
@@ -53,11 +58,6 @@ import type {
 type MobilePane = "hosts" | "session";
 type FormMode = { type: "add" } | { type: "edit"; id: string } | null;
 type ForwardFormMode = { type: "add" } | { type: "edit"; id: string } | null;
-
-function nextShellTitle(existing: ShellSession[]): string {
-  if (existing.length === 0) return "shell";
-  return `shell ${existing.length + 1}`;
-}
 
 function persistForwardMap(map: Record<string, PortForward[]>) {
   const configs: Record<string, PortForwardConfig[]> = {};
@@ -410,23 +410,32 @@ function App() {
     [markHostForwardsIdle, sessionsByHost, setHostStatus],
   );
 
-  const openShell = useCallback(async (hostId: string) => {
-    try {
-      const { sessionId } = await sshOpenShell(hostId);
-      setSessionsByHost((current) => {
-        const existing = current[hostId] ?? [];
-        const next: ShellSession = {
-          id: sessionId,
-          hostId,
-          title: nextShellTitle(existing),
-        };
-        return { ...current, [hostId]: [...existing, next] };
-      });
-      setActiveSessionByHost((current) => ({ ...current, [hostId]: sessionId }));
-    } catch {
-      setHostStatus(hostId, "error");
-    }
-  }, [setHostStatus]);
+  const openShell = useCallback(
+    async (hostId: string, launchId: ShellLaunchId = "shell") => {
+      const launch = shellLaunchById(launchId);
+      try {
+        const { sessionId } = await sshOpenShell(hostId, {
+          command: launch.command,
+        });
+        setSessionsByHost((current) => {
+          const existing = current[hostId] ?? [];
+          const next: ShellSession = {
+            id: sessionId,
+            hostId,
+            title: nextSessionTitle(existing, launch.title),
+          };
+          return { ...current, [hostId]: [...existing, next] };
+        });
+        setActiveSessionByHost((current) => ({
+          ...current,
+          [hostId]: sessionId,
+        }));
+      } catch {
+        setHostStatus(hostId, "error");
+      }
+    },
+    [setHostStatus],
+  );
 
   const closeShell = useCallback(async (hostId: string, sessionId: string) => {
     try {
@@ -773,7 +782,7 @@ function App() {
               activeSessionId={activeSessionId}
               visible={!formMode && !forwardFormMode && tab === "terminal"}
               onConnect={() => void connectHost(selectedHost.id)}
-              onOpenShell={() => void openShell(selectedHost.id)}
+              onOpenShell={(launchId) => void openShell(selectedHost.id, launchId)}
               onSelectShell={(id) =>
                 setActiveSessionByHost((current) => ({
                   ...current,

@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { ShellTabs } from "@/components/shell/shell-tabs";
 import { TerminalView } from "@/components/shell/terminal-view";
 import { decodeSshData, listenSshData } from "@/lib/ssh";
+import type { ShellLaunchId } from "@/lib/shell-launch";
 import type { Host, ShellSession } from "@/lib/types";
 
 type TerminalPanelProps = {
@@ -12,7 +13,7 @@ type TerminalPanelProps = {
   activeSessionId: string | null;
   visible: boolean;
   onConnect: () => void;
-  onOpenShell: () => void;
+  onOpenShell: (launchId?: ShellLaunchId) => void;
   onSelectShell: (id: string) => void;
   onCloseShell: (id: string) => void;
 };
@@ -112,7 +113,7 @@ export function TerminalPanel({
         activeId={activeSessionId}
         onSelect={onSelectShell}
         onClose={onCloseShell}
-        onNew={onOpenShell}
+        onNew={(launchId) => onOpenShell(launchId)}
       />
       <div className="relative flex min-h-0 flex-1 flex-col bg-[oklch(0.12_0.012_250)]">
         {sessions.map((session) => (

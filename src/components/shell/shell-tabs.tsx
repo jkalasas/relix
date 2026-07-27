@@ -1,15 +1,64 @@
-import { Plus, X } from "lucide-react";
+import type { ComponentType } from "react";
+import {
+  Bot,
+  Code2,
+  Plus,
+  Sparkles,
+  TerminalSquare,
+  X,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  shellLaunchById,
+  type ShellLaunchId,
+} from "@/lib/shell-launch";
 import { cn } from "@/lib/utils";
 import type { ShellSession } from "@/lib/types";
+
+const LAUNCH_ICONS: Record<
+  ShellLaunchId,
+  ComponentType<{ className?: string }>
+> = {
+  shell: TerminalSquare,
+  claude: Sparkles,
+  opencode: Code2,
+  pi: Bot,
+};
 
 type ShellTabsProps = {
   sessions: ShellSession[];
   activeId: string | null;
   onSelect: (id: string) => void;
   onClose: (id: string) => void;
-  onNew: () => void;
+  onNew: (launchId?: ShellLaunchId) => void;
 };
+
+function LaunchItem({
+  id,
+  onSelect,
+}: {
+  id: ShellLaunchId;
+  onSelect: (launchId: ShellLaunchId) => void;
+}) {
+  const launch = shellLaunchById(id);
+  const Icon = LAUNCH_ICONS[id];
+  return (
+    <DropdownMenuItem
+      onClick={() => onSelect(id)}
+      className="gap-2 py-1.5"
+    >
+      <Icon className="size-3.5 text-muted-foreground" />
+      <span>{launch.label}</span>
+    </DropdownMenuItem>
+  );
+}
 
 export function ShellTabs({
   sessions,
@@ -50,16 +99,28 @@ export function ShellTabs({
           </div>
         );
       })}
-      <Button
-        type="button"
-        variant="ghost"
-        size="icon-sm"
-        aria-label="New shell"
-        onClick={onNew}
-        className="size-7"
-      >
-        <Plus className="size-3.5" />
-      </Button>
+      <DropdownMenu>
+        <DropdownMenuTrigger
+          render={
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              aria-label="New session"
+              className="size-7"
+            />
+          }
+        >
+          <Plus className="size-3.5" />
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="start" sideOffset={6} className="min-w-44 w-auto">
+          <LaunchItem id="shell" onSelect={onNew} />
+          <DropdownMenuSeparator />
+          <LaunchItem id="claude" onSelect={onNew} />
+          <LaunchItem id="opencode" onSelect={onNew} />
+          <LaunchItem id="pi" onSelect={onNew} />
+        </DropdownMenuContent>
+      </DropdownMenu>
     </div>
   );
 }

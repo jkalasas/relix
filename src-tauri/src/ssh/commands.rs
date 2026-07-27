@@ -31,9 +31,16 @@ pub async fn ssh_open_shell(
     host_id: String,
     cols: Option<u32>,
     rows: Option<u32>,
+    command: Option<String>,
 ) -> Result<OpenShellResult, SshError> {
     state
-        .open_shell(&app, host_id, cols.unwrap_or(80), rows.unwrap_or(24))
+        .open_shell(
+            &app,
+            host_id,
+            cols.unwrap_or(80),
+            rows.unwrap_or(24),
+            command,
+        )
         .await
 }
 

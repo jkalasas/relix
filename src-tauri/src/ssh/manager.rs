@@ -445,6 +445,7 @@ impl SshManager {
         host_id: String,
         cols: u32,
         rows: u32,
+        command: Option<String>,
     ) -> Result<OpenShellResult, SshError> {
         let handle = {
             let mut inner = self.inner.lock().await;
@@ -478,10 +479,18 @@ impl SshManager {
             .request_pty(false, "xterm-256color", cols, rows, 0, 0, &[])
             .await
             .map_err(|e| SshError::new(SshErrorCode::Internal, e.to_string()))?;
-        channel
-            .request_shell(true)
-            .await
-            .map_err(|e| SshError::new(SshErrorCode::Internal, e.to_string()))?;
+
+        if let Some(command) = command.filter(|value| !value.is_empty()) {
+            channel
+                .exec(true, command)
+                .await
+                .map_err(|e| SshError::new(SshErrorCode::Internal, e.to_string()))?;
+        } else {
+            channel
+                .request_shell(true)
+                .await
+                .map_err(|e| SshError::new(SshErrorCode::Internal, e.to_string()))?;
+        }
 
         let session_id = Uuid::new_v4().to_string();
         let app_handle = app.clone();

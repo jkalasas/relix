@@ -155,10 +155,18 @@ export async function sshDisconnect(hostId: string): Promise<void> {
 
 export async function sshOpenShell(
   hostId: string,
-  cols?: number,
-  rows?: number,
+  options?: {
+    cols?: number;
+    rows?: number;
+    command?: string;
+  },
 ): Promise<OpenShellResult> {
-  return invoke<OpenShellResult>("ssh_open_shell", { hostId, cols, rows });
+  return invoke<OpenShellResult>("ssh_open_shell", {
+    hostId,
+    cols: options?.cols,
+    rows: options?.rows,
+    command: options?.command,
+  });
 }
 
 export async function sshCloseShell(sessionId: string): Promise<void> {
