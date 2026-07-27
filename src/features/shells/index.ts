@@ -1,7 +1,9 @@
 export type * from "@/features/shells/types";
 export {
   SHELL_LAUNCHES,
+  launchBaseTitle,
   nextSessionTitle,
+  sessionDisplayTitle,
   shellLaunchById,
   type ShellLaunch,
   type ShellLaunchId,

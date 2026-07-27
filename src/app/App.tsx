@@ -264,7 +264,10 @@ function App() {
   }
 
   return (
-    <div className="flex h-full overflow-hidden bg-background text-foreground">
+    <div
+      className="flex h-full overflow-hidden bg-background text-foreground"
+      onContextMenu={(event) => event.preventDefault()}
+    >
       <HostRail
         hosts={hosts.hosts}
         selectedId={workspace.selectedId}
@@ -370,6 +373,12 @@ function App() {
               }
               onSelectShell={(id) => selectShell(selectedHost.id, id)}
               onCloseShell={(id) => void shells.closeShell(selectedHost.id, id)}
+              onRenameShell={(id, name) =>
+                shells.renameShell(selectedHost.id, id, name)
+              }
+              onReorderShells={(orderedIds) =>
+                shells.reorderShells(selectedHost.id, orderedIds)
+              }
               onSessionCwd={shells.setSessionCwd}
             />
           </div>

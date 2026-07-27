@@ -2,7 +2,10 @@ import { useCallback, useEffect, useRef } from "react";
 import { EmptyTerminal } from "@/features/shells/components/empty-terminal";
 import { ShellTabs } from "@/features/shells/components/shell-tabs";
 import { TerminalView } from "@/features/shells/components/terminal-view";
-import type { ShellLaunchId } from "@/features/shells/launch";
+import {
+  sessionDisplayTitle,
+  type ShellLaunchId,
+} from "@/features/shells/launch";
 import type { ShellSession } from "@/features/shells/types";
 import type { Host } from "@/features/hosts/types";
 import { decodeSshData, listenSshData } from "@/features/ssh";
@@ -16,6 +19,8 @@ type TerminalPanelProps = {
   onOpenShell: (launchId?: ShellLaunchId) => void;
   onSelectShell: (id: string) => void;
   onCloseShell: (id: string) => void;
+  onRenameShell: (id: string, name: string) => void;
+  onReorderShells: (orderedIds: string[]) => void;
   onSessionCwd: (sessionId: string, cwd: string) => void;
 };
 
@@ -28,6 +33,8 @@ export function TerminalPanel({
   onOpenShell,
   onSelectShell,
   onCloseShell,
+  onRenameShell,
+  onReorderShells,
   onSessionCwd,
 }: TerminalPanelProps) {
   const writersRef = useRef<Map<string, (data: string | Uint8Array) => void>>(
@@ -128,6 +135,8 @@ export function TerminalPanel({
         activeId={activeSessionId}
         onSelect={onSelectShell}
         onClose={onCloseShell}
+        onRename={onRenameShell}
+        onReorder={onReorderShells}
         onNew={(launchId) => onOpenShell(launchId)}
       />
       <div className="relative flex min-h-0 flex-1 flex-col bg-[oklch(0.12_0.012_250)]">
@@ -146,7 +155,7 @@ export function TerminalPanel({
         })}
         {activeSession && !activeSession.channelId ? (
           <div className="flex flex-1 items-center justify-center px-4 text-sm text-muted-foreground">
-            Attaching {activeSession.title}…
+            Attaching {sessionDisplayTitle(activeSession)}…
           </div>
         ) : null}
       </div>

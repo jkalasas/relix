@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ShellMode } from "@/features/hosts/types";
 import {
+  launchBaseTitle,
   nextSessionTitle,
   shellLaunchById,
   type ShellLaunchId,
@@ -49,32 +50,43 @@ function mergeTmuxSessions(
   existing: ShellSession[],
   windows: TmuxWindow[],
 ): { sessions: ShellSession[]; deadChannels: string[] } {
-  const previous = new Map(
+  const byWindowId = new Map(windows.map((window) => [window.id, window]));
+  const priorByWindow = new Map(
     existing
       .filter((session) => session.tmuxWindowId)
       .map((session) => [session.tmuxWindowId!, session]),
   );
-  const sessions: ShellSession[] = windows.map((window) => {
-    const prior = previous.get(window.id);
-    if (prior) {
-      previous.delete(window.id);
-      return {
-        ...prior,
-        title: window.name || prior.title,
-        tmuxSession,
-      };
-    }
-    return {
+  const sessions: ShellSession[] = [];
+  const seen = new Set<string>();
+
+  for (const prior of existing) {
+    if (!prior.tmuxWindowId) continue;
+    const window = byWindowId.get(prior.tmuxWindowId);
+    if (!window) continue;
+    seen.add(window.id);
+    sessions.push({
+      ...prior,
+      title: window.name || prior.title,
+      tmuxSession,
+    });
+  }
+
+  for (const window of windows) {
+    if (seen.has(window.id)) continue;
+    sessions.push({
       id: crypto.randomUUID(),
       hostId,
       title: window.name,
       tmuxWindowId: window.id,
       tmuxSession,
-    };
-  });
-  const deadChannels = [...previous.values()]
-    .map((session) => session.channelId)
+    });
+  }
+
+  const deadChannels = [...priorByWindow.entries()]
+    .filter(([windowId]) => !byWindowId.has(windowId))
+    .map(([, session]) => session.channelId)
     .filter((id): id is string => Boolean(id));
+
   return { sessions, deadChannels };
 }
 
@@ -194,6 +206,7 @@ export function useShells(options: UseShellsOptions = {}) {
       hostOptions: ShellHostOptions = {},
     ) => {
       const launch = shellLaunchById(launchId);
+      const baseTitle = launchBaseTitle(launch);
       const shellMode = hostOptions.shellMode === "tmux" ? "tmux" : "plain";
       const tmuxSession = resolveTmuxSession(hostOptions.tmuxSession);
       const activeId = activeSessionByHost[hostId] ?? null;
@@ -206,7 +219,7 @@ export function useShells(options: UseShellsOptions = {}) {
         if (shellMode === "tmux") {
           const window = await sshTmuxNewWindow(hostId, {
             session: tmuxSession,
-            name: launch.title,
+            name: baseTitle,
             command: launch.command,
             cwd,
             sourceWindowId: activeSession?.tmuxWindowId,
@@ -217,7 +230,7 @@ export function useShells(options: UseShellsOptions = {}) {
             hostId,
             title:
               window.name ||
-              nextSessionTitle(sessionsByHost[hostId] ?? [], launch.title),
+              nextSessionTitle(sessionsByHost[hostId] ?? [], baseTitle),
             cwd,
             tmuxWindowId: window.id,
             tmuxSession,
@@ -244,7 +257,7 @@ export function useShells(options: UseShellsOptions = {}) {
           const next: ShellSession = {
             id: sessionId,
             hostId,
-            title: nextSessionTitle(existing, launch.title),
+            title: nextSessionTitle(existing, baseTitle),
             cwd,
             channelId,
           };
@@ -261,6 +274,55 @@ export function useShells(options: UseShellsOptions = {}) {
     },
     [activeSessionByHost, attachTmuxWindow, onOpenFailed, sessionsByHost],
   );
+
+  const renameShell = useCallback(
+    (hostId: string, sessionId: string, name: string) => {
+      const trimmed = name.trim();
+      setSessionsByHost((current) => {
+        const list = current[hostId] ?? [];
+        let changed = false;
+        const next = list.map((session) => {
+          if (session.id !== sessionId) return session;
+          if (!trimmed) {
+            if (session.customTitle == null) return session;
+            changed = true;
+            const { customTitle: _removed, ...rest } = session;
+            return rest;
+          }
+          if (session.customTitle === trimmed) return session;
+          changed = true;
+          return { ...session, customTitle: trimmed };
+        });
+        return changed ? { ...current, [hostId]: next } : current;
+      });
+    },
+    [],
+  );
+
+  const reorderShells = useCallback((hostId: string, orderedIds: string[]) => {
+    setSessionsByHost((current) => {
+      const list = current[hostId] ?? [];
+      if (list.length <= 1) return current;
+      const byId = new Map(list.map((session) => [session.id, session]));
+      const next: ShellSession[] = [];
+      for (const id of orderedIds) {
+        const session = byId.get(id);
+        if (!session) continue;
+        next.push(session);
+        byId.delete(id);
+      }
+      for (const session of list) {
+        if (byId.has(session.id)) next.push(session);
+      }
+      if (
+        next.length !== list.length ||
+        next.some((session, index) => session.id !== list[index]?.id)
+      ) {
+        return { ...current, [hostId]: next };
+      }
+      return current;
+    });
+  }, []);
 
   const setSessionCwd = useCallback((sessionId: string, cwd: string) => {
     setSessionsByHost((current) => {
@@ -464,6 +526,8 @@ export function useShells(options: UseShellsOptions = {}) {
     activeSessionByHost,
     bootstrapTmux,
     openShell,
+    renameShell,
+    reorderShells,
     setSessionCwd,
     closeShell,
     killTmuxSession,
