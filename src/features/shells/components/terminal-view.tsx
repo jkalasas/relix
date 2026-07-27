@@ -3,6 +3,14 @@ import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { WebglAddon } from "@xterm/addon-webgl";
 import { parseOsc7Cwd } from "@/features/shells/lib/osc7";
+import {
+  adjustTerminalFontSize,
+  getTerminalFontSize,
+  resetTerminalFontSize,
+  setTerminalFontSize,
+  subscribeTerminalFontSize,
+  TERMINAL_FONT_STEP,
+} from "@/features/shells/lib/terminal-font";
 import { sshResize, sshWrite } from "@/features/ssh";
 import { cn } from "@/lib/utils";
 
@@ -41,6 +49,17 @@ function restoreSurface(term: Terminal, fit: FitAddon, sessionId: string) {
   void sshResize(sessionId, term.cols, term.rows);
 }
 
+function applyFontSize(
+  term: Terminal,
+  fit: FitAddon,
+  sessionId: string,
+  size: number,
+) {
+  term.options.fontSize = size;
+  fit.fit();
+  void sshResize(sessionId, term.cols, term.rows);
+}
+
 function cellHeightPx(term: Terminal, element: HTMLElement): number {
   const measured = element.clientHeight / Math.max(1, term.rows);
   if (Number.isFinite(measured) && measured > 0) return measured;
@@ -55,7 +74,46 @@ function focusTerminal(term: Terminal) {
   textarea?.focus({ preventScroll: true });
 }
 
-function attachMobileScroll(term: Terminal, container: HTMLElement): () => void {
+function isZoomModifier(event: KeyboardEvent | WheelEvent): boolean {
+  return event.ctrlKey || event.metaKey;
+}
+
+function isFontZoomKey(event: KeyboardEvent): "in" | "out" | "reset" | null {
+  if (!isZoomModifier(event) || event.altKey) return null;
+  if (event.key === "=" || event.key === "+" || event.code === "NumpadAdd") {
+    return "in";
+  }
+  if (event.key === "-" || event.code === "NumpadSubtract") {
+    return "out";
+  }
+  if (event.key === "0" || event.code === "Numpad0") {
+    return "reset";
+  }
+  return null;
+}
+
+function applyZoomAction(action: "in" | "out" | "reset") {
+  if (action === "in") {
+    adjustTerminalFontSize(TERMINAL_FONT_STEP);
+    return;
+  }
+  if (action === "out") {
+    adjustTerminalFontSize(-TERMINAL_FONT_STEP);
+    return;
+  }
+  resetTerminalFontSize();
+}
+
+function touchDistance(a: Touch, b: Touch): number {
+  const dx = a.clientX - b.clientX;
+  const dy = a.clientY - b.clientY;
+  return Math.hypot(dx, dy);
+}
+
+function attachMobileScroll(
+  term: Terminal,
+  container: HTMLElement,
+): () => void {
   if (!isTouchUi()) return () => {};
 
   const layer = document.createElement("div");
@@ -69,6 +127,10 @@ function attachMobileScroll(term: Terminal, container: HTMLElement): () => void 
   let startY = 0;
   let lastY = 0;
   let remainder = 0;
+
+  let pinching = false;
+  let pinchStartDistance = 0;
+  let pinchStartFontSize = getTerminalFontSize();
 
   const scrollByDelta = (deltaY: number) => {
     const scrollTarget =
@@ -94,11 +156,23 @@ function attachMobileScroll(term: Terminal, container: HTMLElement): () => void 
   };
 
   const onTouchStart = (event: TouchEvent) => {
+    if (event.touches.length === 2) {
+      tracking = false;
+      scrolling = false;
+      pinching = true;
+      pinchStartDistance = touchDistance(event.touches[0], event.touches[1]);
+      pinchStartFontSize = getTerminalFontSize();
+      return;
+    }
+
     if (event.touches.length !== 1) {
       tracking = false;
       scrolling = false;
+      pinching = false;
       return;
     }
+
+    pinching = false;
     tracking = true;
     scrolling = false;
     startY = event.touches[0].clientY;
@@ -107,6 +181,17 @@ function attachMobileScroll(term: Terminal, container: HTMLElement): () => void 
   };
 
   const onTouchMove = (event: TouchEvent) => {
+    if (pinching && event.touches.length === 2) {
+      const distance = touchDistance(event.touches[0], event.touches[1]);
+      if (pinchStartDistance > 0) {
+        const scale = distance / pinchStartDistance;
+        setTerminalFontSize(pinchStartFontSize * scale);
+      }
+      event.preventDefault();
+      event.stopPropagation();
+      return;
+    }
+
     if (!tracking || event.touches.length !== 1) return;
     const y = event.touches[0].clientY;
 
@@ -125,7 +210,15 @@ function attachMobileScroll(term: Terminal, container: HTMLElement): () => void 
     event.stopPropagation();
   };
 
-  const onTouchEnd = () => {
+  const onTouchEnd = (event: TouchEvent) => {
+    if (pinching) {
+      if (event.touches.length < 2) {
+        pinching = false;
+        pinchStartDistance = 0;
+      }
+      return;
+    }
+
     if (!tracking) return;
     const wasTap = !scrolling;
     tracking = false;
@@ -148,6 +241,102 @@ function attachMobileScroll(term: Terminal, container: HTMLElement): () => void 
   };
 }
 
+function attachFontZoom(
+  term: Terminal,
+  fit: FitAddon,
+  sessionId: string,
+  container: HTMLElement,
+  isActive: () => boolean,
+): () => void {
+  let resizeFrame = 0;
+  let pendingSize: number | null = null;
+
+  const flushFontSize = (size: number) => {
+    pendingSize = size;
+    cancelAnimationFrame(resizeFrame);
+    resizeFrame = requestAnimationFrame(() => {
+      if (pendingSize == null) return;
+      applyFontSize(term, fit, sessionId, pendingSize);
+      pendingSize = null;
+    });
+  };
+
+  const unsubscribe = subscribeTerminalFontSize((size) => {
+    if (term.options.fontSize === size) return;
+    flushFontSize(size);
+  });
+
+  const onKeyDown = (event: KeyboardEvent) => {
+    if (!isActive()) return;
+    const action = isFontZoomKey(event);
+    if (!action) return;
+    event.preventDefault();
+    event.stopPropagation();
+    applyZoomAction(action);
+  };
+
+  const onWheel = (event: WheelEvent) => {
+    if (!isActive()) return;
+    if (!isZoomModifier(event) || event.altKey) return;
+    event.preventDefault();
+    event.stopPropagation();
+    if (event.deltaY === 0) return;
+    adjustTerminalFontSize(event.deltaY < 0 ? TERMINAL_FONT_STEP : -TERMINAL_FONT_STEP);
+  };
+
+  // Desktop trackpad pinch often surfaces as ctrl+wheel; also handle
+  // two-finger pinch on non-mobile surfaces that still expose touch.
+  let pinching = false;
+  let pinchStartDistance = 0;
+  let pinchStartFontSize = getTerminalFontSize();
+
+  const onTouchStart = (event: TouchEvent) => {
+    if (!isActive() || isTouchUi()) return;
+    if (event.touches.length !== 2) {
+      pinching = false;
+      return;
+    }
+    pinching = true;
+    pinchStartDistance = touchDistance(event.touches[0], event.touches[1]);
+    pinchStartFontSize = getTerminalFontSize();
+  };
+
+  const onTouchMove = (event: TouchEvent) => {
+    if (!pinching || event.touches.length !== 2) return;
+    const distance = touchDistance(event.touches[0], event.touches[1]);
+    if (pinchStartDistance > 0) {
+      setTerminalFontSize(pinchStartFontSize * (distance / pinchStartDistance));
+    }
+    event.preventDefault();
+  };
+
+  const onTouchEnd = (event: TouchEvent) => {
+    if (!pinching) return;
+    if (event.touches.length < 2) {
+      pinching = false;
+      pinchStartDistance = 0;
+    }
+  };
+
+  window.addEventListener("keydown", onKeyDown, true);
+  container.addEventListener("wheel", onWheel, { passive: false });
+  container.addEventListener("touchstart", onTouchStart, { passive: true });
+  container.addEventListener("touchmove", onTouchMove, { passive: false });
+  container.addEventListener("touchend", onTouchEnd, { passive: true });
+  container.addEventListener("touchcancel", onTouchEnd, { passive: true });
+
+  return () => {
+    unsubscribe();
+    cancelAnimationFrame(resizeFrame);
+    window.removeEventListener("keydown", onKeyDown, true);
+    container.removeEventListener("wheel", onWheel);
+    container.removeEventListener("touchstart", onTouchStart);
+    container.removeEventListener("touchmove", onTouchMove);
+    container.removeEventListener("touchend", onTouchEnd);
+    container.removeEventListener("touchcancel", onTouchEnd);
+  };
+}
+
 export function TerminalView({
   sessionId,
   active,
@@ -158,9 +347,13 @@ export function TerminalView({
   const containerRef = useRef<HTMLDivElement | null>(null);
   const termRef = useRef<Terminal | null>(null);
   const fitRef = useRef<FitAddon | null>(null);
+  const activeRef = useRef(active);
+  const visibleRef = useRef(visible);
   const onReadyRef = useRef(onReady);
   const onCwdChangeRef = useRef(onCwdChange);
   const lastCwdRef = useRef<string | null>(null);
+  activeRef.current = active;
+  visibleRef.current = visible;
   onReadyRef.current = onReady;
   onCwdChangeRef.current = onCwdChange;
 
@@ -170,7 +363,7 @@ export function TerminalView({
     const term = new Terminal({
       cursorBlink: true,
       fontFamily: '"Geist Mono Variable", ui-monospace, monospace',
-      fontSize: 13,
+      fontSize: getTerminalFontSize(),
       lineHeight: 1.3,
       scrollback: 5000,
       theme: {
@@ -194,12 +387,20 @@ export function TerminalView({
     term.open(containerRef.current);
     term.attachCustomKeyEventHandler((event) => {
       if (event.key === "Tab" && event.ctrlKey) return false;
+      if (isFontZoomKey(event)) return false;
       return true;
     });
     attachWebgl(term);
     fit.fit();
     void sshResize(sessionId, term.cols, term.rows);
     const detachMobileScroll = attachMobileScroll(term, containerRef.current);
+    const detachFontZoom = attachFontZoom(
+      term,
+      fit,
+      sessionId,
+      containerRef.current,
+      () => activeRef.current && visibleRef.current,
+    );
 
     const dataSub = term.onData((data) => {
       void sshWrite(sessionId, data);
@@ -246,6 +447,7 @@ export function TerminalView({
       dataSub.dispose();
       osc7Sub.dispose();
       detachMobileScroll();
+      detachFontZoom();
       ro.disconnect();
       cancelAnimationFrame(fitFrame);
       window.removeEventListener("resize", onViewportResize);

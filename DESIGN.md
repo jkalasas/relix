@@ -268,8 +268,11 @@ Task-specific, one primary action, no fake metrics. Icon in a quiet bordered til
 | `2` | SFTP |
 | `3` | Forwards |
 | `Ctrl+Tab` / `Ctrl+Shift+Tab` | Next / previous shell session |
+| `Ctrl/Cmd` + `=` / `-` | Zoom terminal font in / out |
+| `Ctrl/Cmd` + `0` | Reset terminal font |
+| Pinch / Ctrl+scroll | Zoom terminal font |
 
-Shortcuts are desktop accelerators. Mobile relies on visible controls — never shortcut-only.
+Shortcuts are desktop accelerators. Mobile relies on visible controls and pinch zoom — never shortcut-only.
 
 ### Targets & input
 
