@@ -1,0 +1,9 @@
+[default]
+description = "Default permissions for Relix Android keepalive"
+permissions = [
+    "allow-start-keepalive",
+    "allow-stop-keepalive",
+    "allow-is-keepalive-running",
+    "allow-get-notification-permission-status",
+    "allow-request-notification-permission",
+]

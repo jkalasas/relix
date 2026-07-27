@@ -24,6 +24,7 @@
 | `src/features/forwards/` | Tunnel types, store, start/stop hooks, panel/form UI |
 | `src/features/shells/` | Shell sessions, launch menu, xterm terminal panel |
 | `src/features/sftp/` | SFTP panel (stub until transfer backend) |
+| `src/features/android-background/` | Android background gate + session FGS keepalive |
 | `src/features/ssh/` | Tauri SSH bridge: commands, errors, events |
 | `src/components/ui/` | shadcn primitives — prefer variants, don’t restyle ad hoc |
 | `src/components/status/` | Shared status UI (`status-dot`, `session-chip`) |

@@ -8,6 +8,8 @@
     "opener:default",
     "store:default",
     "dialog:default",
+    "android-battery-optimization:default",
+    "relix-keepalive:default",
     "fs:default",
     "fs:allow-read-text-file",
     "fs:allow-read-file",

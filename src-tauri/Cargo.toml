@@ -31,5 +31,7 @@ thiserror = "2"
 sha2 = "0.10"
 tauri-plugin-dialog = "2.7.2"
 tauri-plugin-fs = "2.5.1"
+tauri-plugin-android-battery-optimization = "0.1"
+tauri-plugin-relix-keepalive = { path = "./plugins/relix-keepalive" }
 russh-sftp = "2.3"
 

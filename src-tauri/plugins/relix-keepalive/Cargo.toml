@@ -1,0 +1,19 @@
+[package]
+name = "tauri-plugin-relix-keepalive"
+version = "0.1.0"
+description = "Android foreground-service keepalive for Relix SSH sessions"
+edition = "2021"
+rust-version = "1.77.2"
+links = "tauri-plugin-relix-keepalive"
+
+[lib]
+name = "tauri_plugin_relix_keepalive"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-plugin = { version = "2", features = ["build"] }
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+tauri = "2"
+thiserror = "2"

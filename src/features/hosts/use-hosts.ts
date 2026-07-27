@@ -17,10 +17,12 @@ type UseHostsOptions = {
   onConnected?: (host: HostConfig) => void | Promise<void>;
   onDisconnecting?: (hostId: string) => void | Promise<void>;
   onDeleted?: (hostId: string) => void;
+  ensureBackgroundReady?: () => Promise<boolean>;
 };
 
 export function useHosts(options: UseHostsOptions = {}) {
-  const { onConnected, onDisconnecting, onDeleted } = options;
+  const { onConnected, onDisconnecting, onDeleted, ensureBackgroundReady } =
+    options;
 
   const [hosts, setHosts] = useState<Host[]>([]);
   const [connectingId, setConnectingId] = useState<string | null>(null);
@@ -94,6 +96,10 @@ export function useHosts(options: UseHostsOptions = {}) {
     async (id: string) => {
       const host = hosts.find((item) => item.id === id);
       if (!host) return;
+      if (ensureBackgroundReady) {
+        const ready = await ensureBackgroundReady();
+        if (!ready) return;
+      }
       setConnectingId(id);
       setHostKeyError(null);
       setAuthCheck(null);
@@ -131,7 +137,7 @@ export function useHosts(options: UseHostsOptions = {}) {
         setConnectingId(null);
       }
     },
-    [hosts, onConnected, onDisconnecting, setHostStatus],
+    [ensureBackgroundReady, hosts, onConnected, onDisconnecting, setHostStatus],
   );
 
   const acceptHostKey = useCallback(async () => {

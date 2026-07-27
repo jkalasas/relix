@@ -1,0 +1,13 @@
+# Automatically generated - DO NOT EDIT!
+
+"$schema" = "../../schemas/schema.json"
+
+[[permission]]
+identifier = "allow-stop-keepalive"
+description = "Enables the stop_keepalive command without any pre-configured scope."
+commands.allow = ["stop_keepalive"]
+
+[[permission]]
+identifier = "deny-stop-keepalive"
+description = "Denies the stop_keepalive command without any pre-configured scope."
+commands.deny = ["stop_keepalive"]

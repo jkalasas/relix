@@ -58,7 +58,8 @@ See [Tauri Android prerequisites](https://v2.tauri.app/start/prerequisites/#andr
 - System / gesture back leaves session → hosts (forms close first).
 - Import private keys via the file picker (stored as key body, not path).
 - Local / dynamic tunnels bind on-device (`127.0.0.1`); enable “listen on all interfaces” for LAN clients. Prefer ports > 1024.
-- Background Android may pause listeners when the app is not foreground.
+- **Background usage is mandatory on Android.** First launch (and any time grants are missing) shows a non-dismissible prompt for notifications + unrestricted battery. Without that, Android freezes or kills the process and SSH sessions/tunnels die.
+- While any host is connected, Relix runs a foreground service with a persistent notification (`Relix is running · sessions active`). **Stop** on that notification disconnects every session.
 
 ## Build (desktop)
 

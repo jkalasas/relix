@@ -315,7 +315,7 @@ Shortcuts are desktop accelerators. Mobile relies on visible controls and pinch 
 |---|---|
 | Color + type tokens | `src/index.css` |
 | Domain types | `src/features/*/types.ts` |
-| Feature hooks + UI | `src/features/{hosts,forwards,shells,sftp,ssh}/` |
+| Feature hooks + UI | `src/features/{hosts,forwards,shells,sftp,ssh,android-background}/` |
 | App orchestration (incl. mobile pane) | `src/app/App.tsx` |
 | Dark default | `index.html` → `class="dark"` |
 | Desktop window chrome | `src-tauri/tauri.conf.json` |
@@ -341,6 +341,7 @@ When adding UI:
 - [x] System back integration on Android
 - [ ] System back / gesture polish on iOS
 - [x] Android project scaffold (`tauri android init`)
+- [x] Android mandatory background gate + session keepalive notification (Stop ends all sessions)
 - [ ] Optional light theme (true off-white chroma-0 + same amber)
 
 ---
@@ -352,3 +353,4 @@ When adding UI:
 | 2026-03-26 | Initial system: Relay Night, shell IA, tokens, status language |
 | 2026-03-26 | Multi-platform: desktop split + mobile list/detail, touch & safe-area rules |
 | 2026-03-27 | Android scaffold, system back, key import, SFTP, soft-keyboard terminal |
+| 2026-03-28 | Android background gate + FGS keepalive while hosts connected |

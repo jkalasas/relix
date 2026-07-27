@@ -1,10 +1,14 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { useAndroidBack } from "@/app/use-android-back";
 import { useBoot } from "@/app/use-boot";
 import { useSshLifecycle } from "@/app/use-ssh-lifecycle";
 import { useWorkspace } from "@/app/use-workspace";
 import { EmptyWorkspace } from "@/components/workspace/empty-workspace";
 import { WorkspaceTabs } from "@/components/workspace/workspace-tabs";
+import {
+  BackgroundSetupDialog,
+  useAndroidBackground,
+} from "@/features/android-background";
 import {
   ForwardForm,
   ForwardsPanel,
@@ -66,11 +70,37 @@ function App() {
     [forwards.removeHostForwards, shells.removeHostShells],
   );
 
+  const ensureBackgroundReadyRef = useRef<() => Promise<boolean>>(async () => true);
+  const ensureBackgroundReady = useCallback(
+    () => ensureBackgroundReadyRef.current(),
+    [],
+  );
+
   const hosts = useHosts({
     onConnected,
     onDisconnecting,
     onDeleted,
+    ensureBackgroundReady,
   });
+
+  const connectedCount = useMemo(
+    () => hosts.hosts.filter((host) => host.status === "connected").length,
+    [hosts.hosts],
+  );
+
+  const killAllSessions = useCallback(async () => {
+    const connected = hosts.hosts.filter((host) => host.status === "connected");
+    for (const host of connected) {
+      await hosts.disconnectHost(host.id);
+    }
+  }, [hosts.disconnectHost, hosts.hosts]);
+
+  const androidBackground = useAndroidBackground({
+    connectedCount,
+    onKillSessions: killAllSessions,
+  });
+
+  ensureBackgroundReadyRef.current = androidBackground.ensureReady;
 
   const openShell = useCallback(
     async (
@@ -135,12 +165,20 @@ function App() {
   const workspace = useWorkspace({ hosts: hosts.hosts });
 
   const handleBack = useCallback(() => {
+    if (androidBackground.setupOpen) {
+      return true;
+    }
     if (disconnectPrompt && !disconnectBusy) {
       setDisconnectPrompt(null);
       return true;
     }
     return workspace.handleBack();
-  }, [disconnectBusy, disconnectPrompt, workspace.handleBack]);
+  }, [
+    androidBackground.setupOpen,
+    disconnectBusy,
+    disconnectPrompt,
+    workspace.handleBack,
+  ]);
 
   useAndroidBack({ handleBack });
 
@@ -410,6 +448,14 @@ function App() {
           if (!open && !disconnectBusy) setDisconnectPrompt(null);
         }}
         onConfirm={(choice) => void confirmDisconnect(choice)}
+      />
+
+      <BackgroundSetupDialog
+        open={androidBackground.setupOpen}
+        readiness={androidBackground.readiness}
+        busy={androidBackground.setupBusy}
+        onEnable={() => void androidBackground.enableBackground()}
+        onOpenSettings={() => void androidBackground.openBatterySettings()}
       />
     </div>
   );
