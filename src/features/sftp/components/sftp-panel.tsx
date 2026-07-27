@@ -17,12 +17,27 @@ import { cn } from "@/lib/utils";
 
 type SftpPanelProps = {
   host: Host;
+  shellCwd?: string | null;
+  tmuxSession?: string | null;
+  tmuxWindowId?: string | null;
   onConnect: () => void;
 };
 
-export function SftpPanel({ host, onConnect }: SftpPanelProps) {
+export function SftpPanel({
+  host,
+  shellCwd,
+  tmuxSession,
+  tmuxWindowId,
+  onConnect,
+}: SftpPanelProps) {
   const connected = host.status === "connected";
-  const sftp = useSftp({ hostId: host.id, connected });
+  const sftp = useSftp({
+    hostId: host.id,
+    connected,
+    shellCwd,
+    tmuxSession,
+    tmuxWindowId,
+  });
   const upPath = parentPath(sftp.path);
 
   if (!connected) {

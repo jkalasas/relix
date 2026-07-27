@@ -7,6 +7,7 @@ import {
   sshSftpRead,
   sshSftpRemove,
   sshSftpWrite,
+  sshTmuxWindowPath,
 } from "@/features/ssh";
 import type { SftpEntry } from "@/features/ssh";
 import { parseSshError } from "@/features/ssh/errors";
@@ -16,9 +17,18 @@ import type { SftpTransferState } from "@/features/sftp/types";
 type UseSftpOptions = {
   hostId: string;
   connected: boolean;
+  shellCwd?: string | null;
+  tmuxSession?: string | null;
+  tmuxWindowId?: string | null;
 };
 
-export function useSftp({ hostId, connected }: UseSftpOptions) {
+export function useSftp({
+  hostId,
+  connected,
+  shellCwd,
+  tmuxSession,
+  tmuxWindowId,
+}: UseSftpOptions) {
   const [path, setPath] = useState(".");
   const [entries, setEntries] = useState<SftpEntry[]>([]);
   const [loading, setLoading] = useState(false);
@@ -57,8 +67,33 @@ export function useSftp({ hostId, connected }: UseSftpOptions) {
       setTransfer(null);
       return;
     }
-    void refresh(".");
-    // only re-list when connection or host changes
+
+    let cancelled = false;
+
+    async function openAtShellDir() {
+      let target = "";
+      const windowId = tmuxWindowId?.trim();
+      if (windowId) {
+        try {
+          const path = await sshTmuxWindowPath(
+            hostId,
+            tmuxSession?.trim() || undefined,
+            windowId,
+          );
+          if (path?.trim()) target = path.trim();
+        } catch {
+          // fall through to OSC7 cwd / home
+        }
+      }
+      if (!target) target = shellCwd?.trim() || ".";
+      if (!cancelled) await refresh(target);
+    }
+
+    void openAtShellDir();
+    return () => {
+      cancelled = true;
+    };
+    // seed from active shell/tmux window on open only
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [connected, hostId]);
 

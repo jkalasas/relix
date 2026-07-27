@@ -278,6 +278,24 @@ impl SshManager {
         Some(path.to_string())
     }
 
+    pub async fn tmux_window_path(
+        &self,
+        host_id: String,
+        session: Option<String>,
+        window_id: String,
+    ) -> Result<Option<String>, SshError> {
+        let session = resolve_session(session)?;
+        let window_id = window_id.trim().to_string();
+        if window_id.is_empty() {
+            return Err(SshError::new(
+                SshErrorCode::Internal,
+                "Missing tmux window id",
+            ));
+        }
+        let handle = self.live_handle(&host_id).await?;
+        Ok(Self::tmux_pane_path(&handle, &session, &window_id).await)
+    }
+
     pub async fn tmux_new_window(
         &self,
         host_id: String,

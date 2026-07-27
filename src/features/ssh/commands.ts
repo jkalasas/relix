@@ -209,6 +209,18 @@ export async function sshTmuxKillWindow(
   });
 }
 
+export async function sshTmuxWindowPath(
+  hostId: string,
+  session: string | undefined,
+  windowId: string,
+): Promise<string | null> {
+  return invoke<string | null>("ssh_tmux_window_path", {
+    hostId,
+    session,
+    windowId,
+  });
+}
+
 function shSingleQuote(value: string): string {
   return `'${value.replace(/'/g, `'"'"'`)}'`;
 }

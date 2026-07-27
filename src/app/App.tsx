@@ -128,6 +128,9 @@ function App() {
   const activeSessionId = selectedHost
     ? (shells.activeSessionByHost[selectedHost.id] ?? null)
     : null;
+  const activeSession =
+    selectedSessions.find((session) => session.id === activeSessionId) ?? null;
+  const activeShellCwd = activeSession?.cwd ?? null;
 
   const selectShellTab = useCallback(
     (id: string) => {
@@ -257,6 +260,9 @@ function App() {
             {workspace.tab === "sftp" ? (
               <SftpPanel
                 host={selectedHost}
+                shellCwd={activeShellCwd}
+                tmuxSession={activeSession?.tmuxSession ?? selectedHost.tmuxSession}
+                tmuxWindowId={activeSession?.tmuxWindowId}
                 onConnect={() => void hosts.connectHost(selectedHost.id)}
               />
             ) : null}

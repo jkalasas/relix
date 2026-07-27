@@ -225,6 +225,16 @@ pub async fn ssh_tmux_list_windows(
 }
 
 #[tauri::command]
+pub async fn ssh_tmux_window_path(
+    state: State<'_, SshManager>,
+    host_id: String,
+    session: Option<String>,
+    window_id: String,
+) -> Result<Option<String>, SshError> {
+    state.tmux_window_path(host_id, session, window_id).await
+}
+
+#[tauri::command]
 pub async fn ssh_tmux_kill_window(
     state: State<'_, SshManager>,
     host_id: String,
