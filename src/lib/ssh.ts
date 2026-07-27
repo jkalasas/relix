@@ -159,6 +159,7 @@ export async function sshOpenShell(
     cols?: number;
     rows?: number;
     command?: string;
+    cwd?: string;
   },
 ): Promise<OpenShellResult> {
   return invoke<OpenShellResult>("ssh_open_shell", {
@@ -166,6 +167,7 @@ export async function sshOpenShell(
     cols: options?.cols,
     rows: options?.rows,
     command: options?.command,
+    cwd: options?.cwd,
   });
 }
 

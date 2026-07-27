@@ -10,7 +10,37 @@ type TerminalViewProps = {
   active: boolean;
   visible: boolean;
   onReady?: (api: { write: (data: string | Uint8Array) => void }) => void;
+  onCwdChange?: (cwd: string) => void;
 };
+
+function parseOsc7Cwd(data: string): string | null {
+  const raw = data.trim();
+  if (!raw) return null;
+  if (raw.startsWith("/") && !raw.includes("://")) return raw;
+
+  if (!raw.startsWith("file://")) return null;
+
+  try {
+    const url = new URL(raw);
+    if (url.protocol === "file:") {
+      const path = decodeURIComponent(url.pathname);
+      if (path.startsWith("/")) return path;
+    }
+  } catch {
+    // unencoded spaces and other non-strict file URLs
+  }
+
+  const rest = raw.slice("file://".length);
+  const slash = rest.indexOf("/");
+  if (slash === -1) return null;
+  const path = rest.slice(slash);
+  try {
+    const decoded = decodeURIComponent(path);
+    return decoded.startsWith("/") ? decoded : null;
+  } catch {
+    return path.startsWith("/") ? path : null;
+  }
+}
 
 function attachWebgl(term: Terminal) {
   try {
@@ -35,12 +65,16 @@ export function TerminalView({
   active,
   visible,
   onReady,
+  onCwdChange,
 }: TerminalViewProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const termRef = useRef<Terminal | null>(null);
   const fitRef = useRef<FitAddon | null>(null);
   const onReadyRef = useRef(onReady);
+  const onCwdChangeRef = useRef(onCwdChange);
+  const lastCwdRef = useRef<string | null>(null);
   onReadyRef.current = onReady;
+  onCwdChangeRef.current = onCwdChange;
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -77,6 +111,15 @@ export function TerminalView({
       void sshWrite(sessionId, data);
     });
 
+    const osc7Sub = term.parser.registerOscHandler(7, (data) => {
+      const cwd = parseOsc7Cwd(data);
+      if (!cwd) return false;
+      if (cwd === lastCwdRef.current) return true;
+      lastCwdRef.current = cwd;
+      onCwdChangeRef.current?.(cwd);
+      return true;
+    });
+
     const ro = new ResizeObserver(() => {
       if (containerRef.current?.offsetParent === null) return;
       fit.fit();
@@ -86,6 +129,7 @@ export function TerminalView({
 
     termRef.current = term;
     fitRef.current = fit;
+    lastCwdRef.current = null;
     onReadyRef.current?.({
       write: (data) => {
         term.write(data);
@@ -94,6 +138,7 @@ export function TerminalView({
 
     return () => {
       dataSub.dispose();
+      osc7Sub.dispose();
       ro.disconnect();
       term.dispose();
       termRef.current = null;

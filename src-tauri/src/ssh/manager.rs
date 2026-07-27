@@ -233,6 +233,46 @@ fn handle_is_closed(handle: &Mutex<Handle<ClientHandler>>) -> bool {
         .unwrap_or(false)
 }
 
+fn sh_single_quote(value: &str) -> String {
+    format!("'{}'", value.replace('\'', "'\"'\"'"))
+}
+
+/// OpenSSH runs exec via the user's login shell as `shell -c <command>`.
+/// That shell may be fish/zsh/bash, so command scripts must not assume bash
+/// syntax. Wrap portable work in `bash -lc` (bash is available on typical hosts).
+fn bash_login(script: &str) -> String {
+    format!("bash -lc {}", sh_single_quote(script))
+}
+
+enum ShellRemote {
+    /// User's real login shell — preserves fish/zsh/bash config and OSC 7.
+    RequestShell,
+    Exec(String),
+}
+
+fn build_shell_remote(command: Option<String>, cwd: Option<String>) -> ShellRemote {
+    let cwd = cwd.filter(|value| !value.is_empty());
+    let command = command.filter(|value| !value.is_empty());
+
+    match (command, cwd.as_deref()) {
+        (Some(cmd), Some(path)) => {
+            let script = format!("cd {} && exec {}", sh_single_quote(path), cmd);
+            ShellRemote::Exec(bash_login(&script))
+        }
+        (Some(cmd), None) => ShellRemote::Exec(cmd),
+        (None, Some(path)) => {
+            // Start the user's shell in the active tab's directory.
+            let script = format!(
+                "cd {} && exec \"${{SHELL:-/bin/bash}}\" -il",
+                sh_single_quote(path),
+            );
+            ShellRemote::Exec(bash_login(&script))
+        }
+        // No cwd: real login shell. Fish/zsh/bash already emit OSC 7 here.
+        (None, None) => ShellRemote::RequestShell,
+    }
+}
+
 impl SshManager {
     pub fn new() -> Self {
         Self {
@@ -446,6 +486,7 @@ impl SshManager {
         cols: u32,
         rows: u32,
         command: Option<String>,
+        cwd: Option<String>,
     ) -> Result<OpenShellResult, SshError> {
         let handle = {
             let mut inner = self.inner.lock().await;
@@ -480,16 +521,19 @@ impl SshManager {
             .await
             .map_err(|e| SshError::new(SshErrorCode::Internal, e.to_string()))?;
 
-        if let Some(command) = command.filter(|value| !value.is_empty()) {
-            channel
-                .exec(true, command)
-                .await
-                .map_err(|e| SshError::new(SshErrorCode::Internal, e.to_string()))?;
-        } else {
-            channel
-                .request_shell(true)
-                .await
-                .map_err(|e| SshError::new(SshErrorCode::Internal, e.to_string()))?;
+        match build_shell_remote(command, cwd) {
+            ShellRemote::RequestShell => {
+                channel
+                    .request_shell(true)
+                    .await
+                    .map_err(|e| SshError::new(SshErrorCode::Internal, e.to_string()))?;
+            }
+            ShellRemote::Exec(remote) => {
+                channel
+                    .exec(true, remote)
+                    .await
+                    .map_err(|e| SshError::new(SshErrorCode::Internal, e.to_string()))?;
+            }
         }
 
         let session_id = Uuid::new_v4().to_string();
@@ -1285,4 +1329,90 @@ fn save_known_hosts(app: &AppHandle, known: &KnownHosts) -> Result<(), SshError>
         .save()
         .map_err(|e| SshError::new(SshErrorCode::Internal, e.to_string()))?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{bash_login, build_shell_remote, sh_single_quote, ShellRemote};
+
+    #[test]
+    fn quotes_paths_for_posix_shells() {
+        assert_eq!(sh_single_quote("/tmp/work"), "'/tmp/work'");
+        assert_eq!(sh_single_quote("a'b"), "'a'\"'\"'b'");
+    }
+
+    #[test]
+    fn wraps_command_with_cwd_via_bash() {
+        let remote = build_shell_remote(
+            Some("pi".into()),
+            Some("/home/u/proj".into()),
+        );
+        match remote {
+            ShellRemote::Exec(cmd) => {
+                assert_eq!(
+                    cmd,
+                    bash_login("cd '/home/u/proj' && exec pi"),
+                );
+                // Must survive fish -c (user login shell on this machine).
+                assert!(cmd.starts_with("bash -lc "));
+            }
+            ShellRemote::RequestShell => panic!("expected exec"),
+        }
+    }
+
+    #[test]
+    fn leaves_command_alone_without_cwd() {
+        match build_shell_remote(Some("claude".into()), None) {
+            ShellRemote::Exec(cmd) => assert_eq!(cmd, "claude"),
+            ShellRemote::RequestShell => panic!("expected exec"),
+        }
+    }
+
+    #[test]
+    fn interactive_without_cwd_uses_real_login_shell() {
+        match build_shell_remote(None, None) {
+            ShellRemote::RequestShell => {}
+            ShellRemote::Exec(cmd) => panic!("expected request_shell, got {cmd}"),
+        }
+    }
+
+    #[test]
+    fn interactive_with_cwd_starts_user_shell_there() {
+        match build_shell_remote(None, Some("/home/u/proj".into())) {
+            ShellRemote::Exec(cmd) => {
+                assert!(cmd.starts_with("bash -lc "));
+                assert!(cmd.contains("/home/u/proj"));
+                assert!(cmd.contains("${SHELL:-/bin/bash}"));
+                assert_eq!(
+                    cmd,
+                    bash_login("cd '/home/u/proj' && exec \"${SHELL:-/bin/bash}\" -il"),
+                );
+            }
+            ShellRemote::RequestShell => panic!("expected exec with cd"),
+        }
+    }
+
+    #[test]
+    fn bash_login_survives_fish_c() {
+        let cmd = bash_login("cd '/tmp' && pwd");
+        let output = std::process::Command::new("fish")
+            .args(["-c", &cmd])
+            .output()
+            .expect("fish");
+        assert!(output.status.success(), "stderr={}", String::from_utf8_lossy(&output.stderr));
+        assert_eq!(String::from_utf8_lossy(&output.stdout).trim(), "/tmp");
+    }
+
+    #[test]
+    fn bash_login_pi_cwd_survives_fish_c() {
+        let cmd = bash_login("cd '/home/jkalasas/Projects/personal/relix' && pwd && command -v pi");
+        let output = std::process::Command::new("fish")
+            .args(["-c", &cmd])
+            .output()
+            .expect("fish");
+        assert!(output.status.success(), "stderr={}", String::from_utf8_lossy(&output.stderr));
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        assert!(stdout.contains("/home/jkalasas/Projects/personal/relix"));
+        assert!(stdout.contains("pi"));
+    }
 }

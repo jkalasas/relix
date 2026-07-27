@@ -413,9 +413,15 @@ function App() {
   const openShell = useCallback(
     async (hostId: string, launchId: ShellLaunchId = "shell") => {
       const launch = shellLaunchById(launchId);
+      const activeId = activeSessionByHost[hostId] ?? null;
+      const activeSession = (sessionsByHost[hostId] ?? []).find(
+        (session) => session.id === activeId,
+      );
+      const cwd = activeSession?.cwd;
       try {
         const { sessionId } = await sshOpenShell(hostId, {
           command: launch.command,
+          cwd,
         });
         setSessionsByHost((current) => {
           const existing = current[hostId] ?? [];
@@ -423,6 +429,7 @@ function App() {
             id: sessionId,
             hostId,
             title: nextSessionTitle(existing, launch.title),
+            cwd,
           };
           return { ...current, [hostId]: [...existing, next] };
         });
@@ -434,8 +441,23 @@ function App() {
         setHostStatus(hostId, "error");
       }
     },
-    [setHostStatus],
+    [activeSessionByHost, sessionsByHost, setHostStatus],
   );
+
+  const setSessionCwd = useCallback((sessionId: string, cwd: string) => {
+    setSessionsByHost((current) => {
+      let changed = false;
+      const next: Record<string, ShellSession[]> = {};
+      for (const [hostId, sessions] of Object.entries(current)) {
+        next[hostId] = sessions.map((session) => {
+          if (session.id !== sessionId || session.cwd === cwd) return session;
+          changed = true;
+          return { ...session, cwd };
+        });
+      }
+      return changed ? next : current;
+    });
+  }, []);
 
   const closeShell = useCallback(async (hostId: string, sessionId: string) => {
     try {
@@ -790,6 +812,7 @@ function App() {
                 }))
               }
               onCloseShell={(id) => void closeShell(selectedHost.id, id)}
+              onSessionCwd={setSessionCwd}
             />
           </div>
         ) : null}

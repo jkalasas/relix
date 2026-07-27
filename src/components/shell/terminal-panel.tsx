@@ -16,6 +16,7 @@ type TerminalPanelProps = {
   onOpenShell: (launchId?: ShellLaunchId) => void;
   onSelectShell: (id: string) => void;
   onCloseShell: (id: string) => void;
+  onSessionCwd: (sessionId: string, cwd: string) => void;
 };
 
 export function TerminalPanel({
@@ -27,6 +28,7 @@ export function TerminalPanel({
   onOpenShell,
   onSelectShell,
   onCloseShell,
+  onSessionCwd,
 }: TerminalPanelProps) {
   const writersRef = useRef<Map<string, (data: string | Uint8Array) => void>>(
     new Map(),
@@ -123,6 +125,7 @@ export function TerminalPanel({
             active={session.id === activeSessionId}
             visible={visible}
             onReady={(api) => setWriter(session.id, api.write)}
+            onCwdChange={(cwd) => onSessionCwd(session.id, cwd)}
           />
         ))}
       </div>

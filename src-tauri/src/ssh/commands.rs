@@ -32,6 +32,7 @@ pub async fn ssh_open_shell(
     cols: Option<u32>,
     rows: Option<u32>,
     command: Option<String>,
+    cwd: Option<String>,
 ) -> Result<OpenShellResult, SshError> {
     state
         .open_shell(
@@ -40,6 +41,7 @@ pub async fn ssh_open_shell(
             cols.unwrap_or(80),
             rows.unwrap_or(24),
             command,
+            cwd,
         )
         .await
 }
