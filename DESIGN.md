@@ -267,6 +267,7 @@ Task-specific, one primary action, no fake metrics. Icon in a quiet bordered til
 | `1` | Terminal |
 | `2` | SFTP |
 | `3` | Forwards |
+| `Ctrl+Tab` / `Ctrl+Shift+Tab` | Next / previous shell session |
 
 Shortcuts are desktop accelerators. Mobile relies on visible controls — never shortcut-only.
 

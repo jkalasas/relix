@@ -192,6 +192,10 @@ export function TerminalView({
     const fit = new FitAddon();
     term.loadAddon(fit);
     term.open(containerRef.current);
+    term.attachCustomKeyEventHandler((event) => {
+      if (event.key === "Tab" && event.ctrlKey) return false;
+      return true;
+    });
     attachWebgl(term);
     fit.fit();
     void sshResize(sessionId, term.cols, term.rows);

@@ -25,6 +25,7 @@ import {
   TerminalPanel,
   useActiveShellFallback,
   useShells,
+  useShellTabShortcuts,
 } from "@/features/shells";
 
 function App() {
@@ -106,6 +107,24 @@ function App() {
   const activeSessionId = selectedHost
     ? (shells.activeSessionByHost[selectedHost.id] ?? null)
     : null;
+
+  const selectShellTab = useCallback(
+    (id: string) => {
+      if (selectedHost) shells.selectShell(selectedHost.id, id);
+    },
+    [selectedHost, shells.selectShell],
+  );
+
+  useShellTabShortcuts({
+    enabled:
+      selectedHost != null &&
+      !workspace.formMode &&
+      !workspace.forwardFormMode &&
+      workspace.tab === "terminal",
+    sessions: selectedSessions,
+    activeId: activeSessionId,
+    onSelect: selectShellTab,
+  });
   const selectedForwards = selectedHost
     ? (forwards.forwardsByHost[selectedHost.id] ?? [])
     : [];
