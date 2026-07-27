@@ -19,13 +19,17 @@
 
 | Path | Role |
 |---|---|
-| `src/App.tsx` | Shell orchestration (desktop split + mobile list/detail) |
-| `src/index.css` | Design tokens (Relay Night) |
-| `src/lib/types.ts` | Domain types (`Host`, `PortForward`, statuses) |
-| `src/lib/seed.ts` | Fixture data for UI work |
-| `src/components/shell/` | App chrome: host rail, session, workspace panels |
+| `src/app/` | Composition root: `App.tsx`, workspace + SSH lifecycle hooks |
+| `src/features/hosts/` | Host types, store, CRUD/connect hooks, rail/form/header UI |
+| `src/features/forwards/` | Tunnel types, store, start/stop hooks, panel/form UI |
+| `src/features/shells/` | Shell sessions, launch menu, xterm terminal panel |
+| `src/features/sftp/` | SFTP panel (stub until transfer backend) |
+| `src/features/ssh/` | Tauri SSH bridge: commands, errors, events |
 | `src/components/ui/` | shadcn primitives — prefer variants, don’t restyle ad hoc |
-| `src-tauri/` | Tauri/Rust backend |
+| `src/components/status/` | Shared status UI (`status-dot`, `session-chip`) |
+| `src/components/workspace/` | Workspace chrome (tabs, empty state, form field) |
+| `src/lib/utils.ts` | `cn` helper |
+| `src-tauri/src/ssh/` | Rust SSH feature: manager, connection, shell, forward |
 | `DESIGN.md` | Design system source of truth |
 
 ## Design context
@@ -55,10 +59,24 @@ When adding UI:
 
 - TypeScript strict; path alias `@/` → `src/`.
 - Minimal comments; self-documenting names. One function = one purpose.
-- Domain types live in `src/lib/types.ts`.
-- Shell components under `src/components/shell/`; shared status UI next to them (`status-dot`, `session-chip`).
+- Domain code lives under `src/features/<name>/` (types, store, hooks, components, barrel `index.ts`).
+- App composition stays in `src/app/` — no domain logic dumps in `App.tsx`.
+- Shared status UI under `src/components/status/`; workspace chrome under `src/components/workspace/`.
 - Do not invent new status colors or layout modes outside DESIGN.md.
-- Frontend currently uses seed/fixture state — real SSH/SFTP/PTY will land via Tauri commands in `src-tauri`.
+- SSH IPC surface is `src/features/ssh/` (frontend) and `src-tauri/src/ssh/` (backend). Keep command/event names stable.
+
+## Backend modules (`src-tauri/src/ssh/`)
+
+| Module | Role |
+|---|---|
+| `commands.rs` | Thin Tauri command adapters |
+| `manager.rs` | `SshManager` state maps + disconnect orchestration |
+| `connection.rs` | Connect, auth, host-key trust, live connection |
+| `shell.rs` | PTY open/write/resize/close + shell command building |
+| `forward.rs` | Local / remote / dynamic tunnels |
+| `known_hosts.rs` | Host key verification + persistence |
+| `socks.rs` | SOCKS5 CONNECT helpers |
+| `error.rs` | Serializable `SshError` |
 
 ## Commands
 

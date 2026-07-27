@@ -5,7 +5,7 @@ Product design source of truth for Relix — a **multi-platform** SSH client (de
 **Platforms:** Desktop (Linux / macOS / Windows) and mobile (iOS / Android) via Tauri  
 **Stack:** Tauri · React · TypeScript · Tailwind v4 · shadcn (base-nova) · Lucide  
 **Tokens live in:** `src/index.css`  
-**Shell lives in:** `src/components/shell/`
+**Features live in:** `src/features/` · **App chrome:** `src/app/` + `src/components/{status,workspace}/`
 
 One design system. Two layout modes. Same status language everywhere.
 
@@ -215,15 +215,15 @@ Task-specific, one primary action, no fake metrics. Icon in a quiet bordered til
 
 | Component | Path | Role |
 |---|---|---|
-| `StatusDot` | `components/status-dot.tsx` | Host/session status glyph + accessible label |
-| `SessionChip` | `components/session-chip.tsx` | Connected / idle / error pill |
-| `HostRail` | `components/shell/host-rail.tsx` | Host list (rail on desktop, root screen on mobile) |
-| `SessionHeader` | `components/shell/session-header.tsx` | Target + status + connect; back control on mobile |
-| `WorkspaceTabs` | `components/shell/workspace-tabs.tsx` | Terminal · SFTP · Forwards |
-| `TerminalPanel` | `components/shell/terminal-panel.tsx` | Shell workspace |
-| `SftpPanel` | `components/shell/sftp-panel.tsx` | File transfer workspace |
-| `ForwardsPanel` | `components/shell/forwards-panel.tsx` | Tunnel list / empty |
-| `EmptyWorkspace` | `components/shell/empty-workspace.tsx` | No host selected (desktop) |
+| `StatusDot` | `components/status/status-dot.tsx` | Host/session status glyph + accessible label |
+| `SessionChip` | `components/status/session-chip.tsx` | Connected / idle / error pill |
+| `HostRail` | `features/hosts/components/host-rail.tsx` | Host list (rail on desktop, root screen on mobile) |
+| `SessionHeader` | `features/hosts/components/session-header.tsx` | Target + status + connect; back control on mobile |
+| `WorkspaceTabs` | `components/workspace/workspace-tabs.tsx` | Terminal · SFTP · Forwards |
+| `TerminalPanel` | `features/shells/components/terminal-panel.tsx` | Shell workspace |
+| `SftpPanel` | `features/sftp/components/sftp-panel.tsx` | File transfer workspace |
+| `ForwardsPanel` | `features/forwards/components/forwards-panel.tsx` | Tunnel list / empty |
+| `EmptyWorkspace` | `components/workspace/empty-workspace.tsx` | No host selected (desktop) |
 | `Button` / `Input` | `components/ui/*` | shadcn primitives — use variants, don’t restyle ad hoc |
 
 ### Status mapping
@@ -310,9 +310,9 @@ Shortcuts are desktop accelerators. Mobile relies on visible controls — never 
 | Concern | Location |
 |---|---|
 | Color + type tokens | `src/index.css` |
-| Domain types | `src/lib/types.ts` |
-| Seed / fixture data | `src/lib/seed.ts` |
-| Shell orchestration (incl. mobile pane) | `src/App.tsx` |
+| Domain types | `src/features/*/types.ts` |
+| Feature hooks + UI | `src/features/{hosts,forwards,shells,sftp,ssh}/` |
+| App orchestration (incl. mobile pane) | `src/app/App.tsx` |
 | Dark default | `index.html` → `class="dark"` |
 | Desktop window chrome | `src-tauri/tauri.conf.json` |
 
