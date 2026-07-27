@@ -6,13 +6,35 @@ import {
   sshSftpMkdir,
   sshSftpRead,
   sshSftpRemove,
+  sshSftpRename,
   sshSftpWrite,
   sshTmuxWindowPath,
 } from "@/features/ssh";
 import type { SftpEntry } from "@/features/ssh";
 import { parseSshError } from "@/features/ssh/errors";
+import {
+  cacheClearHost,
+  cacheGet,
+  cacheInvalidate,
+  cacheMove,
+  cachePut,
+  cacheUpdateText,
+} from "@/features/sftp/file-cache";
+import {
+  classifyFile,
+  decodeText,
+  encodeText,
+  type FileKind,
+} from "@/features/sftp/file-kind";
 import { basename, joinRemotePath } from "@/features/sftp/format";
 import type { SftpTransferState } from "@/features/sftp/types";
+
+export type OpenedRemoteFile = {
+  entry: SftpEntry;
+  kind: FileKind;
+  bytes: Uint8Array;
+  text: string | null;
+};
 
 type UseSftpOptions = {
   hostId: string;
@@ -21,6 +43,14 @@ type UseSftpOptions = {
   tmuxSession?: string | null;
   tmuxWindowId?: string | null;
 };
+
+function fingerprintOf(entry: SftpEntry) {
+  return { size: entry.size, mtime: entry.mtime ?? null };
+}
+
+function bytesFromInvoke(data: number[]): Uint8Array {
+  return Uint8Array.from(data);
+}
 
 export function useSftp({
   hostId,
@@ -65,6 +95,7 @@ export function useSftp({
       setEntries([]);
       setError(null);
       setTransfer(null);
+      void cacheClearHost(hostId);
       return;
     }
 
@@ -118,14 +149,84 @@ export function useSftp({
 
   const removeEntry = useCallback(
     async (entry: SftpEntry) => {
-      const label = entry.isDir ? "directory" : "file";
-      if (!window.confirm(`Delete ${label} ${entry.name}?`)) return;
       try {
         await sshSftpRemove(hostId, entry.path, entry.isDir);
+        cacheInvalidate(hostId, entry.path);
         await refresh();
       } catch (err) {
         setError(parseSshError(err).message);
+        throw err;
       }
+    },
+    [hostId, refresh],
+  );
+
+  const renameEntry = useCallback(
+    async (entry: SftpEntry, nextName: string) => {
+      const name = nextName.trim();
+      if (!name || name === entry.name) return;
+      if (name.includes("/") || name.includes("\\")) {
+        setError("Name cannot contain path separators");
+        return;
+      }
+      const parent = entry.path.includes("/")
+        ? entry.path.slice(0, entry.path.lastIndexOf("/")) || "/"
+        : path;
+      const to = joinRemotePath(parent === "" ? "/" : parent, name);
+      try {
+        await sshSftpRename(hostId, entry.path, to);
+        cacheMove(hostId, entry.path, to);
+        await refresh();
+      } catch (err) {
+        setError(parseSshError(err).message);
+        throw err;
+      }
+    },
+    [hostId, path, refresh],
+  );
+
+  const openEntry = useCallback(
+    async (entry: SftpEntry): Promise<OpenedRemoteFile> => {
+      if (entry.isDir) {
+        throw new Error("Cannot open a directory as a file");
+      }
+      const fingerprint = fingerprintOf(entry);
+      const cached = await cacheGet(hostId, entry.path, fingerprint);
+      let bytes: Uint8Array;
+      let text: string | null = null;
+
+      if (cached) {
+        bytes = cached.bytes;
+        text = cached.text;
+      } else {
+        const raw = await sshSftpRead(hostId, entry.path);
+        bytes = bytesFromInvoke(raw);
+        cachePut(hostId, entry.path, bytes, fingerprint, null);
+      }
+
+      const kind = classifyFile(entry.name, bytes);
+      if (kind === "text") {
+        text = text ?? decodeText(bytes);
+        cachePut(hostId, entry.path, bytes, fingerprint, text);
+      }
+
+      return { entry, kind, bytes, text };
+    },
+    [hostId],
+  );
+
+  const saveText = useCallback(
+    async (entry: SftpEntry, text: string) => {
+      const bytes = encodeText(text);
+      await sshSftpWrite(hostId, entry.path, bytes);
+      cacheUpdateText(
+        hostId,
+        entry.path,
+        text,
+        bytes,
+        { size: bytes.byteLength, mtime: null },
+      );
+      await refresh();
     },
     [hostId, refresh],
   );
@@ -140,7 +241,16 @@ export function useSftp({
         error: null,
       });
       try {
-        const bytes = await sshSftpRead(hostId, entry.path);
+        const fingerprint = fingerprintOf(entry);
+        const cached = await cacheGet(hostId, entry.path, fingerprint);
+        let bytes: Uint8Array;
+        if (cached) {
+          bytes = cached.bytes;
+        } else {
+          const raw = await sshSftpRead(hostId, entry.path);
+          bytes = bytesFromInvoke(raw);
+          cachePut(hostId, entry.path, bytes, fingerprint, null);
+        }
         const destination = await save({
           defaultPath: entry.name,
           title: "Save file",
@@ -149,7 +259,7 @@ export function useSftp({
           setTransfer(null);
           return;
         }
-        await writeFile(destination, Uint8Array.from(bytes));
+        await writeFile(destination, bytes);
         setTransfer({
           kind: "download",
           name: entry.name,
@@ -183,6 +293,13 @@ export function useSftp({
       const data = await readFile(localPath);
       const remote = joinRemotePath(path, name);
       await sshSftpWrite(hostId, remote, data);
+      cachePut(
+        hostId,
+        remote,
+        data,
+        { size: data.byteLength, mtime: null },
+        null,
+      );
       setTransfer({ kind: "upload", name, busy: false, error: null });
       await refresh();
     } catch (err) {
@@ -205,8 +322,12 @@ export function useSftp({
     openDir,
     mkdir,
     removeEntry,
+    renameEntry,
+    openEntry,
+    saveText,
     downloadEntry,
     uploadFile,
     clearTransfer: () => setTransfer(null),
+    clearError: () => setError(null),
   };
 }

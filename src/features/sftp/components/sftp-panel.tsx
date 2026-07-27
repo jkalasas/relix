@@ -1,19 +1,56 @@
 import {
+  lazy,
+  Suspense,
+  useCallback,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
+import {
   ChevronUp,
-  Download,
   File,
   Folder,
   FolderOpen,
   FolderPlus,
   RefreshCw,
-  Trash2,
   Upload,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { SftpBinaryView } from "@/features/sftp/components/sftp-binary-view";
+import { SftpDeleteDialog } from "@/features/sftp/components/sftp-delete-dialog";
+import { SftpDiscardDialog } from "@/features/sftp/components/sftp-discard-dialog";
+import {
+  SftpEntryMenu,
+  type SftpEntryAction,
+  type SftpEntryMenuState,
+} from "@/features/sftp/components/sftp-entry-menu";
+import { SftpImageViewer } from "@/features/sftp/components/sftp-image-viewer";
 import { formatBytes, parentPath } from "@/features/sftp/format";
-import { useSftp } from "@/features/sftp/use-sftp";
+import { useSftp, type OpenedRemoteFile } from "@/features/sftp/use-sftp";
 import type { Host } from "@/features/hosts/types";
+import type { SftpEntry } from "@/features/ssh";
+import { parseSshError } from "@/features/ssh/errors";
+import { useLongPress } from "@/hooks/use-long-press";
 import { cn } from "@/lib/utils";
+
+const SftpFileEditor = lazy(() =>
+  import("@/features/sftp/components/sftp-file-editor").then((mod) => ({
+    default: mod.SftpFileEditor,
+  })),
+);
+const SftpPdfViewer = lazy(() =>
+  import("@/features/sftp/components/sftp-pdf-viewer").then((mod) => ({
+    default: mod.SftpPdfViewer,
+  })),
+);
+
+function ViewerFallback({ label }: { label: string }) {
+  return (
+    <p className="px-4 py-6 text-center text-[13px] text-muted-foreground">
+      {label}
+    </p>
+  );
+}
 
 type SftpPanelProps = {
   host: Host;
@@ -22,6 +59,114 @@ type SftpPanelProps = {
   tmuxWindowId?: string | null;
   onConnect: () => void;
 };
+
+type ViewerState =
+  | { status: "loading"; entry: SftpEntry }
+  | { status: "ready"; file: OpenedRemoteFile; text: string; dirty: boolean }
+  | { status: "error"; entry: SftpEntry; message: string };
+
+function SftpEntryRow({
+  entry,
+  renaming,
+  renameValue,
+  busy,
+  onOpen,
+  onMenu,
+  onRenameValue,
+  onRenameCommit,
+  onRenameCancel,
+}: {
+  entry: SftpEntry;
+  renaming: boolean;
+  renameValue: string;
+  busy: boolean;
+  onOpen: () => void;
+  onMenu: (point: { x: number; y: number }) => void;
+  onRenameValue: (value: string) => void;
+  onRenameCommit: () => void;
+  onRenameCancel: () => void;
+}) {
+  const longPress = useLongPress(onMenu, !renaming);
+
+  return (
+    <li
+      className="flex min-h-11 items-center gap-2 border-b border-border/60 px-3 py-1.5 sm:px-4 md:min-h-9"
+      onContextMenu={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        if (!renaming) onMenu({ x: event.clientX, y: event.clientY });
+      }}
+      onPointerDown={longPress.onPointerDown}
+      onPointerMove={longPress.onPointerMove}
+      onPointerUp={longPress.onPointerUp}
+      onPointerCancel={longPress.onPointerCancel}
+    >
+      {renaming ? (
+        <>
+          {entry.isDir ? (
+            <Folder
+              className="size-4 shrink-0 text-status-transfer"
+              aria-hidden
+            />
+          ) : (
+            <File
+              className="size-4 shrink-0 text-muted-foreground"
+              aria-hidden
+            />
+          )}
+          <input
+            autoFocus
+            value={renameValue}
+            aria-label={`Rename ${entry.name}`}
+            onChange={(event) => onRenameValue(event.target.value)}
+            onBlur={() => onRenameCommit()}
+            onFocus={(event) => event.currentTarget.select()}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                event.preventDefault();
+                onRenameCommit();
+              }
+              if (event.key === "Escape") {
+                event.preventDefault();
+                onRenameCancel();
+              }
+            }}
+            onPointerDown={(event) => event.stopPropagation()}
+            className="min-w-0 flex-1 rounded-sm bg-background px-1.5 py-1 font-mono text-[13px] text-foreground outline-none ring-1 ring-ring"
+          />
+        </>
+      ) : (
+        <button
+          type="button"
+          className="flex min-w-0 flex-1 items-center gap-2 text-left"
+          disabled={busy}
+          onClick={() => {
+            if (longPress.suppressClick()) return;
+            onOpen();
+          }}
+        >
+          {entry.isDir ? (
+            <Folder
+              className="size-4 shrink-0 text-status-transfer"
+              aria-hidden
+            />
+          ) : (
+            <File
+              className="size-4 shrink-0 text-muted-foreground"
+              aria-hidden
+            />
+          )}
+          <span className="min-w-0 flex-1 truncate font-mono text-[13px]">
+            {entry.name}
+          </span>
+          <span className="shrink-0 font-mono text-[11px] text-muted-foreground">
+            {entry.isDir ? "dir" : formatBytes(entry.size)}
+          </span>
+        </button>
+      )}
+    </li>
+  );
+}
 
 export function SftpPanel({
   host,
@@ -39,6 +184,147 @@ export function SftpPanel({
     tmuxWindowId,
   });
   const upPath = parentPath(sftp.path);
+
+  const [menu, setMenu] = useState<SftpEntryMenuState | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<SftpEntry | null>(null);
+  const [deleteBusy, setDeleteBusy] = useState(false);
+  const [renamingPath, setRenamingPath] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState("");
+  const [viewer, setViewer] = useState<ViewerState | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [discardOpen, setDiscardOpen] = useState(false);
+  const renameOriginalRef = useRef("");
+
+  const openViewer = useCallback(
+    async (entry: SftpEntry) => {
+      if (entry.isDir) {
+        sftp.openDir(entry.path);
+        return;
+      }
+      setSaveError(null);
+      setViewer({ status: "loading", entry });
+      try {
+        const file = await sftp.openEntry(entry);
+        setViewer({
+          status: "ready",
+          file,
+          text: file.text ?? "",
+          dirty: false,
+        });
+      } catch (err) {
+        setViewer({
+          status: "error",
+          entry,
+          message: parseSshError(err).message,
+        });
+      }
+    },
+    [sftp],
+  );
+
+  const requestCloseViewer = useCallback(() => {
+    if (viewer?.status === "ready" && viewer.dirty) {
+      setDiscardOpen(true);
+      return;
+    }
+    setViewer(null);
+    setSaveError(null);
+  }, [viewer]);
+
+  const confirmDiscard = useCallback(() => {
+    setDiscardOpen(false);
+    setViewer(null);
+    setSaveError(null);
+  }, []);
+
+  const saveViewer = useCallback(async () => {
+    if (viewer?.status !== "ready" || viewer.file.kind !== "text") return;
+    setSaving(true);
+    setSaveError(null);
+    try {
+      const text = viewer.text;
+      await sftp.saveText(viewer.file.entry, text);
+      const bytes = new TextEncoder().encode(text);
+      setViewer({
+        status: "ready",
+        dirty: false,
+        text,
+        file: {
+          ...viewer.file,
+          text,
+          bytes,
+          entry: {
+            ...viewer.file.entry,
+            size: bytes.byteLength,
+            mtime: null,
+          },
+        },
+      });
+    } catch (err) {
+      setSaveError(parseSshError(err).message);
+    } finally {
+      setSaving(false);
+    }
+  }, [sftp, viewer]);
+
+  const beginRename = useCallback((entry: SftpEntry) => {
+    setRenamingPath(entry.path);
+    setRenameValue(entry.name);
+    renameOriginalRef.current = entry.name;
+  }, []);
+
+  const commitRename = useCallback(async () => {
+    if (!renamingPath) return;
+    const entry = sftp.entries.find((item) => item.path === renamingPath);
+    const next = renameValue.trim();
+    setRenamingPath(null);
+    if (!entry || !next || next === renameOriginalRef.current) return;
+    try {
+      await sftp.renameEntry(entry, next);
+    } catch {
+      // error surfaced via sftp.error
+    }
+  }, [renameValue, renamingPath, sftp]);
+
+  const cancelRename = useCallback(() => {
+    setRenamingPath(null);
+    setRenameValue("");
+  }, []);
+
+  const onEntryAction = useCallback(
+    (action: SftpEntryAction, entry: SftpEntry) => {
+      switch (action) {
+        case "view":
+        case "open":
+          void openViewer(entry);
+          break;
+        case "rename":
+          beginRename(entry);
+          break;
+        case "download":
+          void sftp.downloadEntry(entry);
+          break;
+        case "delete":
+          setDeleteTarget(entry);
+          break;
+      }
+    },
+    [beginRename, openViewer, sftp],
+  );
+
+  const confirmDelete = useCallback(async () => {
+    if (!deleteTarget) return;
+    setDeleteBusy(true);
+    try {
+      await sftp.removeEntry(deleteTarget);
+      setDeleteTarget(null);
+    } catch {
+      // keep dialog open; error on panel
+    } finally {
+      setDeleteBusy(false);
+    }
+  }, [deleteTarget, sftp]);
 
   if (!connected) {
     return (
@@ -60,6 +346,130 @@ export function SftpPanel({
         <Button type="button" size="sm" onClick={onConnect}>
           Connect
         </Button>
+      </div>
+    );
+  }
+
+  if (viewer?.status === "loading") {
+    return (
+      <div
+        role="tabpanel"
+        id="panel-sftp"
+        aria-labelledby="tab-sftp"
+        className="flex min-h-0 flex-1 flex-col"
+      >
+        <div className="flex min-h-11 shrink-0 items-center gap-2 border-b border-border px-3 py-2 sm:px-4 md:min-h-10">
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            onClick={() => setViewer(null)}
+            className="min-h-9 shrink-0 md:min-h-7"
+          >
+            Cancel
+          </Button>
+          <p className="min-w-0 flex-1 truncate font-mono text-xs text-muted-foreground">
+            {viewer.entry.path}
+          </p>
+        </div>
+        <p className="px-4 py-6 text-center text-[13px] text-muted-foreground">
+          Opening…
+        </p>
+      </div>
+    );
+  }
+
+  if (viewer?.status === "error") {
+    return (
+      <div
+        role="tabpanel"
+        id="panel-sftp"
+        aria-labelledby="tab-sftp"
+        className="flex min-h-0 flex-1 flex-col"
+      >
+        <SftpBinaryView
+          path={viewer.entry.path}
+          name={viewer.entry.name}
+          message={viewer.message}
+          onBack={() => setViewer(null)}
+          onDownload={() => void sftp.downloadEntry(viewer.entry)}
+        />
+      </div>
+    );
+  }
+
+  if (viewer?.status === "ready") {
+    const { file } = viewer;
+    let body: ReactNode = null;
+    if (file.kind === "text") {
+      body = (
+        <Suspense fallback={<ViewerFallback label="Loading editor…" />}>
+          <SftpFileEditor
+            path={file.entry.path}
+            name={file.entry.name}
+            value={viewer.text}
+            dirty={viewer.dirty}
+            saving={saving}
+            error={saveError}
+            onChange={(text) =>
+              setViewer({
+                status: "ready",
+                file,
+                text,
+                dirty: text !== (file.text ?? ""),
+              })
+            }
+            onSave={() => void saveViewer()}
+            onBack={requestCloseViewer}
+          />
+        </Suspense>
+      );
+    } else if (file.kind === "image") {
+      body = (
+        <SftpImageViewer
+          path={file.entry.path}
+          name={file.entry.name}
+          bytes={file.bytes}
+          onBack={() => setViewer(null)}
+        />
+      );
+    } else if (file.kind === "pdf") {
+      body = (
+        <Suspense fallback={<ViewerFallback label="Loading PDF…" />}>
+          <SftpPdfViewer
+            path={file.entry.path}
+            name={file.entry.name}
+            bytes={file.bytes}
+            onBack={() => setViewer(null)}
+          />
+        </Suspense>
+      );
+    } else {
+      body = (
+        <SftpBinaryView
+          path={file.entry.path}
+          name={file.entry.name}
+          message="This file is not a text, image, or PDF preview."
+          onBack={() => setViewer(null)}
+          onDownload={() => void sftp.downloadEntry(file.entry)}
+        />
+      );
+    }
+
+    return (
+      <div
+        role="tabpanel"
+        id="panel-sftp"
+        aria-labelledby="tab-sftp"
+        className="flex min-h-0 flex-1 flex-col"
+      >
+        {body}
+        <SftpDiscardDialog
+          open={discardOpen}
+          fileName={file.entry.name}
+          onOpenChange={setDiscardOpen}
+          onDiscard={confirmDiscard}
+        />
       </div>
     );
   }
@@ -182,65 +592,37 @@ export function SftpPanel({
         ) : (
           <ul className="flex flex-col" aria-label="Remote files">
             {sftp.entries.map((entry) => (
-              <li
+              <SftpEntryRow
                 key={entry.path}
-                className="flex min-h-11 items-center gap-2 border-b border-border/60 px-3 py-1.5 sm:px-4 md:min-h-9"
-              >
-                <button
-                  type="button"
-                  className="flex min-w-0 flex-1 items-center gap-2 text-left"
-                  onClick={() => {
-                    if (entry.isDir) sftp.openDir(entry.path);
-                    else void sftp.downloadEntry(entry);
-                  }}
-                >
-                  {entry.isDir ? (
-                    <Folder
-                      className="size-4 shrink-0 text-status-transfer"
-                      aria-hidden
-                    />
-                  ) : (
-                    <File
-                      className="size-4 shrink-0 text-muted-foreground"
-                      aria-hidden
-                    />
-                  )}
-                  <span className="min-w-0 flex-1 truncate font-mono text-[13px]">
-                    {entry.name}
-                  </span>
-                  <span className="shrink-0 font-mono text-[11px] text-muted-foreground">
-                    {entry.isDir ? "dir" : formatBytes(entry.size)}
-                  </span>
-                </button>
-                {!entry.isDir ? (
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="ghost"
-                    className="min-h-9 shrink-0 md:min-h-7"
-                    aria-label={`Download ${entry.name}`}
-                    onClick={() => void sftp.downloadEntry(entry)}
-                    disabled={sftp.transfer?.busy}
-                  >
-                    <Download className="size-4" />
-                  </Button>
-                ) : null}
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="ghost"
-                  className="min-h-9 shrink-0 md:min-h-7"
-                  aria-label={`Delete ${entry.name}`}
-                  onClick={() => void sftp.removeEntry(entry)}
-                  disabled={sftp.transfer?.busy}
-                >
-                  <Trash2 className="size-4" />
-                </Button>
-              </li>
+                entry={entry}
+                renaming={renamingPath === entry.path}
+                renameValue={renameValue}
+                busy={Boolean(sftp.transfer?.busy)}
+                onOpen={() => void openViewer(entry)}
+                onMenu={(point) => setMenu({ entry, ...point })}
+                onRenameValue={setRenameValue}
+                onRenameCommit={() => void commitRename()}
+                onRenameCancel={cancelRename}
+              />
             ))}
           </ul>
         )}
       </div>
+
+      <SftpEntryMenu
+        menu={menu}
+        busy={Boolean(sftp.transfer?.busy) || deleteBusy}
+        onClose={() => setMenu(null)}
+        onAction={onEntryAction}
+      />
+      <SftpDeleteDialog
+        entry={deleteTarget}
+        busy={deleteBusy}
+        onOpenChange={(open) => {
+          if (!open && !deleteBusy) setDeleteTarget(null);
+        }}
+        onConfirm={() => void confirmDelete()}
+      />
     </div>
   );
 }

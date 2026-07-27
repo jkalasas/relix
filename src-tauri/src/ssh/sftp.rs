@@ -17,6 +17,7 @@ pub struct SftpEntry {
     pub path: String,
     pub is_dir: bool,
     pub size: u64,
+    pub mtime: Option<u32>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -190,7 +191,9 @@ impl SshManager {
             .map(|entry| {
                 let name = entry.file_name();
                 let is_dir = entry.file_type().is_dir();
-                let size = entry.metadata().size.unwrap_or(0);
+                let meta = entry.metadata();
+                let size = meta.size.unwrap_or(0);
+                let mtime = meta.mtime;
                 let entry_path = entry.path();
                 SftpEntry {
                     path: if entry_path.is_empty() {
@@ -201,6 +204,7 @@ impl SshManager {
                     name,
                     is_dir,
                     size,
+                    mtime,
                 }
             })
             .collect();

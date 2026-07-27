@@ -85,6 +85,7 @@ export type SftpEntry = {
   path: string;
   isDir: boolean;
   size: number;
+  mtime: number | null;
 };
 
 export type SftpListResult = {
