@@ -44,7 +44,10 @@ export function useWorkspace({ hosts }: UseWorkspaceOptions) {
 
   const closeHostForm = useCallback(() => {
     setFormMode(null);
-  }, []);
+    if (!selectedId) {
+      setMobilePane("hosts");
+    }
+  }, [selectedId]);
 
   const openAddForward = useCallback(() => {
     setForwardFormMode({ type: "add" });
