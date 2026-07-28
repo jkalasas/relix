@@ -1,20 +1,20 @@
 import { useEffect } from "react";
-import { cycleShellId } from "@/features/shells/lib/cycle-shell";
-import type { ShellSession } from "@/features/shells/types";
+import { cycleTabId } from "@/features/session-tabs/lib/cycle-tab";
+import type { SessionTab } from "@/features/session-tabs/types";
 
-type UseShellTabShortcutsOptions = {
+type UseSessionTabShortcutsOptions = {
   enabled: boolean;
-  sessions: ShellSession[];
+  tabs: SessionTab[];
   activeId: string | null;
   onSelect: (id: string) => void;
 };
 
-export function useShellTabShortcuts({
+export function useSessionTabShortcuts({
   enabled,
-  sessions,
+  tabs,
   activeId,
   onSelect,
-}: UseShellTabShortcutsOptions) {
+}: UseSessionTabShortcutsOptions) {
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
       if (!enabled) return;
@@ -22,11 +22,7 @@ export function useShellTabShortcuts({
         return;
       }
 
-      const nextId = cycleShellId(
-        sessions,
-        activeId,
-        event.shiftKey ? -1 : 1,
-      );
+      const nextId = cycleTabId(tabs, activeId, event.shiftKey ? -1 : 1);
       if (!nextId) return;
 
       event.preventDefault();
@@ -36,5 +32,5 @@ export function useShellTabShortcuts({
 
     window.addEventListener("keydown", onKeyDown, true);
     return () => window.removeEventListener("keydown", onKeyDown, true);
-  }, [activeId, enabled, onSelect, sessions]);
+  }, [activeId, enabled, onSelect, tabs]);
 }

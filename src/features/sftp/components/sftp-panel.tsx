@@ -1,11 +1,4 @@
-import {
-  lazy,
-  Suspense,
-  useCallback,
-  useRef,
-  useState,
-  type ReactNode,
-} from "react";
+import { useCallback, useRef, useState } from "react";
 import {
   ChevronUp,
   File,
@@ -16,42 +9,19 @@ import {
   Upload,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { SftpBinaryView } from "@/features/sftp/components/sftp-binary-view";
 import { SftpDeleteDialog } from "@/features/sftp/components/sftp-delete-dialog";
-import { SftpDiscardDialog } from "@/features/sftp/components/sftp-discard-dialog";
 import {
   SftpEntryMenu,
   type SftpEntryAction,
   type SftpEntryMenuState,
 } from "@/features/sftp/components/sftp-entry-menu";
-import { SftpImageViewer } from "@/features/sftp/components/sftp-image-viewer";
 import { formatBytes, parentPath } from "@/features/sftp/format";
-import { useSftp, type OpenedRemoteFile } from "@/features/sftp/use-sftp";
+import { useSftp } from "@/features/sftp/use-sftp";
 import { isLocalHost } from "@/features/hosts/local-host";
 import type { Host } from "@/features/hosts/types";
 import type { SftpEntry } from "@/features/ssh";
-import { parseSshError } from "@/features/ssh/errors";
 import { useLongPress } from "@/hooks/use-long-press";
 import { cn } from "@/lib/utils";
-
-const SftpFileEditor = lazy(() =>
-  import("@/features/sftp/components/sftp-file-editor").then((mod) => ({
-    default: mod.SftpFileEditor,
-  })),
-);
-const SftpPdfViewer = lazy(() =>
-  import("@/features/sftp/components/sftp-pdf-viewer").then((mod) => ({
-    default: mod.SftpPdfViewer,
-  })),
-);
-
-function ViewerFallback({ label }: { label: string }) {
-  return (
-    <p className="px-4 py-6 text-center text-[13px] text-muted-foreground">
-      {label}
-    </p>
-  );
-}
 
 type SftpPanelProps = {
   host: Host;
@@ -59,12 +29,8 @@ type SftpPanelProps = {
   tmuxSession?: string | null;
   tmuxWindowId?: string | null;
   onConnect: () => void;
+  onOpenFile: (entry: SftpEntry) => void;
 };
-
-type ViewerState =
-  | { status: "loading"; entry: SftpEntry }
-  | { status: "ready"; file: OpenedRemoteFile; text: string; dirty: boolean }
-  | { status: "error"; entry: SftpEntry; message: string };
 
 function SftpEntryRow({
   entry,
@@ -175,6 +141,7 @@ export function SftpPanel({
   tmuxSession,
   tmuxWindowId,
   onConnect,
+  onOpenFile,
 }: SftpPanelProps) {
   const local = isLocalHost(host);
   const connected = host.status === "connected";
@@ -195,83 +162,18 @@ export function SftpPanel({
   const [deleteBusy, setDeleteBusy] = useState(false);
   const [renamingPath, setRenamingPath] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
-  const [viewer, setViewer] = useState<ViewerState | null>(null);
-  const [saveError, setSaveError] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
-  const [discardOpen, setDiscardOpen] = useState(false);
   const renameOriginalRef = useRef("");
 
-  const openViewer = useCallback(
-    async (entry: SftpEntry) => {
+  const openEntry = useCallback(
+    (entry: SftpEntry) => {
       if (entry.isDir) {
         sftp.openDir(entry.path);
         return;
       }
-      setSaveError(null);
-      setViewer({ status: "loading", entry });
-      try {
-        const file = await sftp.openEntry(entry);
-        setViewer({
-          status: "ready",
-          file,
-          text: file.text ?? "",
-          dirty: false,
-        });
-      } catch (err) {
-        setViewer({
-          status: "error",
-          entry,
-          message: parseSshError(err).message,
-        });
-      }
+      onOpenFile(entry);
     },
-    [sftp],
+    [onOpenFile, sftp],
   );
-
-  const requestCloseViewer = useCallback(() => {
-    if (viewer?.status === "ready" && viewer.dirty) {
-      setDiscardOpen(true);
-      return;
-    }
-    setViewer(null);
-    setSaveError(null);
-  }, [viewer]);
-
-  const confirmDiscard = useCallback(() => {
-    setDiscardOpen(false);
-    setViewer(null);
-    setSaveError(null);
-  }, []);
-
-  const saveViewer = useCallback(async () => {
-    if (viewer?.status !== "ready" || viewer.file.kind !== "text") return;
-    setSaving(true);
-    setSaveError(null);
-    try {
-      const text = viewer.text;
-      await sftp.saveText(viewer.file.entry, text);
-      const bytes = new TextEncoder().encode(text);
-      setViewer({
-        status: "ready",
-        dirty: false,
-        text,
-        file: {
-          ...viewer.file,
-          text,
-          bytes,
-          entry: {
-            ...viewer.file.entry,
-            size: bytes.byteLength,
-            mtime: null,
-          },
-        },
-      });
-    } catch (err) {
-      setSaveError(parseSshError(err).message);
-    } finally {
-      setSaving(false);
-    }
-  }, [sftp, viewer]);
 
   const beginRename = useCallback((entry: SftpEntry) => {
     setRenamingPath(entry.path);
@@ -302,7 +204,7 @@ export function SftpPanel({
       switch (action) {
         case "view":
         case "open":
-          void openViewer(entry);
+          openEntry(entry);
           break;
         case "rename":
           beginRename(entry);
@@ -315,7 +217,7 @@ export function SftpPanel({
           break;
       }
     },
-    [beginRename, openViewer, sftp],
+    [beginRename, openEntry, sftp],
   );
 
   const confirmDelete = useCallback(async () => {
@@ -335,8 +237,7 @@ export function SftpPanel({
     return (
       <div
         role="tabpanel"
-        id="panel-sftp"
-        aria-labelledby="tab-sftp"
+        id="session-panel-files"
         className="flex min-h-0 flex-1 flex-col items-center justify-center gap-4 px-6 text-center"
       >
         <div className="flex size-10 items-center justify-center rounded-xl border border-border bg-surface text-muted-foreground">
@@ -355,135 +256,10 @@ export function SftpPanel({
     );
   }
 
-  if (viewer?.status === "loading") {
-    return (
-      <div
-        role="tabpanel"
-        id="panel-sftp"
-        aria-labelledby="tab-sftp"
-        className="flex min-h-0 flex-1 flex-col"
-      >
-        <div className="flex min-h-11 shrink-0 items-center gap-2 border-b border-border px-3 py-2 sm:px-4 md:min-h-10">
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            onClick={() => setViewer(null)}
-            className="min-h-9 shrink-0 md:min-h-7"
-          >
-            Cancel
-          </Button>
-          <p className="min-w-0 flex-1 truncate font-mono text-xs text-muted-foreground">
-            {viewer.entry.path}
-          </p>
-        </div>
-        <p className="px-4 py-6 text-center text-[13px] text-muted-foreground">
-          Opening…
-        </p>
-      </div>
-    );
-  }
-
-  if (viewer?.status === "error") {
-    return (
-      <div
-        role="tabpanel"
-        id="panel-sftp"
-        aria-labelledby="tab-sftp"
-        className="flex min-h-0 flex-1 flex-col"
-      >
-        <SftpBinaryView
-          path={viewer.entry.path}
-          name={viewer.entry.name}
-          message={viewer.message}
-          onBack={() => setViewer(null)}
-          onDownload={() => void sftp.downloadEntry(viewer.entry)}
-        />
-      </div>
-    );
-  }
-
-  if (viewer?.status === "ready") {
-    const { file } = viewer;
-    let body: ReactNode = null;
-    if (file.kind === "text") {
-      body = (
-        <Suspense fallback={<ViewerFallback label="Loading editor…" />}>
-          <SftpFileEditor
-            path={file.entry.path}
-            name={file.entry.name}
-            value={viewer.text}
-            dirty={viewer.dirty}
-            saving={saving}
-            error={saveError}
-            onChange={(text) =>
-              setViewer({
-                status: "ready",
-                file,
-                text,
-                dirty: text !== (file.text ?? ""),
-              })
-            }
-            onSave={() => void saveViewer()}
-            onBack={requestCloseViewer}
-          />
-        </Suspense>
-      );
-    } else if (file.kind === "image") {
-      body = (
-        <SftpImageViewer
-          path={file.entry.path}
-          name={file.entry.name}
-          bytes={file.bytes}
-          onBack={() => setViewer(null)}
-        />
-      );
-    } else if (file.kind === "pdf") {
-      body = (
-        <Suspense fallback={<ViewerFallback label="Loading PDF…" />}>
-          <SftpPdfViewer
-            path={file.entry.path}
-            name={file.entry.name}
-            bytes={file.bytes}
-            onBack={() => setViewer(null)}
-          />
-        </Suspense>
-      );
-    } else {
-      body = (
-        <SftpBinaryView
-          path={file.entry.path}
-          name={file.entry.name}
-          message="This file is not a text, image, or PDF preview."
-          onBack={() => setViewer(null)}
-          onDownload={() => void sftp.downloadEntry(file.entry)}
-        />
-      );
-    }
-
-    return (
-      <div
-        role="tabpanel"
-        id="panel-sftp"
-        aria-labelledby="tab-sftp"
-        className="flex min-h-0 flex-1 flex-col"
-      >
-        {body}
-        <SftpDiscardDialog
-          open={discardOpen}
-          fileName={file.entry.name}
-          onOpenChange={setDiscardOpen}
-          onDiscard={confirmDiscard}
-        />
-      </div>
-    );
-  }
-
   return (
     <div
       role="tabpanel"
-      id="panel-sftp"
-      aria-labelledby="tab-sftp"
+      id="session-panel-files"
       className="flex min-h-0 flex-1 flex-col"
     >
       <div className="flex min-h-11 shrink-0 items-center gap-2 border-b border-border px-3 py-2 sm:px-4 md:min-h-10">
@@ -603,7 +379,7 @@ export function SftpPanel({
                 renaming={renamingPath === entry.path}
                 renameValue={renameValue}
                 busy={Boolean(sftp.transfer?.busy)}
-                onOpen={() => void openViewer(entry)}
+                onOpen={() => openEntry(entry)}
                 onMenu={(point) => setMenu({ entry, ...point })}
                 onRenameValue={setRenameValue}
                 onRenameCommit={() => void commitRename()}

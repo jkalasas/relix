@@ -244,7 +244,7 @@ export function useShells(options: UseShellsOptions = {}) {
             [hostId]: sessionId,
           }));
           await attachTmuxWindow(hostId, sessionId, tmuxSession, window.id);
-          return;
+          return sessionId;
         }
 
         const { sessionId: channelId } = await sshOpenShell(hostId, {
@@ -267,6 +267,7 @@ export function useShells(options: UseShellsOptions = {}) {
           ...current,
           [hostId]: sessionId,
         }));
+        return sessionId;
       } catch (error) {
         onOpenFailed?.(hostId);
         throw error;

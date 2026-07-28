@@ -4,7 +4,7 @@ import { useBoot } from "@/app/use-boot";
 import { useSshLifecycle } from "@/app/use-ssh-lifecycle";
 import { useWorkspace } from "@/app/use-workspace";
 import { EmptyWorkspace } from "@/components/workspace/empty-workspace";
-import { WorkspaceTabs } from "@/components/workspace/workspace-tabs";
+import { SessionTabBar } from "@/components/workspace/session-tab-bar";
 import {
   BackgroundSetupDialog,
   useAndroidBackground,
@@ -27,23 +27,39 @@ import {
 } from "@/features/hosts";
 import type { Host, HostConfig } from "@/features/hosts/types";
 import type { PortForwardConfig } from "@/features/forwards/types";
+import { SftpDiscardDialog } from "@/features/sftp/components/sftp-discard-dialog";
+import { SftpFileWorkspace } from "@/features/sftp/components/sftp-file-workspace";
 import { SftpPanel } from "@/features/sftp";
+import {
+  useSessionTabShortcuts,
+  useSessionTabs,
+  type SessionTab,
+} from "@/features/session-tabs";
 import {
   DEFAULT_TMUX_SESSION,
   TerminalPanel,
   useActiveShellFallback,
   useShells,
-  useShellTabShortcuts,
 } from "@/features/shells";
+import type { SftpEntry } from "@/features/ssh";
 
 function App() {
   const forwards = useForwards();
   const shells = useShells();
+  const sessionTabs = useSessionTabs();
   const [disconnectPrompt, setDisconnectPrompt] = useState<{
     hostId: string;
     sessionName: string;
   } | null>(null);
   const [disconnectBusy, setDisconnectBusy] = useState(false);
+  const [discardTarget, setDiscardTarget] = useState<{
+    hostId: string;
+    tabId: string;
+    fileName: string;
+  } | null>(null);
+
+  const sessionTabsRef = useRef(sessionTabs);
+  sessionTabsRef.current = sessionTabs;
 
   const onConnected = useCallback(
     async (host: HostConfig) => {
@@ -59,6 +75,7 @@ function App() {
     async (hostId: string) => {
       await shells.clearHostShells(hostId);
       forwards.markHostForwardsIdle(hostId);
+      sessionTabsRef.current.clearHost(hostId);
     },
     [forwards.markHostForwardsIdle, shells.clearHostShells],
   );
@@ -67,11 +84,14 @@ function App() {
     (hostId: string) => {
       forwards.removeHostForwards(hostId);
       shells.removeHostShells(hostId);
+      sessionTabsRef.current.removeHost(hostId);
     },
     [forwards.removeHostForwards, shells.removeHostShells],
   );
 
-  const ensureBackgroundReadyRef = useRef<() => Promise<boolean>>(async () => true);
+  const ensureBackgroundReadyRef = useRef<() => Promise<boolean>>(
+    async () => true,
+  );
   const ensureBackgroundReady = useCallback(
     () => ensureBackgroundReadyRef.current(),
     [],
@@ -111,10 +131,13 @@ function App() {
       const host = hosts.hosts.find((item) => item.id === hostId);
       const local = host ? isLocalHost(host) : false;
       try {
-        await shells.openShell(hostId, launchId, {
+        const sessionId = await shells.openShell(hostId, launchId, {
           shellMode: local ? "plain" : host?.shellMode,
           tmuxSession: local ? undefined : host?.tmuxSession,
         });
+        if (sessionId) {
+          sessionTabsRef.current.activateShellTab(hostId, sessionId);
+        }
       } catch {
         if (!local) {
           hosts.setHostStatus(hostId, "error", "Failed to open shell");
@@ -133,16 +156,19 @@ function App() {
     [hosts.setHostStatus, shells.selectShell],
   );
 
-  const requestDisconnect = useCallback((host: Host) => {
-    if (host.shellMode === "tmux") {
-      setDisconnectPrompt({
-        hostId: host.id,
-        sessionName: host.tmuxSession?.trim() || DEFAULT_TMUX_SESSION,
-      });
-      return;
-    }
-    void hosts.disconnectHost(host.id);
-  }, [hosts.disconnectHost]);
+  const requestDisconnect = useCallback(
+    (host: Host) => {
+      if (host.shellMode === "tmux") {
+        setDisconnectPrompt({
+          hostId: host.id,
+          sessionName: host.tmuxSession?.trim() || DEFAULT_TMUX_SESSION,
+        });
+        return;
+      }
+      void hosts.disconnectHost(host.id);
+    },
+    [hosts.disconnectHost],
+  );
 
   const confirmDisconnect = useCallback(
     async (choice: DisconnectChoice) => {
@@ -166,7 +192,37 @@ function App() {
     [disconnectPrompt, hosts.disconnectHost, shells.killTmuxSession],
   );
 
-  const workspace = useWorkspace({ hosts: hosts.hosts });
+  const selectedIdRef = useRef<string | null>(null);
+
+  const workspace = useWorkspace({
+    hosts: hosts.hosts,
+    onShortcutShell: () => {
+      const hostId = selectedIdRef.current;
+      if (!hostId) return;
+      const tabs = sessionTabsRef.current.tabsByHost[hostId] ?? [];
+      const shellTab = tabs.find((tab) => tab.kind === "shell");
+      if (shellTab) {
+        sessionTabsRef.current.selectTab(hostId, shellTab.id);
+        selectShell(hostId, shellTab.shellId);
+        return;
+      }
+      void openShell(hostId);
+    },
+    onShortcutFiles: () => {
+      const hostId = selectedIdRef.current;
+      if (!hostId) return;
+      sessionTabsRef.current.openToolTab(hostId, "files");
+    },
+    onShortcutPorts: () => {
+      const hostId = selectedIdRef.current;
+      if (!hostId) return;
+      const host = hosts.hosts.find((item) => item.id === hostId);
+      if (!host || isLocalHost(host)) return;
+      sessionTabsRef.current.openToolTab(hostId, "ports");
+    },
+  });
+
+  selectedIdRef.current = workspace.selectedId;
 
   const handleBack = useCallback(() => {
     if (androidBackground.setupOpen) {
@@ -176,11 +232,16 @@ function App() {
       setDisconnectPrompt(null);
       return true;
     }
+    if (discardTarget) {
+      setDiscardTarget(null);
+      return true;
+    }
     return workspace.handleBack();
   }, [
     androidBackground.setupOpen,
     disconnectBusy,
     disconnectPrompt,
+    discardTarget,
     workspace.handleBack,
   ]);
 
@@ -200,6 +261,7 @@ function App() {
     markForwardError: forwards.markForwardError,
     handleChannelClosed: shells.handleChannelClosed,
     clearSessionsForHost: shells.clearSessionsForHost,
+    clearTabsForHost: sessionTabs.clearHost,
   });
 
   useActiveShellFallback(
@@ -209,17 +271,42 @@ function App() {
     selectShell,
   );
 
+  // Keep shell tabs in sync with shell sessions (tmux reconcile, close, etc.)
+  useEffect(() => {
+    for (const [hostId, sessions] of Object.entries(shells.sessionsByHost)) {
+      sessionTabs.syncShellTabs(
+        hostId,
+        sessions.map((session) => session.id),
+      );
+    }
+  }, [sessionTabs.syncShellTabs, shells.sessionsByHost]);
+
+  // After tmux bootstrap, focus the active shell tab when nothing else is open.
+  useEffect(() => {
+    for (const [hostId, activeShellId] of Object.entries(
+      shells.activeSessionByHost,
+    )) {
+      if (!activeShellId) continue;
+      const tabs = sessionTabs.tabsByHost[hostId] ?? [];
+      const activeTabId = sessionTabs.activeTabByHost[hostId];
+      if (activeTabId) continue;
+      if (!tabs.some((tab) => tab.kind === "shell" && tab.shellId === activeShellId)) {
+        continue;
+      }
+      sessionTabs.activateShellTab(hostId, activeShellId);
+    }
+  }, [
+    sessionTabs.activateShellTab,
+    sessionTabs.activeTabByHost,
+    sessionTabs.tabsByHost,
+    shells.activeSessionByHost,
+  ]);
+
   const selectedHost = useMemo(
     () => hosts.hosts.find((host) => host.id === workspace.selectedId) ?? null,
     [hosts.hosts, workspace.selectedId],
   );
   const selectedIsLocal = selectedHost ? isLocalHost(selectedHost) : false;
-
-  useEffect(() => {
-    if (selectedIsLocal && workspace.tab === "forwards") {
-      workspace.setTab("terminal");
-    }
-  }, [selectedIsLocal, workspace.setTab, workspace.tab]);
 
   const selectedSessions = selectedHost
     ? (shells.sessionsByHost[selectedHost.id] ?? [])
@@ -231,10 +318,42 @@ function App() {
     selectedSessions.find((session) => session.id === activeSessionId) ?? null;
   const activeShellCwd = activeSession?.cwd ?? null;
 
-  const terminalChromeOpen =
+  const selectedTabs = selectedHost
+    ? (sessionTabs.tabsByHost[selectedHost.id] ?? [])
+    : [];
+  const activeTabId = selectedHost
+    ? (sessionTabs.activeTabByHost[selectedHost.id] ?? null)
+    : null;
+  const activeTab =
+    selectedTabs.find((tab) => tab.id === activeTabId) ?? null;
+  const selectedFiles = selectedHost
+    ? (sessionTabs.filesByHost[selectedHost.id] ?? {})
+    : {};
+
+  const shellChromeOpen =
     !workspace.formMode &&
     !workspace.forwardFormMode &&
-    workspace.tab === "terminal";
+    selectedHost != null &&
+    activeTab?.kind === "shell";
+
+  const filesChromeOpen =
+    !workspace.formMode &&
+    !workspace.forwardFormMode &&
+    selectedHost != null &&
+    activeTab?.kind === "files";
+
+  const portsChromeOpen =
+    !workspace.formMode &&
+    !workspace.forwardFormMode &&
+    selectedHost != null &&
+    !selectedIsLocal &&
+    activeTab?.kind === "ports";
+
+  const fileChromeOpen =
+    !workspace.formMode &&
+    !workspace.forwardFormMode &&
+    selectedHost != null &&
+    activeTab?.kind === "file";
 
   // Keep panels mounted across host switches so xterm scrollback and WebGL
   // surfaces survive. Only the selected host is shown.
@@ -245,23 +364,66 @@ function App() {
     });
   }, [hosts.hosts, selectedHost?.id, shells.sessionsByHost]);
 
-  const selectShellTab = useCallback(
-    (id: string) => {
-      if (selectedHost) selectShell(selectedHost.id, id);
+  const selectSessionTab = useCallback(
+    (tabId: string) => {
+      if (!selectedHost) return;
+      sessionTabs.selectTab(selectedHost.id, tabId);
+      const tab = (sessionTabs.tabsByHost[selectedHost.id] ?? []).find(
+        (item) => item.id === tabId,
+      );
+      if (tab?.kind === "shell") {
+        selectShell(selectedHost.id, tab.shellId);
+      }
     },
-    [selectedHost, selectShell],
+    [selectedHost, selectShell, sessionTabs],
   );
 
-  useShellTabShortcuts({
+  const closeSessionTab = useCallback(
+    (tabId: string) => {
+      if (!selectedHost) return;
+      const tab = (sessionTabs.tabsByHost[selectedHost.id] ?? []).find(
+        (item) => item.id === tabId,
+      );
+      if (!tab) return;
+
+      // Shell tabs are removed via session sync after the PTY closes.
+      if (tab.kind === "shell") {
+        void shells.closeShell(selectedHost.id, tab.shellId);
+        return;
+      }
+
+      const result = sessionTabs.closeTab(selectedHost.id, tabId);
+      if (!result.closed && result.dirty && result.tab?.kind === "file") {
+        setDiscardTarget({
+          hostId: selectedHost.id,
+          tabId,
+          fileName: result.tab.name,
+        });
+      }
+    },
+    [selectedHost, sessionTabs, shells],
+  );
+
+  const confirmDiscardTab = useCallback(() => {
+    if (!discardTarget) return;
+    const { hostId, tabId } = discardTarget;
+    const result = sessionTabs.closeTab(hostId, tabId, { force: true });
+    setDiscardTarget(null);
+    if (result.closed && result.tab?.kind === "shell") {
+      void shells.closeShell(hostId, result.tab.shellId);
+    }
+  }, [discardTarget, sessionTabs, shells]);
+
+  useSessionTabShortcuts({
     enabled:
       selectedHost != null &&
       !workspace.formMode &&
-      !workspace.forwardFormMode &&
-      workspace.tab === "terminal",
-    sessions: selectedSessions,
-    activeId: activeSessionId,
-    onSelect: selectShellTab,
+      !workspace.forwardFormMode,
+    tabs: selectedTabs,
+    activeId: activeTabId,
+    onSelect: selectSessionTab,
   });
+
   const selectedForwards = selectedHost
     ? (forwards.forwardsByHost[selectedHost.id] ?? [])
     : [];
@@ -300,8 +462,9 @@ function App() {
       if (!selectedHost) return;
       forwards.saveForward(selectedHost.id, config);
       workspace.afterSaveForward();
+      sessionTabs.openToolTab(selectedHost.id, "ports");
     },
-    [forwards.saveForward, selectedHost, workspace.afterSaveForward],
+    [forwards.saveForward, selectedHost, sessionTabs, workspace.afterSaveForward],
   );
 
   const handleDeleteForward = useCallback(
@@ -313,10 +476,24 @@ function App() {
     [forwards.deleteForward, selectedHost, workspace.closeForwardForm],
   );
 
+  const handleOpenFile = useCallback(
+    (entry: SftpEntry) => {
+      if (!selectedHost) return;
+      void sessionTabs.openFileTab(selectedHost.id, entry);
+    },
+    [selectedHost, sessionTabs],
+  );
+
   const showHostRail =
     workspace.mobilePane === "hosts" ? "flex" : "hidden md:flex";
   const showSession =
     workspace.mobilePane === "session" ? "flex" : "hidden md:flex";
+
+  const openFileTabs = useMemo(() => {
+    return selectedTabs.filter(
+      (tab): tab is Extract<SessionTab, { kind: "file" }> => tab.kind === "file",
+    );
+  }, [selectedTabs]);
 
   if (hosts.booting) {
     return (
@@ -372,27 +549,30 @@ function App() {
               onEdit={() => workspace.openEditHost(selectedHost.id)}
               onBack={workspace.backToHosts}
             />
-            <WorkspaceTabs
-              active={workspace.tab}
-              onChange={workspace.setTab}
-              tabs={selectedIsLocal ? ["terminal", "sftp"] : undefined}
+            <SessionTabBar
+              tabs={selectedTabs}
+              activeId={activeTabId}
+              shells={selectedSessions}
+              files={selectedFiles}
+              showPorts={!selectedIsLocal}
+              onSelect={selectSessionTab}
+              onClose={closeSessionTab}
+              onRenameShell={(shellId, name) =>
+                shells.renameShell(selectedHost.id, shellId, name)
+              }
+              onReorder={(orderedIds) =>
+                sessionTabs.reorderTabs(selectedHost.id, orderedIds)
+              }
+              onNewShell={(launchId) => void openShell(selectedHost.id, launchId)}
+              onOpenFiles={() =>
+                sessionTabs.openToolTab(selectedHost.id, "files")
+              }
+              onOpenPorts={() =>
+                sessionTabs.openToolTab(selectedHost.id, "ports")
+              }
             />
-            {workspace.tab === "sftp" ? (
-              <SftpPanel
-                host={selectedHost}
-                shellCwd={activeShellCwd}
-                tmuxSession={
-                  selectedIsLocal
-                    ? undefined
-                    : (activeSession?.tmuxSession ?? selectedHost.tmuxSession)
-                }
-                tmuxWindowId={
-                  selectedIsLocal ? undefined : activeSession?.tmuxWindowId
-                }
-                onConnect={() => void hosts.connectHost(selectedHost.id)}
-              />
-            ) : null}
-            {!selectedIsLocal && workspace.tab === "forwards" ? (
+
+            {portsChromeOpen ? (
               <ForwardsPanel
                 host={selectedHost}
                 forwards={selectedForwards}
@@ -400,7 +580,9 @@ function App() {
                 onAddForward={workspace.openAddForward}
                 onStartForward={(id) => {
                   const forward = selectedForwards.find((item) => item.id === id);
-                  if (forward) void forwards.startForward(selectedHost.id, forward);
+                  if (forward) {
+                    void forwards.startForward(selectedHost.id, forward);
+                  }
                 }}
                 onStopForward={(id) =>
                   void forwards.stopForward(selectedHost.id, id)
@@ -409,6 +591,59 @@ function App() {
                 onDeleteForward={(id) => void handleDeleteForward(id)}
               />
             ) : null}
+
+            {selectedHost ? (
+              <div
+                className={
+                  filesChromeOpen
+                    ? "flex min-h-0 flex-1 flex-col"
+                    : "hidden"
+                }
+                aria-hidden={!filesChromeOpen}
+              >
+                <SftpPanel
+                  host={selectedHost}
+                  shellCwd={activeShellCwd}
+                  tmuxSession={
+                    selectedIsLocal
+                      ? undefined
+                      : (activeSession?.tmuxSession ?? selectedHost.tmuxSession)
+                  }
+                  tmuxWindowId={
+                    selectedIsLocal ? undefined : activeSession?.tmuxWindowId
+                  }
+                  onConnect={() => void hosts.connectHost(selectedHost.id)}
+                  onOpenFile={handleOpenFile}
+                />
+              </div>
+            ) : null}
+
+            {openFileTabs.map((tab) => {
+              const state = selectedFiles[tab.path];
+              if (!state) return null;
+              const active = fileChromeOpen && activeTab?.kind === "file" && activeTab.path === tab.path;
+              return (
+                <div
+                  key={tab.id}
+                  className={active ? "flex min-h-0 flex-1 flex-col" : "hidden"}
+                  aria-hidden={!active}
+                >
+                  <SftpFileWorkspace
+                    state={state}
+                    onChangeText={(text) =>
+                      sessionTabs.setFileText(selectedHost.id, tab.path, text)
+                    }
+                    onSave={() => sessionTabs.saveFile(selectedHost.id, tab.path)}
+                    onDownload={() =>
+                      void sessionTabs.downloadFile(selectedHost.id, tab.path)
+                    }
+                    onRevealFiles={() =>
+                      sessionTabs.openToolTab(selectedHost.id, "files")
+                    }
+                  />
+                </div>
+              );
+            })}
           </>
         ) : (
           <div className="hidden min-h-0 flex-1 flex-col md:flex">
@@ -419,17 +654,27 @@ function App() {
         {terminalHosts.length > 0 ? (
           <div
             className={
-              terminalChromeOpen
+              shellChromeOpen
                 ? "flex min-h-0 flex-1 flex-col"
                 : "hidden"
             }
-            aria-hidden={!terminalChromeOpen}
+            aria-hidden={!shellChromeOpen}
           >
             {terminalHosts.map((host) => {
               const selected = selectedHost?.id === host.id;
               const sessions = shells.sessionsByHost[host.id] ?? [];
               const hostActiveSessionId =
                 shells.activeSessionByHost[host.id] ?? null;
+              const hostActiveTabId =
+                sessionTabs.activeTabByHost[host.id] ?? null;
+              const hostActiveTab = (
+                sessionTabs.tabsByHost[host.id] ?? []
+              ).find((tab) => tab.id === hostActiveTabId);
+              const visibleShellId =
+                hostActiveTab?.kind === "shell"
+                  ? hostActiveTab.shellId
+                  : hostActiveSessionId;
+
               return (
                 <div
                   key={host.id}
@@ -443,24 +688,33 @@ function App() {
                   <TerminalPanel
                     host={host}
                     sessions={sessions}
-                    activeSessionId={hostActiveSessionId}
-                    visible={terminalChromeOpen && selected}
+                    activeSessionId={visibleShellId}
+                    visible={shellChromeOpen && selected}
                     onConnect={() => void hosts.connectHost(host.id)}
                     onOpenShell={(launchId) => void openShell(host.id, launchId)}
-                    onSelectShell={(id) => selectShell(host.id, id)}
-                    onCloseShell={(id) => void shells.closeShell(host.id, id)}
-                    onRenameShell={(id, name) =>
-                      shells.renameShell(host.id, id, name)
-                    }
-                    onReorderShells={(orderedIds) =>
-                      shells.reorderShells(host.id, orderedIds)
-                    }
                     onSessionCwd={shells.setSessionCwd}
                   />
                 </div>
               );
             })}
           </div>
+        ) : null}
+
+        {selectedHost &&
+        !workspace.formMode &&
+        !workspace.forwardFormMode &&
+        selectedTabs.length === 0 ? (
+          <TerminalPanel
+            host={selectedHost}
+            sessions={[]}
+            activeSessionId={null}
+            visible
+            onConnect={() => void hosts.connectHost(selectedHost.id)}
+            onOpenShell={(launchId) =>
+              void openShell(selectedHost.id, launchId)
+            }
+            onSessionCwd={shells.setSessionCwd}
+          />
         ) : null}
       </main>
 
@@ -489,6 +743,15 @@ function App() {
           if (!open && !disconnectBusy) setDisconnectPrompt(null);
         }}
         onConfirm={(choice) => void confirmDisconnect(choice)}
+      />
+
+      <SftpDiscardDialog
+        open={discardTarget != null}
+        fileName={discardTarget?.fileName ?? ""}
+        onOpenChange={(open) => {
+          if (!open) setDiscardTarget(null);
+        }}
+        onDiscard={confirmDiscardTab}
       />
 
       <BackgroundSetupDialog

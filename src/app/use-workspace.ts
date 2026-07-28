@@ -3,17 +3,23 @@ import type {
   FormMode,
   ForwardFormMode,
   MobilePane,
-  WorkspaceTab,
 } from "@/app/types";
 import type { Host } from "@/features/hosts/types";
 
 type UseWorkspaceOptions = {
   hosts: Host[];
+  onShortcutFiles?: () => void;
+  onShortcutPorts?: () => void;
+  onShortcutShell?: () => void;
 };
 
-export function useWorkspace({ hosts }: UseWorkspaceOptions) {
+export function useWorkspace({
+  hosts,
+  onShortcutFiles,
+  onShortcutPorts,
+  onShortcutShell,
+}: UseWorkspaceOptions) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [tab, setTab] = useState<WorkspaceTab>("terminal");
   const [mobilePane, setMobilePane] = useState<MobilePane>("hosts");
   const [formMode, setFormMode] = useState<FormMode>(null);
   const [forwardFormMode, setForwardFormMode] = useState<ForwardFormMode>(null);
@@ -65,7 +71,6 @@ export function useWorkspace({ hosts }: UseWorkspaceOptions) {
     setSelectedId(hostId);
     setFormMode(null);
     setForwardFormMode(null);
-    setTab("terminal");
     setMobilePane("session");
   }, []);
 
@@ -78,7 +83,6 @@ export function useWorkspace({ hosts }: UseWorkspaceOptions) {
 
   const afterSaveForward = useCallback(() => {
     setForwardFormMode(null);
-    setTab("forwards");
   }, []);
 
   const handleBack = useCallback(() => {
@@ -115,15 +119,15 @@ export function useWorkspace({ hosts }: UseWorkspaceOptions) {
       }
 
       if (event.key === "1") {
-        setTab("terminal");
+        onShortcutShell?.();
         return;
       }
       if (event.key === "2") {
-        setTab("sftp");
+        onShortcutFiles?.();
         return;
       }
       if (event.key === "3") {
-        setTab("forwards");
+        onShortcutPorts?.();
         return;
       }
 
@@ -153,13 +157,18 @@ export function useWorkspace({ hosts }: UseWorkspaceOptions) {
 
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [handleBack, hosts, selectedId]);
+  }, [
+    handleBack,
+    hosts,
+    onShortcutFiles,
+    onShortcutPorts,
+    onShortcutShell,
+    selectedId,
+  ]);
 
   return {
     selectedId,
     setSelectedId,
-    tab,
-    setTab,
     mobilePane,
     formMode,
     forwardFormMode,

@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { EmptyTerminal } from "@/features/shells/components/empty-terminal";
-import { ShellTabs } from "@/features/shells/components/shell-tabs";
 import { TerminalKeyBar } from "@/features/shells/components/terminal-key-bar";
 import {
   TerminalView,
@@ -28,10 +27,6 @@ type TerminalPanelProps = {
   visible: boolean;
   onConnect: () => void;
   onOpenShell: (launchId?: ShellLaunchId) => void;
-  onSelectShell: (id: string) => void;
-  onCloseShell: (id: string) => void;
-  onRenameShell: (id: string, name: string) => void;
-  onReorderShells: (orderedIds: string[]) => void;
   onSessionCwd: (sessionId: string, cwd: string) => void;
 };
 
@@ -42,10 +37,6 @@ export function TerminalPanel({
   visible,
   onConnect,
   onOpenShell,
-  onSelectShell,
-  onCloseShell,
-  onRenameShell,
-  onReorderShells,
   onSessionCwd,
 }: TerminalPanelProps) {
   const isMobileOs = useIsMobileOs();
@@ -167,19 +158,9 @@ export function TerminalPanel({
   return (
     <div
       role="tabpanel"
-      id="panel-terminal"
-      aria-labelledby="tab-terminal"
+      id={activeSession ? `session-panel-${activeSession.id}` : "session-panel-shell"}
       className="flex min-h-0 flex-1 flex-col"
     >
-      <ShellTabs
-        sessions={sessions}
-        activeId={activeSessionId}
-        onSelect={onSelectShell}
-        onClose={onCloseShell}
-        onRename={onRenameShell}
-        onReorder={onReorderShells}
-        onNew={(launchId) => onOpenShell(launchId)}
-      />
       <div className="relative flex min-h-0 flex-1 flex-col bg-[oklch(0.12_0.012_250)]">
         {sessions.map((session) => {
           if (!session.channelId) return null;

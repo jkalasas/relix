@@ -155,9 +155,9 @@ Do not “squeeze” the desktop split below `md`. Switch structure.
 ┌──────────┬─────────────────────────────────────────────┐
 │ Hosts    │ Session: user@host:port          ● status   │
 │ ───────  ├─────────────────────────────────────────────┤
-│ ● prod   │ [ Terminal ]  [ SFTP ]  [ Forwards ]        │
+│ ● prod   │ [shell] [file] [Files] …  [+] [Files] [Ports]│
 │ ○ stage  │                                             │
-│ ○ jump   │   active workspace                          │
+│ ○ jump   │   active document panel                     │
 │ + Host   │                                             │
 └──────────┴─────────────────────────────────────────────┘
 ```
@@ -166,8 +166,8 @@ Do not “squeeze” the desktop split below `md`. Switch structure.
 |---|---|---|
 | Host rail | ~240px (`w-60`) | Always visible; selected = elevated surface |
 | Session header | 48px | Mono target left; chip + connect right |
-| Workspace tabs | content | Amber underline; `tab` / `tabpanel` |
-| Workspace body | flex-1 | Terminal / SFTP / Forwards |
+| Session tabs | content | Document strip (shells, files, tools); elevated active pill |
+| Workspace body | flex-1 | Active tab panel |
 
 **Desktop window (Tauri):** default 1180×740, min ~880×560 (below that, mobile shell still applies if the window is narrow).
 
@@ -178,7 +178,7 @@ Hosts (root)                    Session (detail)
 ┌─────────────────────┐         ┌─────────────────────┐
 │ Relix          [+]  │         │ ←  bastion-prod  ●  │
 │ Hosts               │         │ user@host:22  [conn]│
-│ ● bastion-prod    › │  ──▶    │ Term │ SFTP │ Fwds  │
+│ ● bastion-prod    › │  ──▶    │ [shell][file]… [+]  │
 │ ○ staging         › │         │                     │
 │ ○ jump-2          › │         │   workspace         │
 └─────────────────────┘         └─────────────────────┘
@@ -189,7 +189,8 @@ Hosts (root)                    Session (detail)
 | Root | Full-width host list is the home surface |
 | Open host | Pushes session full-screen (no side rail) |
 | Back | Returns to host list; keeps selection for when they re-enter |
-| Tabs | Equal-width, full-bleed tab bar; ≥44px tall |
+| Tabs | Scrollable document tabs (not equal-width modes); ≥44px tall |
+| Tools | Trailing Files / Ports icons open or focus singleton tool tabs |
 | Primary actions | Reachable in thumb zone (bottom half when possible for destructive/secondary less critical) |
 | Safe areas | Respect `env(safe-area-inset-*)` on notch/home-indicator devices |
 | Sheets / forms | Full-screen or bottom sheet — not tiny centered modals |
@@ -219,9 +220,10 @@ Task-specific, one primary action, no fake metrics. Icon in a quiet bordered til
 | `SessionChip` | `components/status/session-chip.tsx` | Connected / idle / error pill |
 | `HostRail` | `features/hosts/components/host-rail.tsx` | Host list (rail on desktop, root screen on mobile) |
 | `SessionHeader` | `features/hosts/components/session-header.tsx` | Target + status + connect; back control on mobile |
-| `WorkspaceTabs` | `components/workspace/workspace-tabs.tsx` | Terminal · SFTP · Forwards |
+| `SessionTabBar` | `components/workspace/session-tab-bar.tsx` | Document tabs: shells · open files · Files · Ports |
 | `TerminalPanel` | `features/shells/components/terminal-panel.tsx` | Shell workspace |
-| `SftpPanel` | `features/sftp/components/sftp-panel.tsx` | File transfer workspace |
+| `SftpPanel` | `features/sftp/components/sftp-panel.tsx` | File browser / transfer |
+| `SftpFileWorkspace` | `features/sftp/components/sftp-file-workspace.tsx` | Open file editor / preview tab |
 | `ForwardsPanel` | `features/forwards/components/forwards-panel.tsx` | Tunnel list / empty |
 | `EmptyWorkspace` | `components/workspace/empty-workspace.tsx` | No host selected (desktop) |
 | `Button` / `Input` | `components/ui/*` | shadcn primitives — use variants, don’t restyle ad hoc |
@@ -264,10 +266,10 @@ Task-specific, one primary action, no fake metrics. Icon in a quiet bordered til
 | Shortcut | Action |
 |---|---|
 | `j` / `k` | Next / previous host |
-| `1` | Terminal |
-| `2` | SFTP |
-| `3` | Forwards |
-| `Ctrl+Tab` / `Ctrl+Shift+Tab` | Next / previous shell session |
+| `1` | Focus last shell tab (or open a shell) |
+| `2` | Open / focus Files |
+| `3` | Open / focus Ports |
+| `Ctrl+Tab` / `Ctrl+Shift+Tab` | Next / previous session tab |
 | `Ctrl/Cmd` + `=` / `-` | Zoom terminal font in / out |
 | `Ctrl/Cmd` + `0` | Reset terminal font |
 | Pinch / Ctrl+scroll | Zoom terminal font |

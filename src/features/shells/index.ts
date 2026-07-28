@@ -14,5 +14,4 @@ export {
   useShells,
   type ShellHostOptions,
 } from "@/features/shells/use-shells";
-export { useShellTabShortcuts } from "@/features/shells/use-shell-tab-shortcuts";
 export { TerminalPanel } from "@/features/shells/components/terminal-panel";

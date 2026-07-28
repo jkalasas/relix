@@ -30,8 +30,7 @@ export function ForwardsPanel({
   return (
     <div
       role="tabpanel"
-      id="panel-forwards"
-      aria-labelledby="tab-forwards"
+      id="session-panel-ports"
       className="flex min-h-0 flex-1 flex-col"
     >
       <div className="flex min-h-11 shrink-0 items-center justify-between gap-3 border-b border-border px-3 sm:px-4 md:h-10 md:min-h-0">
