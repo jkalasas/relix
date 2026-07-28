@@ -112,10 +112,7 @@ impl SshManager {
 
         for (id, shell) in removed_shells {
             shell.abort.abort();
-            {
-                let ch = shell.channel.lock().await;
-                let _ = ch.close().await;
-            }
+            shell.close_io().await;
             let _ = app.emit(
                 "ssh://shell-closed",
                 serde_json::json!({

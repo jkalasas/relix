@@ -1,5 +1,13 @@
 export type * from "@/features/hosts/types";
 export { configsToHosts, toHostConfig } from "@/features/hosts/convert";
+export {
+  LOCAL_HOST_ID,
+  createLocalHost,
+  isLocalHost,
+  isLocalHostId,
+  withLocalHost,
+  withoutLocalHost,
+} from "@/features/hosts/local-host";
 export { loadHostConfigs, saveHostConfigs } from "@/features/hosts/store";
 export { useHosts } from "@/features/hosts/use-hosts";
 export { HostRail } from "@/features/hosts/components/host-rail";

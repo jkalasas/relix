@@ -1,8 +1,9 @@
 import { ChevronRight, Plus, Server } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { StatusDot } from "@/components/status/status-dot";
-import { cn } from "@/lib/utils";
+import { isLocalHost } from "@/features/hosts/local-host";
 import type { Host } from "@/features/hosts/types";
+import { cn } from "@/lib/utils";
 
 type HostRailProps = {
   hosts: Host[];
@@ -85,7 +86,9 @@ export function HostRail({
                         {host.name}
                       </span>
                       <span className="mt-0.5 block truncate font-mono text-[11px] text-muted-foreground md:hidden">
-                        {host.user}@{host.hostname}
+                        {isLocalHost(host)
+                          ? "local shell"
+                          : `${host.user}@${host.hostname}`}
                       </span>
                     </span>
                     <ChevronRight

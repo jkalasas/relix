@@ -548,15 +548,46 @@ export function TerminalView({
     if (!visible) return;
     const term = termRef.current;
     const fit = fitRef.current;
-    if (!term || !fit) return;
+    const element = containerRef.current;
+    if (!term || !fit || !element) return;
 
-    const frame = requestAnimationFrame(() => {
+    let frame = 0;
+    let attempts = 0;
+    const run = () => {
+      // Parent may still be display:none for a frame after becoming "visible".
+      if (element.clientWidth === 0 && element.clientHeight === 0 && attempts < 12) {
+        attempts += 1;
+        frame = requestAnimationFrame(run);
+        return;
+      }
       restoreSurface(term, fit, sessionId);
       if (active) focusTerminal(term, { force: forceFocusRef.current });
       forceFocusRef.current = false;
-    });
+    };
+    frame = requestAnimationFrame(run);
     return () => cancelAnimationFrame(frame);
   }, [active, visible, sessionId]);
+
+  useEffect(() => {
+    const element = containerRef.current;
+    if (!element) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (!entries.some((entry) => entry.isIntersecting)) return;
+        if (!activeRef.current || !visibleRef.current) return;
+        const term = termRef.current;
+        const fit = fitRef.current;
+        if (!term || !fit) return;
+        requestAnimationFrame(() => {
+          restoreSurface(term, fit, sessionId);
+        });
+      },
+      { threshold: 0 },
+    );
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [sessionId]);
 
   return (
     <div

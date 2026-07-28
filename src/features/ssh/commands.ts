@@ -25,6 +25,14 @@ export function hostToConnectPayload(host: HostConfig): SshConnectPayload {
   };
 }
 
+export async function localShellAvailable(): Promise<boolean> {
+  try {
+    return await invoke<boolean>("local_shell_available");
+  } catch {
+    return false;
+  }
+}
+
 export async function sshConnect(host: HostConfig): Promise<void> {
   await invoke("ssh_connect", { config: hostToConnectPayload(host) });
 }

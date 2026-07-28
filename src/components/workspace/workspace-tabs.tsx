@@ -1,7 +1,7 @@
 import { cn } from "@/lib/utils";
 import type { WorkspaceTab } from "@/app/types";
 
-const tabs: { id: WorkspaceTab; label: string; shortcut: string }[] = [
+const ALL_TABS: { id: WorkspaceTab; label: string; shortcut: string }[] = [
   { id: "terminal", label: "Terminal", shortcut: "1" },
   { id: "sftp", label: "Files", shortcut: "2" },
   { id: "forwards", label: "Ports", shortcut: "3" },
@@ -10,9 +10,18 @@ const tabs: { id: WorkspaceTab; label: string; shortcut: string }[] = [
 type WorkspaceTabsProps = {
   active: WorkspaceTab;
   onChange: (tab: WorkspaceTab) => void;
+  tabs?: WorkspaceTab[];
 };
 
-export function WorkspaceTabs({ active, onChange }: WorkspaceTabsProps) {
+export function WorkspaceTabs({
+  active,
+  onChange,
+  tabs: enabledTabs,
+}: WorkspaceTabsProps) {
+  const tabs = enabledTabs
+    ? ALL_TABS.filter((tab) => enabledTabs.includes(tab.id))
+    : ALL_TABS;
+
   return (
     <div
       role="tablist"

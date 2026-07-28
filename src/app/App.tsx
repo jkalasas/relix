@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAndroidBack } from "@/app/use-android-back";
 import { useBoot } from "@/app/use-boot";
 import { useSshLifecycle } from "@/app/use-ssh-lifecycle";
@@ -21,6 +21,7 @@ import {
   HostForm,
   HostKeyDialog,
   HostRail,
+  isLocalHost,
   SessionHeader,
   useHosts,
 } from "@/features/hosts";
@@ -108,13 +109,16 @@ function App() {
       launchId?: Parameters<typeof shells.openShell>[1],
     ) => {
       const host = hosts.hosts.find((item) => item.id === hostId);
+      const local = host ? isLocalHost(host) : false;
       try {
         await shells.openShell(hostId, launchId, {
-          shellMode: host?.shellMode,
-          tmuxSession: host?.tmuxSession,
+          shellMode: local ? "plain" : host?.shellMode,
+          tmuxSession: local ? undefined : host?.tmuxSession,
         });
       } catch {
-        hosts.setHostStatus(hostId, "error", "Failed to open shell");
+        if (!local) {
+          hosts.setHostStatus(hostId, "error", "Failed to open shell");
+        }
       }
     },
     [hosts.hosts, hosts.setHostStatus, shells.openShell],
@@ -209,6 +213,13 @@ function App() {
     () => hosts.hosts.find((host) => host.id === workspace.selectedId) ?? null,
     [hosts.hosts, workspace.selectedId],
   );
+  const selectedIsLocal = selectedHost ? isLocalHost(selectedHost) : false;
+
+  useEffect(() => {
+    if (selectedIsLocal && workspace.tab !== "terminal") {
+      workspace.setTab("terminal");
+    }
+  }, [selectedIsLocal, workspace.setTab, workspace.tab]);
 
   const selectedSessions = selectedHost
     ? (shells.sessionsByHost[selectedHost.id] ?? [])
@@ -219,6 +230,20 @@ function App() {
   const activeSession =
     selectedSessions.find((session) => session.id === activeSessionId) ?? null;
   const activeShellCwd = activeSession?.cwd ?? null;
+
+  const terminalChromeOpen =
+    !workspace.formMode &&
+    !workspace.forwardFormMode &&
+    workspace.tab === "terminal";
+
+  // Keep panels mounted across host switches so xterm scrollback and WebGL
+  // surfaces survive. Only the selected host is shown.
+  const terminalHosts = useMemo(() => {
+    return hosts.hosts.filter((host) => {
+      if (selectedHost?.id === host.id) return true;
+      return (shells.sessionsByHost[host.id] ?? []).length > 0;
+    });
+  }, [hosts.hosts, selectedHost?.id, shells.sessionsByHost]);
 
   const selectShellTab = useCallback(
     (id: string) => {
@@ -347,8 +372,12 @@ function App() {
               onEdit={() => workspace.openEditHost(selectedHost.id)}
               onBack={workspace.backToHosts}
             />
-            <WorkspaceTabs active={workspace.tab} onChange={workspace.setTab} />
-            {workspace.tab === "sftp" ? (
+            <WorkspaceTabs
+              active={workspace.tab}
+              onChange={workspace.setTab}
+              tabs={selectedIsLocal ? ["terminal"] : undefined}
+            />
+            {!selectedIsLocal && workspace.tab === "sftp" ? (
               <SftpPanel
                 host={selectedHost}
                 shellCwd={activeShellCwd}
@@ -357,7 +386,7 @@ function App() {
                 onConnect={() => void hosts.connectHost(selectedHost.id)}
               />
             ) : null}
-            {workspace.tab === "forwards" ? (
+            {!selectedIsLocal && workspace.tab === "forwards" ? (
               <ForwardsPanel
                 host={selectedHost}
                 forwards={selectedForwards}
@@ -381,44 +410,50 @@ function App() {
           </div>
         )}
 
-        {selectedHost ? (
+        {terminalHosts.length > 0 ? (
           <div
             className={
-              !workspace.formMode &&
-              !workspace.forwardFormMode &&
-              workspace.tab === "terminal"
+              terminalChromeOpen
                 ? "flex min-h-0 flex-1 flex-col"
                 : "hidden"
             }
-            aria-hidden={
-              workspace.formMode != null ||
-              workspace.forwardFormMode != null ||
-              workspace.tab !== "terminal"
-            }
+            aria-hidden={!terminalChromeOpen}
           >
-            <TerminalPanel
-              host={selectedHost}
-              sessions={selectedSessions}
-              activeSessionId={activeSessionId}
-              visible={
-                !workspace.formMode &&
-                !workspace.forwardFormMode &&
-                workspace.tab === "terminal"
-              }
-              onConnect={() => void hosts.connectHost(selectedHost.id)}
-              onOpenShell={(launchId) =>
-                void openShell(selectedHost.id, launchId)
-              }
-              onSelectShell={(id) => selectShell(selectedHost.id, id)}
-              onCloseShell={(id) => void shells.closeShell(selectedHost.id, id)}
-              onRenameShell={(id, name) =>
-                shells.renameShell(selectedHost.id, id, name)
-              }
-              onReorderShells={(orderedIds) =>
-                shells.reorderShells(selectedHost.id, orderedIds)
-              }
-              onSessionCwd={shells.setSessionCwd}
-            />
+            {terminalHosts.map((host) => {
+              const selected = selectedHost?.id === host.id;
+              const sessions = shells.sessionsByHost[host.id] ?? [];
+              const hostActiveSessionId =
+                shells.activeSessionByHost[host.id] ?? null;
+              return (
+                <div
+                  key={host.id}
+                  className={
+                    selected
+                      ? "flex min-h-0 flex-1 flex-col"
+                      : "hidden"
+                  }
+                  aria-hidden={!selected}
+                >
+                  <TerminalPanel
+                    host={host}
+                    sessions={sessions}
+                    activeSessionId={hostActiveSessionId}
+                    visible={terminalChromeOpen && selected}
+                    onConnect={() => void hosts.connectHost(host.id)}
+                    onOpenShell={(launchId) => void openShell(host.id, launchId)}
+                    onSelectShell={(id) => selectShell(host.id, id)}
+                    onCloseShell={(id) => void shells.closeShell(host.id, id)}
+                    onRenameShell={(id, name) =>
+                      shells.renameShell(host.id, id, name)
+                    }
+                    onReorderShells={(orderedIds) =>
+                      shells.reorderShells(host.id, orderedIds)
+                    }
+                    onSessionCwd={shells.setSessionCwd}
+                  />
+                </div>
+              );
+            })}
           </div>
         ) : null}
       </main>

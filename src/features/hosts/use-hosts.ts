@@ -1,6 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
 import type { AuthCheckPrompt } from "@/features/hosts/components/auth-check-dialog";
 import { toHostConfig } from "@/features/hosts/convert";
+import {
+  isLocalHostId,
+  withLocalHost,
+  withoutLocalHost,
+} from "@/features/hosts/local-host";
 import { saveHostConfigs } from "@/features/hosts/store";
 import type { Host, HostConfig } from "@/features/hosts/types";
 import {
@@ -32,13 +37,23 @@ export function useHosts(options: UseHostsOptions = {}) {
   );
   const [authCheck, setAuthCheck] = useState<AuthCheckPrompt | null>(null);
   const [booting, setBooting] = useState(true);
+  const [localAvailable, setLocalAvailable] = useState(false);
 
   const persistHosts = useCallback(async (next: Host[]) => {
-    await saveHostConfigs(next.map(toHostConfig));
+    await saveHostConfigs(withoutLocalHost(next).map(toHostConfig));
   }, []);
+
+  const replaceHosts = useCallback(
+    (hosts: Host[], available = localAvailable) => {
+      setLocalAvailable(available);
+      setHosts(withLocalHost(withoutLocalHost(hosts), available));
+    },
+    [localAvailable],
+  );
 
   const setHostStatus = useCallback(
     (id: string, status: Host["status"], lastError?: string) => {
+      if (isLocalHostId(id)) return;
       setHosts((current) =>
         current.map((host) =>
           host.id === id
@@ -94,6 +109,7 @@ export function useHosts(options: UseHostsOptions = {}) {
 
   const connectHost = useCallback(
     async (id: string) => {
+      if (isLocalHostId(id)) return;
       const host = hosts.find((item) => item.id === id);
       if (!host) return;
       if (ensureBackgroundReady) {
@@ -190,6 +206,7 @@ export function useHosts(options: UseHostsOptions = {}) {
 
   const disconnectHost = useCallback(
     async (id: string) => {
+      if (isLocalHostId(id)) return;
       await onDisconnecting?.(id);
       try {
         await sshDisconnect(id);
@@ -203,38 +220,45 @@ export function useHosts(options: UseHostsOptions = {}) {
 
   const saveHost = useCallback(
     async (config: HostConfig) => {
+      if (isLocalHostId(config.id)) return;
       setHosts((current) => {
-        const exists = current.some((host) => host.id === config.id);
-        const next = exists
-          ? current.map((host) =>
+        const remotes = withoutLocalHost(current);
+        const exists = remotes.some((host) => host.id === config.id);
+        const nextRemotes = exists
+          ? remotes.map((host) =>
               host.id === config.id
                 ? { ...config, status: host.status }
                 : host,
             )
-          : [...current, { ...config, status: "idle" as const }];
+          : [...remotes, { ...config, status: "idle" as const }];
+        const next = withLocalHost(nextRemotes, localAvailable);
         void persistHosts(next);
         return next;
       });
     },
-    [persistHosts],
+    [localAvailable, persistHosts],
   );
 
   const deleteHost = useCallback(
     async (id: string) => {
+      if (isLocalHostId(id)) return;
       await disconnectHost(id);
       setHosts((current) => {
-        const next = current.filter((host) => host.id !== id);
+        const next = withLocalHost(
+          withoutLocalHost(current).filter((host) => host.id !== id),
+          localAvailable,
+        );
         void persistHosts(next);
         return next;
       });
       onDeleted?.(id);
     },
-    [disconnectHost, onDeleted, persistHosts],
+    [disconnectHost, localAvailable, onDeleted, persistHosts],
   );
 
   return {
     hosts,
-    setHosts,
+    setHosts: replaceHosts,
     booting,
     setBooting,
     connectingId,

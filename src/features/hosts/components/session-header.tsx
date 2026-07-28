@@ -1,6 +1,7 @@
 import { ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { SessionChip } from "@/components/status/session-chip";
+import { isLocalHost } from "@/features/hosts/local-host";
 import type { Host } from "@/features/hosts/types";
 
 type SessionHeaderProps = {
@@ -20,7 +21,10 @@ export function SessionHeader({
   onEdit,
   onBack,
 }: SessionHeaderProps) {
-  const target = `${host.user}@${host.hostname}:${host.port}`;
+  const local = isLocalHost(host);
+  const target = local
+    ? "local shell"
+    : `${host.user}@${host.hostname}:${host.port}`;
   const isConnected = host.status === "connected";
 
   return (
@@ -49,35 +53,39 @@ export function SessionHeader({
 
         <div className="flex shrink-0 items-center gap-2">
           <SessionChip status={host.status} className="max-sm:hidden" />
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            onClick={onEdit}
-            className="min-h-9 px-3 md:min-h-7"
-          >
-            Edit
-          </Button>
-          {isConnected ? (
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={onDisconnect}
-              className="min-h-9 px-3 md:min-h-7"
-            >
-              Disconnect
-            </Button>
-          ) : (
-            <Button
-              type="button"
-              size="sm"
-              onClick={onConnect}
-              disabled={connecting}
-              className="min-h-9 px-3 md:min-h-7"
-            >
-              {connecting ? "Connecting…" : "Connect"}
-            </Button>
+          {local ? null : (
+            <>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={onEdit}
+                className="min-h-9 px-3 md:min-h-7"
+              >
+                Edit
+              </Button>
+              {isConnected ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={onDisconnect}
+                  className="min-h-9 px-3 md:min-h-7"
+                >
+                  Disconnect
+                </Button>
+              ) : (
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={onConnect}
+                  disabled={connecting}
+                  className="min-h-9 px-3 md:min-h-7"
+                >
+                  {connecting ? "Connecting…" : "Connect"}
+                </Button>
+              )}
+            </>
           )}
         </div>
       </div>

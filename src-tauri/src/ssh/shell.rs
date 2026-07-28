@@ -1,3 +1,4 @@
+use std::io::Write;
 use std::sync::Arc;
 
 use base64::engine::general_purpose::STANDARD as B64;
@@ -9,7 +10,11 @@ use uuid::Uuid;
 
 use super::connection::handle_is_closed;
 use super::error::{SshError, SshErrorCode};
+use super::local_shell::{is_local_host_id, open_local_shell};
 use super::manager::{HostId, SshManager};
+
+#[cfg(not(mobile))]
+use super::local_shell::LocalShellHandles;
 
 #[derive(Debug, Clone, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -17,10 +22,39 @@ pub struct OpenShellResult {
     pub session_id: String,
 }
 
+pub(crate) enum ShellBackend {
+    Ssh {
+        channel: Arc<Mutex<ChannelWriteHalf<russh::client::Msg>>>,
+    },
+    #[cfg(not(mobile))]
+    Local(LocalShellHandles),
+}
+
 pub(crate) struct LiveShell {
     pub(crate) host_id: HostId,
-    pub(crate) channel: Arc<Mutex<ChannelWriteHalf<russh::client::Msg>>>,
+    pub(crate) backend: ShellBackend,
     pub(crate) abort: tokio::task::AbortHandle,
+}
+
+impl LiveShell {
+    pub(crate) fn shutdown(&self) {
+        match &self.backend {
+            ShellBackend::Ssh { .. } => {}
+            #[cfg(not(mobile))]
+            ShellBackend::Local(handles) => super::local_shell::shutdown_local(handles),
+        }
+    }
+
+    pub(crate) async fn close_io(&self) {
+        match &self.backend {
+            ShellBackend::Ssh { channel } => {
+                let ch = channel.lock().await;
+                let _ = ch.close().await;
+            }
+            #[cfg(not(mobile))]
+            ShellBackend::Local(handles) => super::local_shell::shutdown_local(handles),
+        }
+    }
 }
 
 fn sh_single_quote(value: &str) -> String {
@@ -71,6 +105,19 @@ impl SshManager {
         command: Option<String>,
         cwd: Option<String>,
     ) -> Result<OpenShellResult, SshError> {
+        if is_local_host_id(&host_id) {
+            let session_id = open_local_shell(
+                app,
+                Arc::clone(&self.inner),
+                cols,
+                rows,
+                command,
+                cwd,
+            )
+            .await?;
+            return Ok(OpenShellResult { session_id });
+        }
+
         let handle = {
             let mut inner = self.inner.lock().await;
             match inner.connections.get(&host_id) {
@@ -194,7 +241,9 @@ impl SshManager {
                     session_id.clone(),
                     LiveShell {
                         host_id,
-                        channel: Arc::clone(&channel_arc),
+                        backend: ShellBackend::Ssh {
+                            channel: Arc::clone(&channel_arc),
+                        },
                         abort: join.abort_handle(),
                     },
                 );
@@ -223,33 +272,90 @@ impl SshManager {
     }
 
     pub async fn write(&self, session_id: &str, data: &str) -> Result<(), SshError> {
-        let channel = {
+        enum WriteTarget {
+            Ssh(Arc<Mutex<ChannelWriteHalf<russh::client::Msg>>>),
+            #[cfg(not(mobile))]
+            Local(std::sync::Arc<std::sync::Mutex<Box<dyn std::io::Write + Send>>>),
+        }
+
+        let target = {
             let inner = self.inner.lock().await;
             let shell = inner.shells.get(session_id).ok_or_else(|| {
                 SshError::new(SshErrorCode::NotConnected, "Shell session not found")
             })?;
-            Arc::clone(&shell.channel)
+            match &shell.backend {
+                ShellBackend::Ssh { channel } => WriteTarget::Ssh(Arc::clone(channel)),
+                #[cfg(not(mobile))]
+                ShellBackend::Local(handles) => {
+                    WriteTarget::Local(std::sync::Arc::clone(&handles.writer))
+                }
+            }
         };
-        let ch = channel.lock().await;
-        ch.data(data.as_bytes())
-            .await
-            .map_err(|e| SshError::new(SshErrorCode::Internal, e.to_string()))?;
-        Ok(())
+
+        match target {
+            WriteTarget::Ssh(channel) => {
+                let ch = channel.lock().await;
+                ch.data(data.as_bytes())
+                    .await
+                    .map_err(|e| SshError::new(SshErrorCode::Internal, e.to_string()))
+            }
+            #[cfg(not(mobile))]
+            WriteTarget::Local(writer) => {
+                let mut writer = writer.lock().map_err(|_| {
+                    SshError::new(SshErrorCode::Internal, "Local shell writer lock poisoned")
+                })?;
+                writer
+                    .write_all(data.as_bytes())
+                    .and_then(|_| writer.flush())
+                    .map_err(|e| SshError::new(SshErrorCode::Internal, e.to_string()))
+            }
+        }
     }
 
     pub async fn resize(&self, session_id: &str, cols: u32, rows: u32) -> Result<(), SshError> {
-        let channel = {
+        enum ResizeTarget {
+            Ssh(Arc<Mutex<ChannelWriteHalf<russh::client::Msg>>>),
+            #[cfg(not(mobile))]
+            Local(std::sync::Arc<std::sync::Mutex<Box<dyn portable_pty::MasterPty + Send>>>),
+        }
+
+        let target = {
             let inner = self.inner.lock().await;
             let shell = inner.shells.get(session_id).ok_or_else(|| {
                 SshError::new(SshErrorCode::NotConnected, "Shell session not found")
             })?;
-            Arc::clone(&shell.channel)
+            match &shell.backend {
+                ShellBackend::Ssh { channel } => ResizeTarget::Ssh(Arc::clone(channel)),
+                #[cfg(not(mobile))]
+                ShellBackend::Local(handles) => {
+                    ResizeTarget::Local(std::sync::Arc::clone(&handles.master))
+                }
+            }
         };
-        let ch = channel.lock().await;
-        ch.window_change(cols, rows, 0, 0)
-            .await
-            .map_err(|e| SshError::new(SshErrorCode::Internal, e.to_string()))?;
-        Ok(())
+
+        match target {
+            ResizeTarget::Ssh(channel) => {
+                let ch = channel.lock().await;
+                ch.window_change(cols, rows, 0, 0)
+                    .await
+                    .map_err(|e| SshError::new(SshErrorCode::Internal, e.to_string()))
+            }
+            #[cfg(not(mobile))]
+            ResizeTarget::Local(master) => {
+                use portable_pty::PtySize;
+                let master = master.lock().map_err(|_| {
+                    SshError::new(SshErrorCode::Internal, "Local shell master lock poisoned")
+                })?;
+                master
+                    .resize(PtySize {
+                        rows: rows.max(1) as u16,
+                        cols: cols.max(1) as u16,
+                        pixel_width: 0,
+                        pixel_height: 0,
+                    })
+                    .map_err(|e| SshError::new(SshErrorCode::Internal, e.to_string()))
+            }
+        }
     }
 
     pub async fn close_shell(&self, app: &AppHandle, session_id: &str) -> Result<(), SshError> {
@@ -260,10 +366,7 @@ impl SshManager {
         if let Some(shell) = shell {
             shell.abort.abort();
             let host_id = shell.host_id.clone();
-            {
-                let ch = shell.channel.lock().await;
-                let _ = ch.close().await;
-            }
+            shell.close_io().await;
             let _ = app.emit(
                 "ssh://shell-closed",
                 serde_json::json!({

@@ -1,6 +1,7 @@
 use tauri::{AppHandle, State};
 
 use super::error::SshError;
+use super::local_shell;
 use super::manager::{
     ConnectConfig, OpenShellResult, SshManager, StartDynamicForwardConfig,
     StartLocalForwardConfig, StartRemoteForwardConfig,
@@ -10,6 +11,11 @@ use super::sftp::{
     SftpRenameConfig, SftpWriteConfig,
 };
 use super::tmux::{TmuxBootstrapResult, TmuxWindow};
+
+#[tauri::command]
+pub fn local_shell_available() -> bool {
+    local_shell::local_shell_available()
+}
 
 #[tauri::command]
 pub async fn ssh_connect(

@@ -17,6 +17,7 @@ import {
   type StickyMods,
 } from "@/features/shells/lib/terminal-keys";
 import type { ShellSession } from "@/features/shells/types";
+import { isLocalHost } from "@/features/hosts/local-host";
 import type { Host } from "@/features/hosts/types";
 import { decodeSshData, listenSshData } from "@/features/ssh";
 
@@ -119,6 +120,8 @@ export function TerminalPanel({
     };
   }, []);
 
+  const local = isLocalHost(host);
+
   if (host.status !== "connected") {
     return (
       <EmptyTerminal
@@ -140,14 +143,16 @@ export function TerminalPanel({
   }
 
   if (sessions.length === 0) {
-    const tmux = host.shellMode === "tmux";
+    const tmux = !local && host.shellMode === "tmux";
     return (
       <EmptyTerminal
         title={tmux ? "No tmux windows" : "No open shells"}
         description={
           tmux
             ? `Connection to ${host.name} is up. Open a window to attach a tmux session.`
-            : `Connection to ${host.name} is up. Open a shell to start a PTY session.`
+            : local
+              ? "Open a shell to start a local PTY session."
+              : `Connection to ${host.name} is up. Open a shell to start a PTY session.`
         }
         actionLabel={tmux ? "Open a window" : "Open a shell"}
         onAction={onOpenShell}

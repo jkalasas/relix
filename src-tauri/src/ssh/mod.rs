@@ -3,6 +3,7 @@ pub mod connection;
 pub mod error;
 pub mod forward;
 pub mod known_hosts;
+pub mod local_shell;
 pub mod manager;
 pub mod sftp;
 pub mod shell;

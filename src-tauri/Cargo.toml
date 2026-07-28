@@ -35,3 +35,6 @@ tauri-plugin-android-battery-optimization = "0.1"
 tauri-plugin-relix-keepalive = { path = "./plugins/relix-keepalive" }
 russh-sftp = "2.3"
 
+[target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
+portable-pty = "0.9"
+
