@@ -30,6 +30,21 @@ type TerminalPanelProps = {
   onSessionCwd: (sessionId: string, cwd: string) => void;
 };
 
+const MAX_PENDING_CHUNKS = 200;
+
+function pushPending(
+  pending: Map<string, Uint8Array[]>,
+  channelId: string,
+  chunk: Uint8Array,
+) {
+  const queue = pending.get(channelId) ?? [];
+  queue.push(chunk);
+  if (queue.length > MAX_PENDING_CHUNKS) {
+    queue.splice(0, queue.length - MAX_PENDING_CHUNKS);
+  }
+  pending.set(channelId, queue);
+}
+
 export function TerminalPanel({
   host,
   sessions,
@@ -41,11 +56,30 @@ export function TerminalPanel({
 }: TerminalPanelProps) {
   const isMobileOs = useIsMobileOs();
   const writersRef = useRef<Map<string, TerminalSessionApi>>(new Map());
+  const pendingDataRef = useRef<Map<string, Uint8Array[]>>(new Map());
   const [stickyMods, setStickyMods] = useState<StickyMods>(EMPTY_STICKY_MODS);
 
-  const setApi = useCallback((channelId: string, api: TerminalSessionApi) => {
-    writersRef.current.set(channelId, api);
-  }, []);
+  const attachApi = useCallback(
+    (channelId: string, api: TerminalSessionApi) => {
+      writersRef.current.set(channelId, api);
+      const pending = pendingDataRef.current.get(channelId);
+      if (!pending?.length) return;
+      for (const chunk of pending) {
+        api.write(chunk);
+      }
+      pendingDataRef.current.delete(channelId);
+    },
+    [],
+  );
+
+  const detachApi = useCallback(
+    (channelId: string, api: TerminalSessionApi) => {
+      if (writersRef.current.get(channelId) === api) {
+        writersRef.current.delete(channelId);
+      }
+    },
+    [],
+  );
 
   const clearStickyMods = useCallback(() => {
     setStickyMods(EMPTY_STICKY_MODS);
@@ -82,6 +116,11 @@ export function TerminalPanel({
         writersRef.current.delete(channelId);
       }
     }
+    for (const channelId of pendingDataRef.current.keys()) {
+      if (!activeIds.has(channelId)) {
+        pendingDataRef.current.delete(channelId);
+      }
+    }
   }, [sessions]);
 
   useEffect(() => {
@@ -94,9 +133,13 @@ export function TerminalPanel({
 
     void (async () => {
       const fn = await listenSshData((event) => {
+        const bytes = decodeSshData(event.data);
         const api = writersRef.current.get(event.sessionId);
-        if (!api) return;
-        api.write(decodeSshData(event.data));
+        if (api) {
+          api.write(bytes);
+          return;
+        }
+        pushPending(pendingDataRef.current, event.sessionId, bytes);
       });
       if (disposed) {
         fn();
@@ -174,7 +217,11 @@ export function TerminalPanel({
                 session.id === activeSessionId ? stickyMods : EMPTY_STICKY_MODS
               }
               onStickyConsumed={clearStickyMods}
-              onReady={(api) => setApi(session.channelId!, api)}
+              onReady={(api) => {
+                const channelId = session.channelId!;
+                attachApi(channelId, api);
+                return () => detachApi(channelId, api);
+              }}
               onCwdChange={(cwd) => onSessionCwd(session.id, cwd)}
             />
           );

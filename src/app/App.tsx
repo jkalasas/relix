@@ -361,11 +361,13 @@ function App() {
     activeSession;
   const activeShellCwd = trackedSession?.cwd ?? null;
 
+  // Keep the terminal surface mounted for the empty-tab state too, so a new
+  // shell can attach without swapping in a second TerminalPanel.
   const shellChromeOpen =
     !workspace.formMode &&
     !workspace.forwardFormMode &&
     selectedHost != null &&
-    activeTab?.kind === "shell";
+    (activeTab?.kind === "shell" || selectedTabs.length === 0);
 
   const explorerChromeOpen =
     !workspace.formMode &&
@@ -818,23 +820,6 @@ function App() {
               );
             })}
           </div>
-        ) : null}
-
-        {selectedHost &&
-        !workspace.formMode &&
-        !workspace.forwardFormMode &&
-        selectedTabs.length === 0 ? (
-          <TerminalPanel
-            host={selectedHost}
-            sessions={[]}
-            activeSessionId={null}
-            visible
-            onConnect={() => void hosts.connectHost(selectedHost.id)}
-            onOpenShell={(launchId) =>
-              void openShell(selectedHost.id, launchId)
-            }
-            onSessionCwd={shells.setSessionCwd}
-          />
         ) : null}
           </SidebarInset>
         </div>

@@ -33,7 +33,7 @@ type TerminalViewProps = {
   visible: boolean;
   stickyMods?: StickyMods;
   onStickyConsumed?: () => void;
-  onReady?: (api: TerminalSessionApi) => void;
+  onReady?: (api: TerminalSessionApi) => void | (() => void);
   onCwdChange?: (cwd: string) => void;
 };
 
@@ -517,7 +517,7 @@ export function TerminalView({
     termRef.current = term;
     fitRef.current = fit;
     lastCwdRef.current = null;
-    onReadyRef.current?.({
+    const disposeApi = onReadyRef.current?.({
       write: (data) => {
         term.write(data);
       },
@@ -530,6 +530,7 @@ export function TerminalView({
     });
 
     return () => {
+      if (typeof disposeApi === "function") disposeApi();
       dataSub.dispose();
       osc7Sub.dispose();
       detachMobileScroll();
