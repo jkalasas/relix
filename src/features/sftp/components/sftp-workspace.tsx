@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { FolderOpen } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/workspace/empty-state";
 import { SftpPanel } from "@/features/sftp/components/sftp-panel";
 import type { SftpController } from "@/features/sftp/use-sftp";
 import type { Host } from "@/features/hosts/types";
@@ -19,17 +20,12 @@ type SftpWorkspaceProps = {
 
 function EmptyFilesPane({ hostName }: { hostName: string }) {
   return (
-    <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 px-6 text-center">
-      <div className="flex size-10 items-center justify-center rounded-xl border border-border bg-surface text-muted-foreground">
-        <FolderOpen className="size-5" aria-hidden />
-      </div>
-      <div className="max-w-sm space-y-1.5">
-        <h3 className="text-sm font-medium text-balance">Select a file</h3>
-        <p className="text-[13px] leading-relaxed text-muted-foreground text-pretty">
-          Open a file from the tree to edit or preview on {hostName}.
-        </p>
-      </div>
-    </div>
+    <EmptyState
+      icon={FolderOpen}
+      title="Select a file"
+      description={`Open a file from the tree to edit or preview on ${hostName}.`}
+      className="gap-3"
+    />
   );
 }
 
@@ -41,20 +37,16 @@ function DisconnectedPane({
   onConnect: () => void;
 }) {
   return (
-    <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-4 px-6 text-center">
-      <div className="flex size-10 items-center justify-center rounded-xl border border-border bg-surface text-muted-foreground">
-        <FolderOpen className="size-5" aria-hidden />
-      </div>
-      <div className="max-w-sm space-y-1.5">
-        <h3 className="text-sm font-medium text-balance">Files unavailable</h3>
-        <p className="text-[13px] leading-relaxed text-muted-foreground text-pretty">
-          Connect to {hostName} before browsing or transferring files.
-        </p>
-      </div>
-      <Button type="button" size="sm" onClick={onConnect}>
-        Connect
-      </Button>
-    </div>
+    <EmptyState
+      icon={FolderOpen}
+      title="Files unavailable"
+      description={`Connect to ${hostName} before browsing or transferring files.`}
+      action={
+        <Button type="button" size="sm" onClick={onConnect}>
+          Connect
+        </Button>
+      }
+    />
   );
 }
 

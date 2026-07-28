@@ -5,7 +5,6 @@ import {
   ChevronUp,
   FolderPlus,
   RefreshCw,
-  Server,
   Upload,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -26,8 +25,6 @@ type SftpTreeSidebarProps = {
   rootLabel: string;
   selectedPath?: string | null;
   onOpenFile: (entry: SftpEntry) => void;
-  onShowHosts?: () => void;
-  className?: string;
 };
 
 type TreeNodeProps = {
@@ -85,7 +82,9 @@ function TreeNode({
         {entry.isDir ? (
           <button
             type="button"
-            aria-label={expanded ? `Collapse ${entry.name}` : `Expand ${entry.name}`}
+            aria-label={
+              expanded ? `Collapse ${entry.name}` : `Expand ${entry.name}`
+            }
             disabled={busy}
             onClick={() => void sftp.toggleDir(entry.path)}
             className="flex size-5 shrink-0 items-center justify-center rounded-sm text-muted-foreground hover:text-foreground"
@@ -194,8 +193,6 @@ export function SftpTreeSidebar({
   rootLabel,
   selectedPath = null,
   onOpenFile,
-  onShowHosts,
-  className,
 }: SftpTreeSidebarProps) {
   const upPath = parentPath(sftp.path);
   const rootName = useMemo(() => {
@@ -284,36 +281,8 @@ export function SftpTreeSidebar({
   }, [deleteTarget, sftp]);
 
   return (
-    <aside
-      className={cn(
-        "flex min-h-0 flex-col bg-sidebar text-sidebar-foreground",
-        "w-full md:w-60 md:shrink-0 md:border-r md:border-sidebar-border",
-        className,
-      )}
-    >
-      <div className="shrink-0 border-b border-sidebar-border">
-        <div className="flex h-12 items-center gap-2 px-4">
-          <div className="flex size-6 items-center justify-center rounded-md bg-primary/15 text-primary">
-            <Server className="size-3.5" aria-hidden />
-          </div>
-          <span className="min-w-0 flex-1 text-sm font-semibold tracking-tight">
-            Relix
-          </span>
-          {onShowHosts ? (
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              onClick={onShowHosts}
-              className="h-7 px-2 text-[11px] text-muted-foreground hover:text-foreground"
-            >
-              Hosts
-            </Button>
-          ) : null}
-        </div>
-      </div>
-
-      <div className="flex items-center gap-1 px-2 pb-1 pt-2">
+    <div className="flex min-h-0 flex-1 flex-col group-data-[collapsible=icon]:hidden">
+      <div className="flex items-center gap-1 border-b border-sidebar-border px-2 py-1.5">
         <p
           className="min-w-0 flex-1 truncate px-1 font-mono text-[12px] font-medium text-foreground"
           title={sftp.path}
@@ -459,6 +428,6 @@ export function SftpTreeSidebar({
         }}
         onConfirm={() => void confirmDelete()}
       />
-    </aside>
+    </div>
   );
 }

@@ -69,6 +69,7 @@ type SessionTabBarProps = {
   onNewShell: (launchId?: ShellLaunchId) => void;
   onOpenFiles: () => void;
   onOpenPorts: () => void;
+  variant?: "default" | "titlebar";
 };
 
 type DesktopMenuState = {
@@ -179,7 +180,9 @@ export function SessionTabBar({
   onNewShell,
   onOpenFiles,
   onOpenPorts,
+  variant = "default",
 }: SessionTabBarProps) {
+  const titlebar = variant === "titlebar";
   const isDesktop = useMediaQuery("(min-width: 768px)");
   const tabListRef = useRef<HTMLDivElement>(null);
   const tabsRef = useRef(tabs);
@@ -432,12 +435,19 @@ export function SessionTabBar({
 
   return (
     <>
-      <div className="flex min-h-11 shrink-0 items-center gap-1 border-b border-border px-2 md:min-h-9">
+      <div
+        className={cn(
+          "flex shrink-0 items-center gap-1",
+          titlebar
+            ? "h-full min-h-0 bg-transparent px-0"
+            : "min-h-11 border-b border-border bg-background px-1.5 md:min-h-9 md:px-2",
+        )}
+      >
         <div
           ref={tabListRef}
           role="tablist"
           aria-label="Session tabs"
-          className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto"
+          className="flex min-w-0 flex-1 items-center gap-0.5 overflow-x-auto md:gap-1"
         >
           {orderedTabs.map((tab) => {
             const active = tab.id === activeId;
@@ -462,10 +472,13 @@ export function SessionTabBar({
                 onPointerCancel={onTabPointerCancel}
                 onContextMenu={(event) => onTabContextMenu(tab.id, event)}
                 className={cn(
-                  "group flex h-9 shrink-0 items-center gap-1.5 rounded-md px-2 font-mono text-[12px] select-none md:h-7",
+                  "group flex shrink-0 items-center gap-1.5 font-mono text-[12px] select-none",
+                  titlebar
+                    ? "h-7 rounded-md px-2"
+                    : "h-9 rounded-lg px-2.5 md:h-7 md:rounded-md md:px-2",
                   active
-                    ? "bg-elevated text-foreground"
-                    : "text-muted-foreground hover:text-foreground",
+                    ? "bg-elevated text-foreground ring-1 ring-border/70"
+                    : "text-muted-foreground hover:bg-muted/50 hover:text-foreground",
                   dragging && "opacity-60",
                   draggingId && "touch-none",
                 )}
@@ -529,7 +542,7 @@ export function SessionTabBar({
           })}
         </div>
 
-        <div className="flex shrink-0 items-center gap-0.5">
+        <div className="flex shrink-0 items-center gap-0.5 pl-0.5">
           <DropdownMenu>
             <DropdownMenuTrigger
               render={
@@ -538,7 +551,10 @@ export function SessionTabBar({
                   variant="ghost"
                   size="icon-sm"
                   aria-label="New shell"
-                  className="size-9 md:size-7"
+                  className={cn(
+                    "text-muted-foreground hover:text-foreground",
+                    titlebar ? "size-7" : "size-9 md:size-7",
+                  )}
                 />
               }
             >
@@ -562,7 +578,7 @@ export function SessionTabBar({
               variant="ghost"
               size="icon-sm"
               aria-label="Files"
-              className="size-9"
+              className="size-9 text-muted-foreground hover:text-foreground"
               onClick={onOpenFiles}
             >
               <Folder className="size-3.5" />
@@ -574,7 +590,10 @@ export function SessionTabBar({
               variant="ghost"
               size="icon-sm"
               aria-label="Ports"
-              className="size-9 md:size-7"
+              className={cn(
+                "text-muted-foreground hover:text-foreground",
+                titlebar ? "size-7" : "size-9 md:size-7",
+              )}
               onClick={onOpenPorts}
             >
               <Network className="size-3.5" />

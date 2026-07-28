@@ -170,12 +170,13 @@ Connected host (desktop — file tree always occupies the left rail):
 
 | Region | Size | Notes |
 |---|---|---|
-| Left rail | ~240px (`w-60`) | Host list when idle/disconnected; file tree always while host is connected (desktop). Hosts toggle available from tree header |
-| Session header | 48px | Mono target left; chip + connect right |
-| Session tabs | content | Document strip (shells, files, tools); elevated active pill |
-| Workspace body | flex-1 | Active tab panel |
+| Title bar | 40px (`2.5rem`) | Frameless window (`decorations: false`). Full-width chrome: sidebar trigger · session tabs · window controls. Drag via `data-tauri-drag-region` |
+| Left rail | ~240px (`15rem`, shadcn `Sidebar` collapsible icon) | Host list when idle/disconnected; file tree while host is connected (desktop). Hosts toggle in sidebar header. Collapse via rail / trigger / `⌘B` |
+| Session header | 40px desktop / 48px mobile | Mono target left; chip + connect right (no trigger on desktop — lives in title bar) |
+| Session tabs | title bar (desktop) / below header (mobile) | Document strip (shells, files, tools); elevated active pill |
+| Workspace body | flex-1 | Active tab panel (`SidebarInset`) |
 
-**Desktop window (Tauri):** default 1180×740, min ~880×560 (below that, mobile shell still applies if the window is narrow).
+**Desktop window (Tauri):** frameless, default 1180×740, min ~360×560 (below `md`, mobile shell still applies if the window is narrow).
 
 ### Mobile — list → session
 
@@ -224,17 +225,20 @@ Task-specific, one primary action, no fake metrics. Icon in a quiet bordered til
 |---|---|---|
 | `StatusDot` | `components/status/status-dot.tsx` | Host/session status glyph + accessible label |
 | `SessionChip` | `components/status/session-chip.tsx` | Connected / idle / error pill |
-| `HostRail` | `features/hosts/components/host-rail.tsx` | Host list (rail on desktop, root screen on mobile) |
-| `SessionHeader` | `features/hosts/components/session-header.tsx` | Target + status + connect; back control on mobile |
+| `AppSidebar` | `features/hosts/components/app-sidebar.tsx` | Desktop shadcn `Sidebar` shell (hosts or files mode) |
+| `HostList` | `features/hosts/components/host-list.tsx` | Host menu rows (sidebar + mobile root) |
+| `MobileHostPane` | `features/hosts/components/mobile-host-pane.tsx` | Full-width mobile hosts root (list → session drill-in) |
+| `SessionHeader` | `features/hosts/components/session-header.tsx` | Trigger + target + status + connect; back control on mobile |
 | `SessionTabBar` | `components/workspace/session-tab-bar.tsx` | Document tabs: shells · open files · Files · Ports |
 | `TerminalPanel` | `features/shells/components/terminal-panel.tsx` | Shell workspace |
 | `SftpPanel` | `features/sftp/components/sftp-panel.tsx` | Mobile file list browser / transfer |
-| `SftpTreeSidebar` | `features/sftp/components/sftp-tree-sidebar.tsx` | Desktop file tree in the left rail (replaces host list) |
+| `SftpTreeSidebar` | `features/sftp/components/sftp-tree-sidebar.tsx` | Desktop file tree content inside `AppSidebar` |
 | `SftpWorkspace` | `features/sftp/components/sftp-workspace.tsx` | Files empty pane + open file slot; mobile list host |
 | `SftpFileWorkspace` | `features/sftp/components/sftp-file-workspace.tsx` | Open file editor / preview tab |
 | `ForwardsPanel` | `features/forwards/components/forwards-panel.tsx` | Tunnel list / empty |
+| `EmptyState` | `components/workspace/empty-state.tsx` | Shared empty pattern (icon tile · title · guidance · CTA) |
 | `EmptyWorkspace` | `components/workspace/empty-workspace.tsx` | No host selected (desktop) |
-| `Button` / `Input` | `components/ui/*` | shadcn CLI primitives — do not hand-edit; compose via variants / className / CSS tokens |
+| `Button` / `Input` / `Sidebar` | `components/ui/*` | shadcn CLI primitives — do not hand-edit; compose via variants / className / CSS tokens |
 
 ### Status mapping
 
@@ -366,3 +370,5 @@ When adding UI:
 | 2026-03-28 | Android background gate + FGS keepalive while hosts connected |
 | 2026-03-28 | Mobile terminal accessory key bar + soft-keyboard re-focus fix |
 | 2026-03-28 | Desktop SFTP: file tree in host rail + editor empty pane |
+| 2026-03-29 | Desktop shadcn Sidebar shell (collapsible icon); mobile keeps list → session |
+| 2026-03-29 | Desktop frameless title bar: tabs + window controls span full window chrome |

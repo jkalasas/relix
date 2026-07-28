@@ -31,7 +31,7 @@ export function ForwardRow({
   const label = target ? `${source} → ${target}` : `${source} SOCKS5`;
 
   return (
-    <li className="rounded-lg border border-border bg-surface px-3 py-3 font-mono text-xs md:grid md:grid-cols-[2.5rem_minmax(0,1fr)_minmax(0,1fr)_auto_auto] md:items-center md:gap-3 md:py-2.5">
+    <li className="rounded-lg border border-border bg-surface px-3 py-3 font-mono text-xs md:grid md:grid-cols-[2.5rem_minmax(0,1fr)_minmax(0,1fr)_auto_auto] md:items-center md:gap-3 md:px-3 md:py-2">
       <div className="flex items-center justify-between gap-2 md:contents">
         <span className="font-medium text-status-tunnel">{forward.type}</span>
         <span

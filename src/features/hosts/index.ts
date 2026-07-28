@@ -10,7 +10,9 @@ export {
 } from "@/features/hosts/local-host";
 export { loadHostConfigs, saveHostConfigs } from "@/features/hosts/store";
 export { useHosts } from "@/features/hosts/use-hosts";
-export { HostRail } from "@/features/hosts/components/host-rail";
+export { AppSidebar } from "@/features/hosts/components/app-sidebar";
+export { HostList } from "@/features/hosts/components/host-list";
+export { MobileHostPane } from "@/features/hosts/components/mobile-host-pane";
 export { HostForm } from "@/features/hosts/components/host-form";
 export { HostKeyDialog } from "@/features/hosts/components/host-key-dialog";
 export {

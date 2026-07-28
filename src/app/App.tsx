@@ -1,10 +1,23 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+} from "react";
 import { useAndroidBack } from "@/app/use-android-back";
 import { useBoot } from "@/app/use-boot";
 import { useSshLifecycle } from "@/app/use-ssh-lifecycle";
 import { useWorkspace } from "@/app/use-workspace";
+import { DesktopTitleBar } from "@/components/workspace/desktop-title-bar";
 import { EmptyWorkspace } from "@/components/workspace/empty-workspace";
 import { SessionTabBar } from "@/components/workspace/session-tab-bar";
+import {
+  SidebarInset,
+  SidebarProvider,
+} from "@/components/ui/sidebar";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import {
   BackgroundSetupDialog,
   useAndroidBackground,
@@ -15,13 +28,14 @@ import {
   useForwards,
 } from "@/features/forwards";
 import {
+  AppSidebar,
   AuthCheckDialog,
   DisconnectDialog,
   type DisconnectChoice,
   HostForm,
   HostKeyDialog,
-  HostRail,
   isLocalHost,
+  MobileHostPane,
   SessionHeader,
   useHosts,
 } from "@/features/hosts";
@@ -43,11 +57,16 @@ import {
   useActiveShellFallback,
   useShells,
 } from "@/features/shells";
+import { useIsMobileOs } from "@/features/shells/lib/mobile-os";
 import type { SftpEntry } from "@/features/ssh";
 import { useMediaQuery } from "@/hooks/use-media-query";
 
 function App() {
   const isDesktop = useMediaQuery("(min-width: 768px)");
+  const isMobileOs = useIsMobileOs();
+  // Frameless desktop always needs window chrome, even when the layout is narrow.
+  const showWindowChrome = !isMobileOs;
+  const useTitlebarSessionChrome = showWindowChrome && isDesktop;
   const forwards = useForwards();
   const shells = useShells();
   const sessionTabs = useSessionTabs();
@@ -520,14 +539,9 @@ function App() {
     [selectedHost, sessionTabs],
   );
 
-  const showHostRail =
-    workspace.mobilePane === "hosts" ? "flex" : "hidden md:flex";
   const showSession =
     workspace.mobilePane === "session" ? "flex" : "hidden md:flex";
-  const hostRailClass = showFileRail
-    ? "hidden"
-    : showHostRail;
-  const fileRailClass = showFileRail ? "flex" : "hidden";
+  const showMobileHosts = workspace.mobilePane === "hosts";
 
   const openFileTabs = useMemo(() => {
     return selectedTabs.filter(
@@ -543,88 +557,131 @@ function App() {
     );
   }
 
+  const sessionActive =
+    selectedHost != null &&
+    !workspace.formMode &&
+    !workspace.forwardFormMode;
+
+  const sessionTabBar = sessionActive ? (
+    <SessionTabBar
+      tabs={selectedTabs}
+      activeId={activeTabId}
+      shells={selectedSessions}
+      files={selectedFiles}
+      showPorts={!selectedIsLocal}
+      onSelect={selectSessionTab}
+      onClose={closeSessionTab}
+      onRenameShell={(shellId, name) =>
+        shells.renameShell(selectedHost.id, shellId, name)
+      }
+      onReorder={(orderedIds) =>
+        sessionTabs.reorderTabs(selectedHost.id, orderedIds)
+      }
+      onNewShell={(launchId) => void openShell(selectedHost.id, launchId)}
+      onOpenFiles={() => {
+        setRailOverride(null);
+        sessionTabs.openToolTab(selectedHost.id, "files");
+      }}
+      onOpenPorts={() => sessionTabs.openToolTab(selectedHost.id, "ports")}
+      variant={useTitlebarSessionChrome ? "titlebar" : "default"}
+    />
+  ) : null;
+
+  const sessionHeader = sessionActive && selectedHost ? (
+    <SessionHeader
+      host={selectedHost}
+      connecting={hosts.connectingId === selectedHost.id}
+      onConnect={() => void hosts.connectHost(selectedHost.id)}
+      onDisconnect={() => requestDisconnect(selectedHost)}
+      onEdit={() => workspace.openEditHost(selectedHost.id)}
+      onBack={workspace.backToHosts}
+      variant={useTitlebarSessionChrome ? "titlebar" : "default"}
+    />
+  ) : null;
+
   return (
-    <div
-      className="flex h-full overflow-hidden bg-background text-foreground"
-      onContextMenu={(event) => event.preventDefault()}
-    >
-      <HostRail
-        hosts={hosts.hosts}
-        selectedId={workspace.selectedId}
-        onSelect={workspace.selectHost}
-        onAddHost={workspace.openAddHost}
-        className={hostRailClass}
-      />
+    <TooltipProvider>
+      <SidebarProvider
+        className="h-full min-h-0 flex-col overflow-hidden bg-background text-foreground"
+        style={
+          {
+            "--sidebar-width": "15rem",
+            "--titlebar-height": showWindowChrome ? "2.5rem" : "0px",
+          } as CSSProperties
+        }
+        onContextMenu={(event) => event.preventDefault()}
+      >
+        {showWindowChrome ? (
+          <DesktopTitleBar
+            showSidebarTrigger={isDesktop}
+            trailing={useTitlebarSessionChrome ? sessionHeader : null}
+          >
+            {useTitlebarSessionChrome ? sessionTabBar : null}
+          </DesktopTitleBar>
+        ) : null}
 
-      {selectedHost ? (
-        <SftpTreeSidebar
-          sftp={sftp}
-          rootLabel={selectedHost.name}
-          selectedPath={
-            activeTab?.kind === "file" ? activeTab.path : null
-          }
-          onOpenFile={handleOpenFile}
-          onShowHosts={() => setRailOverride("hosts")}
-          className={fileRailClass}
-        />
-      ) : null}
+        <div className="flex min-h-0 w-full flex-1 flex-row overflow-hidden">
+          {isDesktop && showFileRail && selectedHost ? (
+            <AppSidebar
+              mode="files"
+              onShowHosts={() => setRailOverride("hosts")}
+            >
+              <SftpTreeSidebar
+                sftp={sftp}
+                rootLabel={selectedHost.name}
+                selectedPath={
+                  activeTab?.kind === "file" ? activeTab.path : null
+                }
+                onOpenFile={handleOpenFile}
+              />
+            </AppSidebar>
+          ) : isDesktop ? (
+            <AppSidebar
+              mode="hosts"
+              hosts={hosts.hosts}
+              selectedId={workspace.selectedId}
+              onSelect={workspace.selectHost}
+              onAddHost={workspace.openAddHost}
+            />
+          ) : null}
 
-      <main className={`min-h-0 min-w-0 flex-1 flex-col ${showSession}`}>
-        {workspace.formMode ? (
-          <HostForm
-            initial={editingHost}
-            onSave={(config) => void handleSaveHost(config)}
-            onCancel={workspace.closeHostForm}
-            onDelete={
-              workspace.formMode.type === "edit"
-                ? (id) => void handleDeleteHost(id)
-                : undefined
-            }
+          <MobileHostPane
+            hosts={hosts.hosts}
+            selectedId={workspace.selectedId}
+            onSelect={workspace.selectHost}
+            onAddHost={workspace.openAddHost}
+            className={showMobileHosts ? "flex md:hidden" : "hidden"}
           />
-        ) : workspace.forwardFormMode && selectedHost ? (
-          <ForwardForm
-            initial={editingForward}
-            onSave={handleSaveForward}
-            onCancel={workspace.closeForwardForm}
-            onDelete={
-              workspace.forwardFormMode.type === "edit"
-                ? (id) => void handleDeleteForward(id)
-                : undefined
-            }
-          />
-        ) : selectedHost ? (
-          <>
-            <SessionHeader
-              host={selectedHost}
-              connecting={hosts.connectingId === selectedHost.id}
-              onConnect={() => void hosts.connectHost(selectedHost.id)}
-              onDisconnect={() => requestDisconnect(selectedHost)}
-              onEdit={() => workspace.openEditHost(selectedHost.id)}
-              onBack={workspace.backToHosts}
-            />
-            <SessionTabBar
-              tabs={selectedTabs}
-              activeId={activeTabId}
-              shells={selectedSessions}
-              files={selectedFiles}
-              showPorts={!selectedIsLocal}
-              onSelect={selectSessionTab}
-              onClose={closeSessionTab}
-              onRenameShell={(shellId, name) =>
-                shells.renameShell(selectedHost.id, shellId, name)
-              }
-              onReorder={(orderedIds) =>
-                sessionTabs.reorderTabs(selectedHost.id, orderedIds)
-              }
-              onNewShell={(launchId) => void openShell(selectedHost.id, launchId)}
-              onOpenFiles={() => {
-                setRailOverride(null);
-                sessionTabs.openToolTab(selectedHost.id, "files");
-              }}
-              onOpenPorts={() =>
-                sessionTabs.openToolTab(selectedHost.id, "ports")
-              }
-            />
+
+          <SidebarInset
+            className={`min-h-0 min-w-0 overflow-hidden ${showSession}`}
+          >
+            {workspace.formMode ? (
+              <HostForm
+                initial={editingHost}
+                onSave={(config) => void handleSaveHost(config)}
+                onCancel={workspace.closeHostForm}
+                onDelete={
+                  workspace.formMode.type === "edit"
+                    ? (id) => void handleDeleteHost(id)
+                    : undefined
+                }
+              />
+            ) : workspace.forwardFormMode && selectedHost ? (
+              <ForwardForm
+                initial={editingForward}
+                onSave={handleSaveForward}
+                onCancel={workspace.closeForwardForm}
+                onDelete={
+                  workspace.forwardFormMode.type === "edit"
+                    ? (id) => void handleDeleteForward(id)
+                    : undefined
+                }
+              />
+            ) : selectedHost ? (
+              <>
+                {useTitlebarSessionChrome ? null : sessionHeader}
+                {useTitlebarSessionChrome ? null : sessionTabBar}
 
             {portsChromeOpen ? (
               <ForwardsPanel
@@ -779,52 +836,54 @@ function App() {
             onSessionCwd={shells.setSessionCwd}
           />
         ) : null}
-      </main>
+          </SidebarInset>
+        </div>
 
-      {hosts.hostKeyError ? (
-        <HostKeyDialog
-          error={hosts.hostKeyError}
-          busy={hosts.connectingId !== null}
-          onAccept={() => void hosts.acceptHostKey()}
-          onCancel={hosts.cancelHostKey}
+        {hosts.hostKeyError ? (
+          <HostKeyDialog
+            error={hosts.hostKeyError}
+            busy={hosts.connectingId !== null}
+            onAccept={() => void hosts.acceptHostKey()}
+            onCancel={hosts.cancelHostKey}
+          />
+        ) : null}
+
+        {hosts.authCheck ? (
+          <AuthCheckDialog
+            prompt={hosts.authCheck}
+            busy={hosts.connectingId !== null}
+            onCancel={() => void hosts.cancelAuthCheck()}
+          />
+        ) : null}
+
+        <DisconnectDialog
+          open={disconnectPrompt != null}
+          sessionName={disconnectPrompt?.sessionName ?? DEFAULT_TMUX_SESSION}
+          busy={disconnectBusy}
+          onOpenChange={(open) => {
+            if (!open && !disconnectBusy) setDisconnectPrompt(null);
+          }}
+          onConfirm={(choice) => void confirmDisconnect(choice)}
         />
-      ) : null}
 
-      {hosts.authCheck ? (
-        <AuthCheckDialog
-          prompt={hosts.authCheck}
-          busy={hosts.connectingId !== null}
-          onCancel={() => void hosts.cancelAuthCheck()}
+        <SftpDiscardDialog
+          open={discardTarget != null}
+          fileName={discardTarget?.fileName ?? ""}
+          onOpenChange={(open) => {
+            if (!open) setDiscardTarget(null);
+          }}
+          onDiscard={confirmDiscardTab}
         />
-      ) : null}
 
-      <DisconnectDialog
-        open={disconnectPrompt != null}
-        sessionName={disconnectPrompt?.sessionName ?? DEFAULT_TMUX_SESSION}
-        busy={disconnectBusy}
-        onOpenChange={(open) => {
-          if (!open && !disconnectBusy) setDisconnectPrompt(null);
-        }}
-        onConfirm={(choice) => void confirmDisconnect(choice)}
-      />
-
-      <SftpDiscardDialog
-        open={discardTarget != null}
-        fileName={discardTarget?.fileName ?? ""}
-        onOpenChange={(open) => {
-          if (!open) setDiscardTarget(null);
-        }}
-        onDiscard={confirmDiscardTab}
-      />
-
-      <BackgroundSetupDialog
-        open={androidBackground.setupOpen}
-        readiness={androidBackground.readiness}
-        busy={androidBackground.setupBusy}
-        onEnable={() => void androidBackground.enableBackground()}
-        onOpenSettings={() => void androidBackground.openBatterySettings()}
-      />
-    </div>
+        <BackgroundSetupDialog
+          open={androidBackground.setupOpen}
+          readiness={androidBackground.readiness}
+          busy={androidBackground.setupBusy}
+          onEnable={() => void androidBackground.enableBackground()}
+          onOpenSettings={() => void androidBackground.openBatterySettings()}
+        />
+      </SidebarProvider>
+    </TooltipProvider>
   );
 }
 

@@ -1,5 +1,6 @@
 import { ArrowLeftRight, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/workspace/empty-state";
 import { ForwardRow } from "@/features/forwards/components/forward-row";
 import type { PortForward } from "@/features/forwards/types";
 import type { Host } from "@/features/hosts/types";
@@ -52,48 +53,42 @@ export function ForwardsPanel({
       </div>
 
       {forwards.length === 0 ? (
-        <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 px-6 pb-[env(safe-area-inset-bottom)] text-center">
-          <div className="flex size-10 items-center justify-center rounded-xl border border-border bg-surface text-status-tunnel">
-            <ArrowLeftRight className="size-5" aria-hidden />
-          </div>
-          <div className="max-w-sm space-y-1.5">
-            <h3 className="text-sm font-medium text-balance">
-              No ports yet
-            </h3>
-            <p className="text-[13px] leading-relaxed text-muted-foreground text-pretty">
-              Map ports through this host — local, remote reverse, or SOCKS.
-              Local binds stay on this device (127.0.0.1) unless you listen on
-              all interfaces.
-              {!connected
-                ? " Connect the host when you are ready to start a tunnel."
-                : null}
-            </p>
-          </div>
-          <div className="flex flex-wrap items-center justify-center gap-2">
-            <Button
-              type="button"
-              size="sm"
-              onClick={onAddForward}
-              className="min-h-10 px-4 md:min-h-7"
-            >
-              <Plus data-icon="inline-start" />
-              New tunnel
-            </Button>
-            {!connected ? (
+        <EmptyState
+          icon={ArrowLeftRight}
+          iconClassName="text-status-tunnel"
+          title="No ports yet"
+          description={
+            connected
+              ? "Map ports through this host — local, remote reverse, or SOCKS. Local binds stay on this device (127.0.0.1) unless you listen on all interfaces."
+              : "Map ports through this host — local, remote reverse, or SOCKS. Connect the host when you are ready to start a tunnel."
+          }
+          action={
+            <div className="flex flex-wrap items-center justify-center gap-2">
               <Button
                 type="button"
                 size="sm"
-                variant="outline"
-                onClick={onConnect}
+                onClick={onAddForward}
                 className="min-h-10 px-4 md:min-h-7"
               >
-                Connect
+                <Plus data-icon="inline-start" />
+                New tunnel
               </Button>
-            ) : null}
-          </div>
-        </div>
+              {!connected ? (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={onConnect}
+                  className="min-h-10 px-4 md:min-h-7"
+                >
+                  Connect
+                </Button>
+              ) : null}
+            </div>
+          }
+        />
       ) : (
-        <div className="min-h-0 flex-1 overflow-y-auto p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+        <div className="min-h-0 flex-1 overflow-y-auto p-2.5 pb-[max(0.75rem,env(safe-area-inset-bottom))] md:p-3">
           <ul className="flex flex-col gap-1.5" aria-label="Ports">
             {forwards.map((forward) => (
               <ForwardRow

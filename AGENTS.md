@@ -20,7 +20,7 @@
 | Path | Role |
 |---|---|
 | `src/app/` | Composition root: `App.tsx`, workspace + SSH lifecycle hooks |
-| `src/features/hosts/` | Host types, store, CRUD/connect hooks, rail/form/header UI |
+| `src/features/hosts/` | Host types, store, CRUD/connect hooks, sidebar/list/form/header UI |
 | `src/features/forwards/` | Tunnel types, store, start/stop hooks, panel/form UI |
 | `src/features/shells/` | Shell sessions, launch menu, xterm terminal panel |
 | `src/features/sftp/` | SFTP browser, open-file workspace, transfer |
@@ -29,7 +29,7 @@
 | `src/features/ssh/` | Tauri SSH bridge: commands, errors, events |
 | `src/components/ui/` | shadcn CLI primitives — do not hand-edit; compose via variants / className / CSS tokens |
 | `src/components/status/` | Shared status UI (`status-dot`, `session-chip`) |
-| `src/components/workspace/` | Workspace chrome (session tab bar, empty state, form field) |
+| `src/components/workspace/` | Workspace chrome (session tab bar, empty states, form field) |
 | `src/lib/utils.ts` | `cn` helper |
 | `src-tauri/src/ssh/` | Rust SSH feature: manager, connection, shell, forward |
 | `DESIGN.md` | Design system source of truth |
