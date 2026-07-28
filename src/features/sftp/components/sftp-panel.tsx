@@ -1,8 +1,6 @@
 import { useCallback, useRef, useState } from "react";
 import {
   ChevronUp,
-  File,
-  Folder,
   FolderOpen,
   FolderPlus,
   RefreshCw,
@@ -15,8 +13,9 @@ import {
   type SftpEntryAction,
   type SftpEntryMenuState,
 } from "@/features/sftp/components/sftp-entry-menu";
+import { FileTypeIcon } from "@/features/sftp/file-icon";
 import { formatBytes, parentPath } from "@/features/sftp/format";
-import { useSftp } from "@/features/sftp/use-sftp";
+import { useSftp, type SftpController } from "@/features/sftp/use-sftp";
 import { isLocalHost } from "@/features/hosts/local-host";
 import type { Host } from "@/features/hosts/types";
 import type { SftpEntry } from "@/features/ssh";
@@ -25,6 +24,8 @@ import { cn } from "@/lib/utils";
 
 type SftpPanelProps = {
   host: Host;
+  sftp?: SftpController;
+  embedded?: boolean;
   shellCwd?: string | null;
   tmuxSession?: string | null;
   tmuxWindowId?: string | null;
@@ -70,17 +71,7 @@ function SftpEntryRow({
     >
       {renaming ? (
         <>
-          {entry.isDir ? (
-            <Folder
-              className="size-4 shrink-0 text-status-transfer"
-              aria-hidden
-            />
-          ) : (
-            <File
-              className="size-4 shrink-0 text-muted-foreground"
-              aria-hidden
-            />
-          )}
+          <FileTypeIcon name={entry.name} isDir={entry.isDir} />
           <input
             autoFocus
             value={renameValue}
@@ -112,17 +103,7 @@ function SftpEntryRow({
             onOpen();
           }}
         >
-          {entry.isDir ? (
-            <Folder
-              className="size-4 shrink-0 text-status-transfer"
-              aria-hidden
-            />
-          ) : (
-            <File
-              className="size-4 shrink-0 text-muted-foreground"
-              aria-hidden
-            />
-          )}
+          <FileTypeIcon name={entry.name} isDir={entry.isDir} />
           <span className="min-w-0 flex-1 truncate font-mono text-[13px]">
             {entry.name}
           </span>
@@ -137,6 +118,8 @@ function SftpEntryRow({
 
 export function SftpPanel({
   host,
+  sftp: sftpProp,
+  embedded = false,
   shellCwd,
   tmuxSession,
   tmuxWindowId,
@@ -145,13 +128,15 @@ export function SftpPanel({
 }: SftpPanelProps) {
   const local = isLocalHost(host);
   const connected = host.status === "connected";
-  const sftp = useSftp({
+  const ownedSftp = useSftp({
     hostId: host.id,
     connected,
-    shellCwd,
-    tmuxSession: local ? undefined : tmuxSession,
-    tmuxWindowId: local ? undefined : tmuxWindowId,
+    enabled: !sftpProp,
+    shellCwd: sftpProp ? undefined : shellCwd,
+    tmuxSession: sftpProp || local ? undefined : tmuxSession,
+    tmuxWindowId: sftpProp || local ? undefined : tmuxWindowId,
   });
+  const sftp = sftpProp ?? ownedSftp;
   const upPath = parentPath(sftp.path);
   const pathLabel = local
     ? sftp.path
@@ -183,7 +168,10 @@ export function SftpPanel({
 
   const commitRename = useCallback(async () => {
     if (!renamingPath) return;
-    const entry = sftp.entries.find((item) => item.path === renamingPath);
+    const entry =
+      sftp.findEntry?.(renamingPath) ??
+      sftp.entries.find((item) => item.path === renamingPath) ??
+      null;
     const next = renameValue.trim();
     setRenamingPath(null);
     if (!entry || !next || next === renameOriginalRef.current) return;
@@ -236,8 +224,8 @@ export function SftpPanel({
   if (!connected) {
     return (
       <div
-        role="tabpanel"
-        id="session-panel-files"
+        role={embedded ? undefined : "tabpanel"}
+        id={embedded ? undefined : "session-panel-files"}
         className="flex min-h-0 flex-1 flex-col items-center justify-center gap-4 px-6 text-center"
       >
         <div className="flex size-10 items-center justify-center rounded-xl border border-border bg-surface text-muted-foreground">
@@ -258,8 +246,8 @@ export function SftpPanel({
 
   return (
     <div
-      role="tabpanel"
-      id="session-panel-files"
+      role={embedded ? undefined : "tabpanel"}
+      id={embedded ? undefined : "session-panel-files"}
       className="flex min-h-0 flex-1 flex-col"
     >
       <div className="flex min-h-11 shrink-0 items-center gap-2 border-b border-border px-3 py-2 sm:px-4 md:min-h-10">

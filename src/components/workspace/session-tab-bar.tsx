@@ -556,16 +556,18 @@ export function SessionTabBar({
               <LaunchItem id="pi" onSelect={onNewShell} />
             </DropdownMenuContent>
           </DropdownMenu>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon-sm"
-            aria-label="Files"
-            className="size-9 md:size-7"
-            onClick={onOpenFiles}
-          >
-            <Folder className="size-3.5" />
-          </Button>
+          {!isDesktop ? (
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              aria-label="Files"
+              className="size-9"
+              onClick={onOpenFiles}
+            >
+              <Folder className="size-3.5" />
+            </Button>
+          ) : null}
           {showPorts ? (
             <Button
               type="button"

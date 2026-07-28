@@ -160,11 +160,17 @@ Do not “squeeze” the desktop split below `md`. Switch structure.
 │ ○ jump   │   active document panel                     │
 │ + Host   │                                             │
 └──────────┴─────────────────────────────────────────────┘
+
+Connected host (desktop — file tree always occupies the left rail):
+┌──────────────┬─────────────────────────────────────────┐
+│ File tree    │ Session header + tabs                   │
+│ (left rail)  │ shell / file editor / Files empty / …   │
+└──────────────┴─────────────────────────────────────────┘
 ```
 
 | Region | Size | Notes |
 |---|---|---|
-| Host rail | ~240px (`w-60`) | Always visible; selected = elevated surface |
+| Left rail | ~240px (`w-60`) | Host list when idle/disconnected; file tree always while host is connected (desktop). Hosts toggle available from tree header |
 | Session header | 48px | Mono target left; chip + connect right |
 | Session tabs | content | Document strip (shells, files, tools); elevated active pill |
 | Workspace body | flex-1 | Active tab panel |
@@ -199,7 +205,7 @@ Hosts (root)                    Session (detail)
 
 1. **SSH / Terminal** — session readiness and PTY. Disconnected/error states explain next step and offer Connect / Retry. On mobile, terminal is full-bleed; soft keyboard must not permanently bury the prompt (scroll + visual viewport). Mobile OS (Android/iOS) shows a bottom accessory key bar (Esc, Ctrl, Alt, Shift, Tab, arrows) with sticky modifiers for the next soft-keyboard key.
 2. **Port forwards** — desktop: multi-column mono row. Mobile: stacked row (type + status on first line; endpoints below). L: local → remote; R: remote listen → local target; D: local bind + SOCKS5. Cyan on active only.
-3. **SFTP** — path in mono. Desktop may grow dual-pane later; mobile is single-pane + transfer sheet.
+3. **SFTP** — path in mono. Desktop: file tree always in the left rail while connected; main pane is shell/editor/Files empty. Mobile: single-pane list + transfer sheet.
 
 ### Empty states
 
@@ -222,7 +228,9 @@ Task-specific, one primary action, no fake metrics. Icon in a quiet bordered til
 | `SessionHeader` | `features/hosts/components/session-header.tsx` | Target + status + connect; back control on mobile |
 | `SessionTabBar` | `components/workspace/session-tab-bar.tsx` | Document tabs: shells · open files · Files · Ports |
 | `TerminalPanel` | `features/shells/components/terminal-panel.tsx` | Shell workspace |
-| `SftpPanel` | `features/sftp/components/sftp-panel.tsx` | File browser / transfer |
+| `SftpPanel` | `features/sftp/components/sftp-panel.tsx` | Mobile file list browser / transfer |
+| `SftpTreeSidebar` | `features/sftp/components/sftp-tree-sidebar.tsx` | Desktop file tree in the left rail (replaces host list) |
+| `SftpWorkspace` | `features/sftp/components/sftp-workspace.tsx` | Files empty pane + open file slot; mobile list host |
 | `SftpFileWorkspace` | `features/sftp/components/sftp-file-workspace.tsx` | Open file editor / preview tab |
 | `ForwardsPanel` | `features/forwards/components/forwards-panel.tsx` | Tunnel list / empty |
 | `EmptyWorkspace` | `components/workspace/empty-workspace.tsx` | No host selected (desktop) |
@@ -336,7 +344,7 @@ When adding UI:
 
 - [x] Add / edit host form (auth method, keys, import key on mobile) — full-screen on mobile
 - [x] Real PTY terminal themed to Relay Night (soft-keyboard safe on mobile via visualViewport)
-- [x] SFTP browser + transfer status (single-pane; dual-pane desktop later)
+- [x] SFTP browser + transfer status (mobile single-pane; desktop tree in host rail + editor)
 - [x] Forward editor (local L + bind address + auto-start)
 - [x] Remote (R) and dynamic SOCKS (D) forwards
 - [ ] Command palette on desktop (`⌘K`); mobile search sheet for hosts
@@ -357,3 +365,4 @@ When adding UI:
 | 2026-03-27 | Android scaffold, system back, key import, SFTP, soft-keyboard terminal |
 | 2026-03-28 | Android background gate + FGS keepalive while hosts connected |
 | 2026-03-28 | Mobile terminal accessory key bar + soft-keyboard re-focus fix |
+| 2026-03-28 | Desktop SFTP: file tree in host rail + editor empty pane |

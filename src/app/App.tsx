@@ -29,7 +29,9 @@ import type { Host, HostConfig } from "@/features/hosts/types";
 import type { PortForwardConfig } from "@/features/forwards/types";
 import { SftpDiscardDialog } from "@/features/sftp/components/sftp-discard-dialog";
 import { SftpFileWorkspace } from "@/features/sftp/components/sftp-file-workspace";
-import { SftpPanel } from "@/features/sftp";
+import { SftpTreeSidebar } from "@/features/sftp/components/sftp-tree-sidebar";
+import { SftpWorkspace } from "@/features/sftp/components/sftp-workspace";
+import { useSftp } from "@/features/sftp/use-sftp";
 import {
   useSessionTabShortcuts,
   useSessionTabs,
@@ -42,11 +44,14 @@ import {
   useShells,
 } from "@/features/shells";
 import type { SftpEntry } from "@/features/ssh";
+import { useMediaQuery } from "@/hooks/use-media-query";
 
 function App() {
+  const isDesktop = useMediaQuery("(min-width: 768px)");
   const forwards = useForwards();
   const shells = useShells();
   const sessionTabs = useSessionTabs();
+  const [railOverride, setRailOverride] = useState<"hosts" | null>(null);
   const [disconnectPrompt, setDisconnectPrompt] = useState<{
     hostId: string;
     sessionName: string;
@@ -211,6 +216,7 @@ function App() {
     onShortcutFiles: () => {
       const hostId = selectedIdRef.current;
       if (!hostId) return;
+      setRailOverride(null);
       sessionTabsRef.current.openToolTab(hostId, "files");
     },
     onShortcutPorts: () => {
@@ -316,7 +322,6 @@ function App() {
     : null;
   const activeSession =
     selectedSessions.find((session) => session.id === activeSessionId) ?? null;
-  const activeShellCwd = activeSession?.cwd ?? null;
 
   const selectedTabs = selectedHost
     ? (sessionTabs.tabsByHost[selectedHost.id] ?? [])
@@ -330,17 +335,24 @@ function App() {
     ? (sessionTabs.filesByHost[selectedHost.id] ?? {})
     : {};
 
+  const trackedSessionId =
+    activeTab?.kind === "shell" ? activeTab.shellId : activeSessionId;
+  const trackedSession =
+    selectedSessions.find((session) => session.id === trackedSessionId) ??
+    activeSession;
+  const activeShellCwd = trackedSession?.cwd ?? null;
+
   const shellChromeOpen =
     !workspace.formMode &&
     !workspace.forwardFormMode &&
     selectedHost != null &&
     activeTab?.kind === "shell";
 
-  const filesChromeOpen =
+  const explorerChromeOpen =
     !workspace.formMode &&
     !workspace.forwardFormMode &&
     selectedHost != null &&
-    activeTab?.kind === "files";
+    (activeTab?.kind === "files" || activeTab?.kind === "file");
 
   const portsChromeOpen =
     !workspace.formMode &&
@@ -349,11 +361,32 @@ function App() {
     !selectedIsLocal &&
     activeTab?.kind === "ports";
 
-  const fileChromeOpen =
+  const sftp = useSftp({
+    hostId: selectedHost?.id ?? "__none__",
+    connected: selectedHost?.status === "connected",
+    enabled: selectedHost != null,
+    shellCwd: activeShellCwd,
+    tmuxSession:
+      selectedIsLocal || !selectedHost
+        ? undefined
+        : (trackedSession?.tmuxSession ?? selectedHost.tmuxSession),
+    tmuxWindowId:
+      selectedIsLocal || !selectedHost
+        ? undefined
+        : trackedSession?.tmuxWindowId,
+  });
+
+  useEffect(() => {
+    setRailOverride(null);
+  }, [selectedHost?.id]);
+
+  const showFileRail =
+    isDesktop &&
     !workspace.formMode &&
     !workspace.forwardFormMode &&
     selectedHost != null &&
-    activeTab?.kind === "file";
+    selectedHost.status === "connected" &&
+    railOverride !== "hosts";
 
   // Keep panels mounted across host switches so xterm scrollback and WebGL
   // surfaces survive. Only the selected host is shown.
@@ -373,6 +406,9 @@ function App() {
       );
       if (tab?.kind === "shell") {
         selectShell(selectedHost.id, tab.shellId);
+      }
+      if (tab?.kind === "files" || tab?.kind === "file") {
+        setRailOverride(null);
       }
     },
     [selectedHost, selectShell, sessionTabs],
@@ -488,6 +524,10 @@ function App() {
     workspace.mobilePane === "hosts" ? "flex" : "hidden md:flex";
   const showSession =
     workspace.mobilePane === "session" ? "flex" : "hidden md:flex";
+  const hostRailClass = showFileRail
+    ? "hidden"
+    : showHostRail;
+  const fileRailClass = showFileRail ? "flex" : "hidden";
 
   const openFileTabs = useMemo(() => {
     return selectedTabs.filter(
@@ -513,8 +553,21 @@ function App() {
         selectedId={workspace.selectedId}
         onSelect={workspace.selectHost}
         onAddHost={workspace.openAddHost}
-        className={showHostRail}
+        className={hostRailClass}
       />
+
+      {selectedHost ? (
+        <SftpTreeSidebar
+          sftp={sftp}
+          rootLabel={selectedHost.name}
+          selectedPath={
+            activeTab?.kind === "file" ? activeTab.path : null
+          }
+          onOpenFile={handleOpenFile}
+          onShowHosts={() => setRailOverride("hosts")}
+          className={fileRailClass}
+        />
+      ) : null}
 
       <main className={`min-h-0 min-w-0 flex-1 flex-col ${showSession}`}>
         {workspace.formMode ? (
@@ -564,9 +617,10 @@ function App() {
                 sessionTabs.reorderTabs(selectedHost.id, orderedIds)
               }
               onNewShell={(launchId) => void openShell(selectedHost.id, launchId)}
-              onOpenFiles={() =>
-                sessionTabs.openToolTab(selectedHost.id, "files")
-              }
+              onOpenFiles={() => {
+                setRailOverride(null);
+                sessionTabs.openToolTab(selectedHost.id, "files");
+              }}
               onOpenPorts={() =>
                 sessionTabs.openToolTab(selectedHost.id, "ports")
               }
@@ -595,55 +649,64 @@ function App() {
             {selectedHost ? (
               <div
                 className={
-                  filesChromeOpen
+                  explorerChromeOpen
                     ? "flex min-h-0 flex-1 flex-col"
                     : "hidden"
                 }
-                aria-hidden={!filesChromeOpen}
+                aria-hidden={!explorerChromeOpen}
               >
-                <SftpPanel
+                <SftpWorkspace
                   host={selectedHost}
-                  shellCwd={activeShellCwd}
-                  tmuxSession={
-                    selectedIsLocal
-                      ? undefined
-                      : (activeSession?.tmuxSession ?? selectedHost.tmuxSession)
-                  }
-                  tmuxWindowId={
-                    selectedIsLocal ? undefined : activeSession?.tmuxWindowId
+                  sftp={sftp}
+                  activeKind={
+                    activeTab?.kind === "file" ? "file" : "files"
                   }
                   onConnect={() => void hosts.connectHost(selectedHost.id)}
                   onOpenFile={handleOpenFile}
+                  fileSlot={openFileTabs.map((tab) => {
+                    const state = selectedFiles[tab.path];
+                    if (!state) return null;
+                    const active =
+                      activeTab?.kind === "file" &&
+                      activeTab.path === tab.path;
+                    return (
+                      <div
+                        key={tab.id}
+                        className={
+                          active
+                            ? "flex min-h-0 flex-1 flex-col"
+                            : "hidden"
+                        }
+                        aria-hidden={!active}
+                      >
+                        <SftpFileWorkspace
+                          state={state}
+                          onChangeText={(text) =>
+                            sessionTabs.setFileText(
+                              selectedHost.id,
+                              tab.path,
+                              text,
+                            )
+                          }
+                          onSave={() =>
+                            sessionTabs.saveFile(selectedHost.id, tab.path)
+                          }
+                          onDownload={() =>
+                            void sessionTabs.downloadFile(
+                              selectedHost.id,
+                              tab.path,
+                            )
+                          }
+                          onRevealFiles={() =>
+                            sessionTabs.openToolTab(selectedHost.id, "files")
+                          }
+                        />
+                      </div>
+                    );
+                  })}
                 />
               </div>
             ) : null}
-
-            {openFileTabs.map((tab) => {
-              const state = selectedFiles[tab.path];
-              if (!state) return null;
-              const active = fileChromeOpen && activeTab?.kind === "file" && activeTab.path === tab.path;
-              return (
-                <div
-                  key={tab.id}
-                  className={active ? "flex min-h-0 flex-1 flex-col" : "hidden"}
-                  aria-hidden={!active}
-                >
-                  <SftpFileWorkspace
-                    state={state}
-                    onChangeText={(text) =>
-                      sessionTabs.setFileText(selectedHost.id, tab.path, text)
-                    }
-                    onSave={() => sessionTabs.saveFile(selectedHost.id, tab.path)}
-                    onDownload={() =>
-                      void sessionTabs.downloadFile(selectedHost.id, tab.path)
-                    }
-                    onRevealFiles={() =>
-                      sessionTabs.openToolTab(selectedHost.id, "files")
-                    }
-                  />
-                </div>
-              );
-            })}
           </>
         ) : (
           <div className="hidden min-h-0 flex-1 flex-col md:flex">
