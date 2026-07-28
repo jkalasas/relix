@@ -27,7 +27,7 @@
 | `src/features/session-tabs/` | Unified session tabs (shells, files, tools) |
 | `src/features/android-background/` | Android background gate + session FGS keepalive |
 | `src/features/ssh/` | Tauri SSH bridge: commands, errors, events |
-| `src/components/ui/` | shadcn primitives — prefer variants, don’t restyle ad hoc |
+| `src/components/ui/` | shadcn CLI primitives — do not hand-edit; compose via variants / className / CSS tokens |
 | `src/components/status/` | Shared status UI (`status-dot`, `session-chip`) |
 | `src/components/workspace/` | Workspace chrome (session tab bar, empty state, form field) |
 | `src/lib/utils.ts` | `cn` helper |
@@ -66,6 +66,14 @@ When adding UI:
 - Shared status UI under `src/components/status/`; workspace chrome under `src/components/workspace/`.
 - Do not invent new status colors or layout modes outside DESIGN.md.
 - SSH IPC surface is `src/features/ssh/` (frontend) and `src-tauri/src/ssh/` (backend). Keep command/event names stable.
+
+### shadcn (`src/components/ui/`)
+
+- Treat files under `src/components/ui/` as **CLI-owned**. Do not hand-edit them for product styling or behavior.
+- Add/update primitives only via `bunx shadcn@latest add …` (or overwrite re-add). After add, do not restyle the generated TSX.
+- Customize at call sites with `variant` / `size` / `className`, or with shared wrappers outside `ui/`.
+- Theme / token changes go in `src/index.css` (and DESIGN.md). Project overlay policy (solid dim, no glass) is CSS on `[data-slot="dialog-overlay"]` / `[data-slot="drawer-overlay"]` — not edits to `dialog.tsx` / `drawer.tsx`.
+- Prefer existing variants over one-off class piles; don’t invent new variants inside `ui/` by hand.
 
 ## Backend modules (`src-tauri/src/ssh/`)
 

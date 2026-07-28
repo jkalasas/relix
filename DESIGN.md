@@ -234,7 +234,7 @@ Task-specific, one primary action, no fake metrics. Icon in a quiet bordered til
 | `SftpFileWorkspace` | `features/sftp/components/sftp-file-workspace.tsx` | Open file editor / preview tab |
 | `ForwardsPanel` | `features/forwards/components/forwards-panel.tsx` | Tunnel list / empty |
 | `EmptyWorkspace` | `components/workspace/empty-workspace.tsx` | No host selected (desktop) |
-| `Button` / `Input` | `components/ui/*` | shadcn primitives — use variants, don’t restyle ad hoc |
+| `Button` / `Input` | `components/ui/*` | shadcn CLI primitives — do not hand-edit; compose via variants / className / CSS tokens |
 
 ### Status mapping
 

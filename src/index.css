@@ -181,6 +181,14 @@
   }
 }
 
+[data-slot="dialog-overlay"],
+[data-slot="drawer-overlay"] {
+  background-color: color-mix(in oklab, black 50%, transparent);
+  --tw-backdrop-blur: ;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
