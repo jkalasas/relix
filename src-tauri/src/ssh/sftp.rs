@@ -6,6 +6,8 @@ use tauri::AppHandle;
 
 use super::connection::handle_is_closed;
 use super::error::{SshError, SshErrorCode};
+use super::local_fs;
+use super::local_shell::is_local_host_id;
 use super::manager::SshManager;
 
 const MAX_TRANSFER_BYTES: usize = 32 * 1024 * 1024;
@@ -174,6 +176,9 @@ impl SshManager {
         _app: &AppHandle,
         config: SftpListConfig,
     ) -> Result<SftpListResult, SshError> {
+        if is_local_host_id(&config.host_id) {
+            return local_fs::list(config).await;
+        }
         let session = self.ensure_sftp(&config.host_id).await?;
         let requested = if config.path.trim().is_empty() {
             ".".to_string()
@@ -223,6 +228,9 @@ impl SshManager {
         _app: &AppHandle,
         config: SftpReadConfig,
     ) -> Result<Vec<u8>, SshError> {
+        if is_local_host_id(&config.host_id) {
+            return local_fs::read(config).await;
+        }
         let session = self.ensure_sftp(&config.host_id).await?;
         let meta = session.metadata(&config.path).await.map_err(map_sftp_err)?;
         let size = meta.size.unwrap_or(0) as usize;
@@ -243,6 +251,9 @@ impl SshManager {
         _app: &AppHandle,
         config: SftpWriteConfig,
     ) -> Result<(), SshError> {
+        if is_local_host_id(&config.host_id) {
+            return local_fs::write(config).await;
+        }
         if config.data.len() > MAX_TRANSFER_BYTES {
             return Err(SshError::new(
                 SshErrorCode::TransferFailed,
@@ -265,6 +276,9 @@ impl SshManager {
         _app: &AppHandle,
         config: SftpMkdirConfig,
     ) -> Result<(), SshError> {
+        if is_local_host_id(&config.host_id) {
+            return local_fs::mkdir(config).await;
+        }
         let session = self.ensure_sftp(&config.host_id).await?;
         session
             .create_dir(&config.path)
@@ -277,6 +291,9 @@ impl SshManager {
         _app: &AppHandle,
         config: SftpRemoveConfig,
     ) -> Result<(), SshError> {
+        if is_local_host_id(&config.host_id) {
+            return local_fs::remove(config).await;
+        }
         let session = self.ensure_sftp(&config.host_id).await?;
         if config.is_dir {
             session
@@ -296,6 +313,9 @@ impl SshManager {
         _app: &AppHandle,
         config: SftpRenameConfig,
     ) -> Result<(), SshError> {
+        if is_local_host_id(&config.host_id) {
+            return local_fs::rename(config).await;
+        }
         let session = self.ensure_sftp(&config.host_id).await?;
         session
             .rename(&config.from, &config.to)

@@ -216,7 +216,7 @@ function App() {
   const selectedIsLocal = selectedHost ? isLocalHost(selectedHost) : false;
 
   useEffect(() => {
-    if (selectedIsLocal && workspace.tab !== "terminal") {
+    if (selectedIsLocal && workspace.tab === "forwards") {
       workspace.setTab("terminal");
     }
   }, [selectedIsLocal, workspace.setTab, workspace.tab]);
@@ -375,14 +375,20 @@ function App() {
             <WorkspaceTabs
               active={workspace.tab}
               onChange={workspace.setTab}
-              tabs={selectedIsLocal ? ["terminal"] : undefined}
+              tabs={selectedIsLocal ? ["terminal", "sftp"] : undefined}
             />
-            {!selectedIsLocal && workspace.tab === "sftp" ? (
+            {workspace.tab === "sftp" ? (
               <SftpPanel
                 host={selectedHost}
                 shellCwd={activeShellCwd}
-                tmuxSession={activeSession?.tmuxSession ?? selectedHost.tmuxSession}
-                tmuxWindowId={activeSession?.tmuxWindowId}
+                tmuxSession={
+                  selectedIsLocal
+                    ? undefined
+                    : (activeSession?.tmuxSession ?? selectedHost.tmuxSession)
+                }
+                tmuxWindowId={
+                  selectedIsLocal ? undefined : activeSession?.tmuxWindowId
+                }
                 onConnect={() => void hosts.connectHost(selectedHost.id)}
               />
             ) : null}

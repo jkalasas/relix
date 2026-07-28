@@ -26,7 +26,7 @@ import {
   encodeText,
   type FileKind,
 } from "@/features/sftp/file-kind";
-import { basename, joinRemotePath } from "@/features/sftp/format";
+import { basename, joinRemotePath, parentPath } from "@/features/sftp/format";
 import type { SftpTransferState } from "@/features/sftp/types";
 
 export type OpenedRemoteFile = {
@@ -169,10 +169,8 @@ export function useSftp({
         setError("Name cannot contain path separators");
         return;
       }
-      const parent = entry.path.includes("/")
-        ? entry.path.slice(0, entry.path.lastIndexOf("/")) || "/"
-        : path;
-      const to = joinRemotePath(parent === "" ? "/" : parent, name);
+      const parent = parentPath(entry.path) ?? path;
+      const to = joinRemotePath(parent, name);
       try {
         await sshSftpRename(hostId, entry.path, to);
         cacheMove(hostId, entry.path, to);

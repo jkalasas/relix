@@ -27,6 +27,7 @@ import {
 import { SftpImageViewer } from "@/features/sftp/components/sftp-image-viewer";
 import { formatBytes, parentPath } from "@/features/sftp/format";
 import { useSftp, type OpenedRemoteFile } from "@/features/sftp/use-sftp";
+import { isLocalHost } from "@/features/hosts/local-host";
 import type { Host } from "@/features/hosts/types";
 import type { SftpEntry } from "@/features/ssh";
 import { parseSshError } from "@/features/ssh/errors";
@@ -175,15 +176,19 @@ export function SftpPanel({
   tmuxWindowId,
   onConnect,
 }: SftpPanelProps) {
+  const local = isLocalHost(host);
   const connected = host.status === "connected";
   const sftp = useSftp({
     hostId: host.id,
     connected,
     shellCwd,
-    tmuxSession,
-    tmuxWindowId,
+    tmuxSession: local ? undefined : tmuxSession,
+    tmuxWindowId: local ? undefined : tmuxWindowId,
   });
   const upPath = parentPath(sftp.path);
+  const pathLabel = local
+    ? sftp.path
+    : `${host.user}@${host.hostname}:${sftp.path}`;
 
   const [menu, setMenu] = useState<SftpEntryMenuState | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<SftpEntry | null>(null);
@@ -494,7 +499,7 @@ export function SftpPanel({
           <ChevronUp className="size-4" />
         </Button>
         <p className="min-w-0 flex-1 truncate font-mono text-xs text-muted-foreground">
-          {host.user}@{host.hostname}:{sftp.path}
+          {pathLabel}
         </p>
         <Button
           type="button"
@@ -590,7 +595,7 @@ export function SftpPanel({
             </p>
           </div>
         ) : (
-          <ul className="flex flex-col" aria-label="Remote files">
+          <ul className="flex flex-col" aria-label={local ? "Local files" : "Remote files"}>
             {sftp.entries.map((entry) => (
               <SftpEntryRow
                 key={entry.path}
