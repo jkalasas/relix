@@ -41,11 +41,11 @@ import {
 } from "@/features/hosts";
 import type { Host, HostConfig } from "@/features/hosts/types";
 import type { PortForwardConfig } from "@/features/forwards/types";
-import { SftpDiscardDialog } from "@/features/sftp/components/sftp-discard-dialog";
-import { SftpFileWorkspace } from "@/features/sftp/components/sftp-file-workspace";
-import { SftpTreeSidebar } from "@/features/sftp/components/sftp-tree-sidebar";
-import { SftpWorkspace } from "@/features/sftp/components/sftp-workspace";
-import { useSftp } from "@/features/sftp/use-sftp";
+import { FileDiscardDialog } from "@/features/files/components/file-discard-dialog";
+import { FileWorkspace } from "@/features/files/components/file-workspace";
+import { FileTreeSidebar } from "@/features/files/components/file-tree-sidebar";
+import { FilesWorkspace } from "@/features/files/components/files-workspace";
+import { useFiles } from "@/features/files/use-files";
 import {
   useSessionTabShortcuts,
   useSessionTabs,
@@ -58,7 +58,7 @@ import {
   useShells,
 } from "@/features/shells";
 import { useIsMobileOs } from "@/features/shells/lib/mobile-os";
-import type { SftpEntry } from "@/features/ssh";
+import type { FsEntry } from "@/features/ssh";
 import { useMediaQuery } from "@/hooks/use-media-query";
 
 function App() {
@@ -382,7 +382,7 @@ function App() {
     !selectedIsLocal &&
     activeTab?.kind === "ports";
 
-  const sftp = useSftp({
+  const files = useFiles({
     hostId: selectedHost?.id ?? "__none__",
     connected: selectedHost?.status === "connected",
     enabled: selectedHost != null,
@@ -534,7 +534,7 @@ function App() {
   );
 
   const handleOpenFile = useCallback(
-    (entry: SftpEntry) => {
+    (entry: FsEntry) => {
       if (!selectedHost) return;
       void sessionTabs.openFileTab(selectedHost.id, entry);
     },
@@ -629,8 +629,8 @@ function App() {
               mode="files"
               onShowHosts={() => setRailOverride("hosts")}
             >
-              <SftpTreeSidebar
-                sftp={sftp}
+              <FileTreeSidebar
+                files={files}
                 rootLabel={selectedHost.name}
                 selectedPath={
                   activeTab?.kind === "file" ? activeTab.path : null
@@ -715,9 +715,9 @@ function App() {
                 }
                 aria-hidden={!explorerChromeOpen}
               >
-                <SftpWorkspace
+                <FilesWorkspace
                   host={selectedHost}
-                  sftp={sftp}
+                  files={files}
                   activeKind={
                     activeTab?.kind === "file" ? "file" : "files"
                   }
@@ -739,7 +739,7 @@ function App() {
                         }
                         aria-hidden={!active}
                       >
-                        <SftpFileWorkspace
+                        <FileWorkspace
                           state={state}
                           onChangeText={(text) =>
                             sessionTabs.setFileText(
@@ -852,7 +852,7 @@ function App() {
           onConfirm={(choice) => void confirmDisconnect(choice)}
         />
 
-        <SftpDiscardDialog
+        <FileDiscardDialog
           open={discardTarget != null}
           fileName={discardTarget?.fileName ?? ""}
           onOpenChange={(open) => {

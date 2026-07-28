@@ -1,10 +1,10 @@
 import { useCallback, useRef, useState } from "react";
 import {
-  downloadRemoteFile,
-  openRemoteFile,
-  saveRemoteText,
-} from "@/features/sftp/remote-file";
-import type { SftpEntry } from "@/features/ssh";
+  downloadFile as downloadHostFile,
+  openFile,
+  saveText,
+} from "@/features/files/open-file";
+import type { FsEntry } from "@/features/ssh";
 import { parseSshError } from "@/features/ssh/errors";
 import {
   FILES_TAB_ID,
@@ -144,7 +144,7 @@ export function useSessionTabs() {
   );
 
   const openFileTab = useCallback(
-    async (hostId: string, entry: SftpEntry) => {
+    async (hostId: string, entry: FsEntry) => {
       if (entry.isDir) return;
       const id = fileTabId(entry.path);
       const existingFile = filesByHostRef.current[hostId]?.[entry.path];
@@ -183,7 +183,7 @@ export function useSessionTabs() {
       }));
 
       try {
-        const file = await openRemoteFile(hostId, entry);
+        const file = await openFile(hostId, entry);
         setFilesByHost((current) => ({
           ...current,
           [hostId]: {
@@ -241,7 +241,7 @@ export function useSessionTabs() {
       return;
     }
     try {
-      await saveRemoteText(hostId, state.file.entry, state.text);
+      await saveText(hostId, state.file.entry, state.text);
       const bytes = new TextEncoder().encode(state.text);
       setFilesByHost((current) => {
         const file = current[hostId]?.[path];
@@ -277,11 +277,11 @@ export function useSessionTabs() {
     const state = filesByHostRef.current[hostId]?.[path];
     if (!state) return;
     if (state.status === "ready") {
-      await downloadRemoteFile(hostId, state.file.entry);
+      await downloadHostFile(hostId, state.file.entry);
       return;
     }
     if (state.status === "error") {
-      await downloadRemoteFile(hostId, {
+      await downloadHostFile(hostId, {
         name: state.name,
         path: state.path,
         isDir: false,

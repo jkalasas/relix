@@ -1,4 +1,4 @@
-import type { OpenedRemoteFile } from "@/features/sftp/use-sftp";
+import type { OpenedFile } from "@/features/files/use-files";
 
 export type SessionTab =
   | { id: string; kind: "shell"; shellId: string }
@@ -14,7 +14,7 @@ export type OpenFileState =
       status: "ready";
       path: string;
       name: string;
-      file: OpenedRemoteFile;
+      file: OpenedFile;
       text: string;
       dirty: boolean;
     }

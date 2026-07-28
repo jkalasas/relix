@@ -15,11 +15,11 @@ import {
   DrawerHeader,
   DrawerTitle,
 } from "@/components/ui/drawer";
-import type { SftpEntry } from "@/features/ssh";
+import type { FsEntry } from "@/features/ssh";
 import { useMediaQuery } from "@/hooks/use-media-query";
 
-type SftpDeleteDialogProps = {
-  entry: SftpEntry | null;
+type FileDeleteDialogProps = {
+  entry: FsEntry | null;
   busy?: boolean;
   onOpenChange: (open: boolean) => void;
   onConfirm: () => void;
@@ -60,12 +60,12 @@ function DeleteActions({
   );
 }
 
-export function SftpDeleteDialog({
+export function FileDeleteDialog({
   entry,
   busy = false,
   onOpenChange,
   onConfirm,
-}: SftpDeleteDialogProps) {
+}: FileDeleteDialogProps) {
   const isDesktop = useMediaQuery("(min-width: 768px)");
   const open = entry != null;
   const label = entry?.isDir ? "directory" : "file";

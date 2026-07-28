@@ -8,26 +8,26 @@ import {
   DrawerHeader,
   DrawerTitle,
 } from "@/components/ui/drawer";
-import type { SftpEntry } from "@/features/ssh";
+import type { FsEntry } from "@/features/ssh";
 import { useMediaQuery } from "@/hooks/use-media-query";
 
-export type SftpEntryAction = "view" | "open" | "rename" | "download" | "delete";
+export type FileEntryAction = "view" | "open" | "rename" | "download" | "delete";
 
-export type SftpEntryMenuState = {
-  entry: SftpEntry;
+export type FileEntryMenuState = {
+  entry: FsEntry;
   x: number;
   y: number;
 };
 
-type SftpEntryMenuProps = {
-  menu: SftpEntryMenuState | null;
+type FileEntryMenuProps = {
+  menu: FileEntryMenuState | null;
   busy?: boolean;
   onClose: () => void;
-  onAction: (action: SftpEntryAction, entry: SftpEntry) => void;
+  onAction: (action: FileEntryAction, entry: FsEntry) => void;
 };
 
-function menuItems(entry: SftpEntry): Array<{
-  action: SftpEntryAction;
+function menuItems(entry: FsEntry): Array<{
+  action: FileEntryAction;
   label: string;
   destructive?: boolean;
 }> {
@@ -46,12 +46,12 @@ function menuItems(entry: SftpEntry): Array<{
   ];
 }
 
-export function SftpEntryMenu({
+export function FileEntryMenu({
   menu,
   busy = false,
   onClose,
   onAction,
-}: SftpEntryMenuProps) {
+}: FileEntryMenuProps) {
   const isDesktop = useMediaQuery("(min-width: 768px)");
   const entry = menu?.entry ?? null;
   const items = entry ? menuItems(entry) : [];
@@ -63,7 +63,7 @@ export function SftpEntryMenu({
     };
     const onPointerDown = (event: PointerEvent) => {
       const target = event.target as HTMLElement | null;
-      if (target?.closest("[data-sftp-entry-menu]")) return;
+      if (target?.closest("[data-file-entry-menu]")) return;
       onClose();
     };
     window.addEventListener("keydown", onKeyDown);
@@ -79,7 +79,7 @@ export function SftpEntryMenu({
   if (isDesktop) {
     return createPortal(
       <div
-        data-sftp-entry-menu=""
+        data-file-entry-menu=""
         role="menu"
         className="fixed z-50 min-w-40 rounded-lg bg-popover p-1 text-popover-foreground shadow-md ring-1 ring-foreground/10"
         style={{

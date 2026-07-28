@@ -10,7 +10,7 @@ import {
   writeTextFile,
 } from "@tauri-apps/plugin-fs";
 
-const CACHE_ROOT = "relix-sftp";
+const CACHE_ROOT = "relix-files";
 const MEMORY_MAX_BYTES = 48 * 1024 * 1024;
 const MEMORY_MAX_ENTRIES = 24;
 const DISK_MAX_BYTES = 256 * 1024 * 1024;

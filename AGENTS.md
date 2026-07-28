@@ -23,7 +23,7 @@
 | `src/features/hosts/` | Host types, store, CRUD/connect hooks, sidebar/list/form/header UI |
 | `src/features/forwards/` | Tunnel types, store, start/stop hooks, panel/form UI |
 | `src/features/shells/` | Shell sessions, launch menu, xterm terminal panel |
-| `src/features/sftp/` | SFTP browser, open-file workspace, transfer |
+| `src/features/files/` | Host filesystem browser, open-file workspace, transfer (local + remote) |
 | `src/features/session-tabs/` | Unified session tabs (shells, files, tools) |
 | `src/features/android-background/` | Android background gate + session FGS keepalive |
 | `src/features/ssh/` | Tauri SSH bridge: commands, errors, events |
@@ -84,6 +84,9 @@ When adding UI:
 | `connection.rs` | Connect, auth, host-key trust, live connection |
 | `shell.rs` | PTY open/write/resize/close + shell command building |
 | `forward.rs` | Local / remote / dynamic tunnels |
+| `host_fs.rs` | Host filesystem API + local/remote dispatch (`host_fs_*`) |
+| `sftp.rs` | Remote SFTP subsystem (russh-sftp) |
+| `local_fs.rs` | Desktop local filesystem backend |
 | `known_hosts.rs` | Host key verification + persistence |
 | `socks.rs` | SOCKS5 CONNECT helpers |
 | `error.rs` | Serializable `SshError` |

@@ -1,21 +1,21 @@
 import { useEffect, useMemo } from "react";
 import { ChevronLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { mimeForImage } from "@/features/sftp/file-kind";
+import { mimeForImage } from "@/features/files/file-kind";
 
-type SftpImageViewerProps = {
+type FileImageViewerProps = {
   path: string;
   name: string;
   bytes: Uint8Array;
   onBack: () => void;
 };
 
-export function SftpImageViewer({
+export function FileImageViewer({
   path,
   name,
   bytes,
   onBack,
-}: SftpImageViewerProps) {
+}: FileImageViewerProps) {
   const url = useMemo(() => {
     const copy = new Uint8Array(bytes.byteLength);
     copy.set(bytes);

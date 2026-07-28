@@ -11,10 +11,10 @@ import {
 import { oneDark } from "@codemirror/theme-one-dark";
 import { ChevronLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { languageExtensionFor } from "@/features/sftp/language";
+import { languageExtensionFor } from "@/features/files/language";
 import { cn } from "@/lib/utils";
 
-type SftpFileEditorProps = {
+type FileEditorProps = {
   path: string;
   name: string;
   value: string;
@@ -26,7 +26,7 @@ type SftpFileEditorProps = {
   onBack: () => void;
 };
 
-export function SftpFileEditor({
+export function FileEditor({
   path,
   name,
   value,
@@ -36,7 +36,7 @@ export function SftpFileEditor({
   onChange,
   onSave,
   onBack,
-}: SftpFileEditorProps) {
+}: FileEditorProps) {
   const parentRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
   const onChangeRef = useRef(onChange);

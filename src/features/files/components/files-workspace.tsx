@@ -2,18 +2,18 @@ import type { ReactNode } from "react";
 import { FolderOpen } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/workspace/empty-state";
-import { SftpPanel } from "@/features/sftp/components/sftp-panel";
-import type { SftpController } from "@/features/sftp/use-sftp";
+import { FilesPanel } from "@/features/files/components/files-panel";
+import type { FilesController } from "@/features/files/use-files";
 import type { Host } from "@/features/hosts/types";
-import type { SftpEntry } from "@/features/ssh";
+import type { FsEntry } from "@/features/ssh";
 import { cn } from "@/lib/utils";
 
-type SftpWorkspaceProps = {
+type FilesWorkspaceProps = {
   host: Host;
-  sftp: SftpController;
+  files: FilesController;
   activeKind: "files" | "file";
   onConnect: () => void;
-  onOpenFile: (entry: SftpEntry) => void;
+  onOpenFile: (entry: FsEntry) => void;
   fileSlot?: ReactNode;
   className?: string;
 };
@@ -50,15 +50,15 @@ function DisconnectedPane({
   );
 }
 
-export function SftpWorkspace({
+export function FilesWorkspace({
   host,
-  sftp,
+  files,
   activeKind,
   onConnect,
   onOpenFile,
   fileSlot,
   className,
-}: SftpWorkspaceProps) {
+}: FilesWorkspaceProps) {
   const connected = host.status === "connected";
 
   if (!connected) {
@@ -86,9 +86,9 @@ export function SftpWorkspace({
             : "hidden"
         }
       >
-        <SftpPanel
+        <FilesPanel
           host={host}
-          sftp={sftp}
+          files={files}
           onConnect={onConnect}
           onOpenFile={onOpenFile}
           embedded

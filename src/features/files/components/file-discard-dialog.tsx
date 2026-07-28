@@ -17,7 +17,7 @@ import {
 } from "@/components/ui/drawer";
 import { useMediaQuery } from "@/hooks/use-media-query";
 
-type SftpDiscardDialogProps = {
+type FileDiscardDialogProps = {
   open: boolean;
   fileName: string;
   onOpenChange: (open: boolean) => void;
@@ -55,12 +55,12 @@ function DiscardActions({
   );
 }
 
-export function SftpDiscardDialog({
+export function FileDiscardDialog({
   open,
   fileName,
   onOpenChange,
   onDiscard,
-}: SftpDiscardDialogProps) {
+}: FileDiscardDialogProps) {
   const isDesktop = useMediaQuery("(min-width: 768px)");
   const title = "Discard changes?";
   const description = (

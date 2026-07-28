@@ -2,11 +2,11 @@ use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
 use super::error::{SshError, SshErrorCode};
-use super::local_shell::is_local_host_id;
-use super::sftp::{
-    SftpEntry, SftpListConfig, SftpListResult, SftpMkdirConfig, SftpReadConfig, SftpRemoveConfig,
-    SftpRenameConfig, SftpWriteConfig,
+use super::host_fs::{
+    FsEntry, FsListConfig, FsListResult, FsMkdirConfig, FsReadConfig, FsRemoveConfig,
+    FsRenameConfig, FsWriteConfig,
 };
+use super::local_shell::is_local_host_id;
 
 const MAX_TRANSFER_BYTES: usize = 32 * 1024 * 1024;
 
@@ -71,14 +71,14 @@ fn mtime_secs(meta: &std::fs::Metadata) -> Option<u32> {
     })
 }
 
-pub async fn list(config: SftpListConfig) -> Result<SftpListResult, SshError> {
+pub async fn list(config: FsListConfig) -> Result<FsListResult, SshError> {
     ensure_local_host(&config.host_id)?;
     tokio::task::spawn_blocking(move || list_blocking(config))
         .await
         .map_err(|err| SshError::new(SshErrorCode::Internal, err.to_string()))?
 }
 
-fn list_blocking(config: SftpListConfig) -> Result<SftpListResult, SshError> {
+fn list_blocking(config: FsListConfig) -> Result<FsListResult, SshError> {
     let path = resolve_path(&config.path)?;
     let meta = std::fs::metadata(&path).map_err(map_io_err)?;
     if !meta.is_dir() {
@@ -88,7 +88,7 @@ fn list_blocking(config: SftpListConfig) -> Result<SftpListResult, SshError> {
         ));
     }
 
-    let mut entries: Vec<SftpEntry> = std::fs::read_dir(&path)
+    let mut entries: Vec<FsEntry> = std::fs::read_dir(&path)
         .map_err(map_io_err)?
         .filter_map(|item| item.ok())
         .filter_map(|entry| {
@@ -98,7 +98,7 @@ fn list_blocking(config: SftpListConfig) -> Result<SftpListResult, SshError> {
             }
             let entry_path = entry.path();
             let meta = entry.metadata().ok()?;
-            Some(SftpEntry {
+            Some(FsEntry {
                 name,
                 path: path_display(&entry_path),
                 is_dir: meta.is_dir(),
@@ -114,20 +114,20 @@ fn list_blocking(config: SftpListConfig) -> Result<SftpListResult, SshError> {
         _ => a.name.to_lowercase().cmp(&b.name.to_lowercase()),
     });
 
-    Ok(SftpListResult {
+    Ok(FsListResult {
         path: path_display(&path),
         entries,
     })
 }
 
-pub async fn read(config: SftpReadConfig) -> Result<Vec<u8>, SshError> {
+pub async fn read(config: FsReadConfig) -> Result<Vec<u8>, SshError> {
     ensure_local_host(&config.host_id)?;
     tokio::task::spawn_blocking(move || read_blocking(config))
         .await
         .map_err(|err| SshError::new(SshErrorCode::Internal, err.to_string()))?
 }
 
-fn read_blocking(config: SftpReadConfig) -> Result<Vec<u8>, SshError> {
+fn read_blocking(config: FsReadConfig) -> Result<Vec<u8>, SshError> {
     let path = resolve_path(&config.path)?;
     let meta = std::fs::metadata(&path).map_err(map_io_err)?;
     let size = meta.len() as usize;
@@ -143,7 +143,7 @@ fn read_blocking(config: SftpReadConfig) -> Result<Vec<u8>, SshError> {
     std::fs::read(&path).map_err(map_io_err)
 }
 
-pub async fn write(config: SftpWriteConfig) -> Result<(), SshError> {
+pub async fn write(config: FsWriteConfig) -> Result<(), SshError> {
     ensure_local_host(&config.host_id)?;
     if config.data.len() > MAX_TRANSFER_BYTES {
         return Err(SshError::new(
@@ -160,7 +160,7 @@ pub async fn write(config: SftpWriteConfig) -> Result<(), SshError> {
         .map_err(|err| SshError::new(SshErrorCode::Internal, err.to_string()))?
 }
 
-fn write_blocking(config: SftpWriteConfig) -> Result<(), SshError> {
+fn write_blocking(config: FsWriteConfig) -> Result<(), SshError> {
     let path = resolve_path(&config.path)?;
     if let Some(parent) = path.parent() {
         if !parent.as_os_str().is_empty() && !parent.exists() {
@@ -170,26 +170,26 @@ fn write_blocking(config: SftpWriteConfig) -> Result<(), SshError> {
     std::fs::write(&path, &config.data).map_err(map_io_err)
 }
 
-pub async fn mkdir(config: SftpMkdirConfig) -> Result<(), SshError> {
+pub async fn mkdir(config: FsMkdirConfig) -> Result<(), SshError> {
     ensure_local_host(&config.host_id)?;
     tokio::task::spawn_blocking(move || mkdir_blocking(config))
         .await
         .map_err(|err| SshError::new(SshErrorCode::Internal, err.to_string()))?
 }
 
-fn mkdir_blocking(config: SftpMkdirConfig) -> Result<(), SshError> {
+fn mkdir_blocking(config: FsMkdirConfig) -> Result<(), SshError> {
     let path = resolve_path(&config.path)?;
     std::fs::create_dir(&path).map_err(map_io_err)
 }
 
-pub async fn remove(config: SftpRemoveConfig) -> Result<(), SshError> {
+pub async fn remove(config: FsRemoveConfig) -> Result<(), SshError> {
     ensure_local_host(&config.host_id)?;
     tokio::task::spawn_blocking(move || remove_blocking(config))
         .await
         .map_err(|err| SshError::new(SshErrorCode::Internal, err.to_string()))?
 }
 
-fn remove_blocking(config: SftpRemoveConfig) -> Result<(), SshError> {
+fn remove_blocking(config: FsRemoveConfig) -> Result<(), SshError> {
     let path = resolve_path(&config.path)?;
     if config.is_dir {
         std::fs::remove_dir(&path).map_err(map_io_err)
@@ -198,14 +198,14 @@ fn remove_blocking(config: SftpRemoveConfig) -> Result<(), SshError> {
     }
 }
 
-pub async fn rename(config: SftpRenameConfig) -> Result<(), SshError> {
+pub async fn rename(config: FsRenameConfig) -> Result<(), SshError> {
     ensure_local_host(&config.host_id)?;
     tokio::task::spawn_blocking(move || rename_blocking(config))
         .await
         .map_err(|err| SshError::new(SshErrorCode::Internal, err.to_string()))?
 }
 
-fn rename_blocking(config: SftpRenameConfig) -> Result<(), SshError> {
+fn rename_blocking(config: FsRenameConfig) -> Result<(), SshError> {
     let from = resolve_path(&config.from)?;
     let to = resolve_path(&config.to)?;
     std::fs::rename(&from, &to).map_err(map_io_err)

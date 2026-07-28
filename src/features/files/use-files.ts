@@ -2,15 +2,15 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import { readFile, writeFile } from "@tauri-apps/plugin-fs";
 import {
-  sshSftpList,
-  sshSftpMkdir,
-  sshSftpRead,
-  sshSftpRemove,
-  sshSftpRename,
-  sshSftpWrite,
+  hostFsList,
+  hostFsMkdir,
+  hostFsRead,
+  hostFsRemove,
+  hostFsRename,
+  hostFsWrite,
   sshTmuxWindowPath,
 } from "@/features/ssh";
-import type { SftpEntry } from "@/features/ssh";
+import type { FsEntry } from "@/features/ssh";
 import { parseSshError } from "@/features/ssh/errors";
 import {
   cacheClearHost,
@@ -19,24 +19,24 @@ import {
   cacheMove,
   cachePut,
   cacheUpdateText,
-} from "@/features/sftp/file-cache";
+} from "@/features/files/file-cache";
 import {
   classifyFile,
   decodeText,
   encodeText,
   type FileKind,
-} from "@/features/sftp/file-kind";
-import { basename, joinRemotePath, parentPath } from "@/features/sftp/format";
-import type { SftpTransferState } from "@/features/sftp/types";
+} from "@/features/files/file-kind";
+import { basename, joinFsPath, parentPath } from "@/features/files/format";
+import type { FileTransferState } from "@/features/files/types";
 
-export type OpenedRemoteFile = {
-  entry: SftpEntry;
+export type OpenedFile = {
+  entry: FsEntry;
   kind: FileKind;
   bytes: Uint8Array;
   text: string | null;
 };
 
-type UseSftpOptions = {
+type UseFilesOptions = {
   hostId: string;
   connected: boolean;
   enabled?: boolean;
@@ -45,7 +45,7 @@ type UseSftpOptions = {
   tmuxWindowId?: string | null;
 };
 
-function fingerprintOf(entry: SftpEntry) {
+function fingerprintOf(entry: FsEntry) {
   return { size: entry.size, mtime: entry.mtime ?? null };
 }
 
@@ -61,24 +61,24 @@ function pathsEqual(a: string, b: string): boolean {
   return normalize(a) === normalize(b);
 }
 
-export function useSftp({
+export function useFiles({
   hostId,
   connected,
   enabled = true,
   shellCwd,
   tmuxSession,
   tmuxWindowId,
-}: UseSftpOptions) {
+}: UseFilesOptions) {
   const [path, setPath] = useState(".");
-  const [entries, setEntries] = useState<SftpEntry[]>([]);
+  const [entries, setEntries] = useState<FsEntry[]>([]);
   const [childrenByPath, setChildrenByPath] = useState<
-    Record<string, SftpEntry[]>
+    Record<string, FsEntry[]>
   >({});
   const [expandedPaths, setExpandedPaths] = useState<Record<string, true>>({});
   const [loadingPaths, setLoadingPaths] = useState<Record<string, true>>({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [transfer, setTransfer] = useState<SftpTransferState | null>(null);
+  const [transfer, setTransfer] = useState<FileTransferState | null>(null);
 
   const pathRef = useRef(path);
   pathRef.current = path;
@@ -98,7 +98,7 @@ export function useSftp({
   }, []);
 
   const applyListResult = useCallback(
-    (listedPath: string, listedEntries: SftpEntry[], asRoot: boolean) => {
+    (listedPath: string, listedEntries: FsEntry[], asRoot: boolean) => {
       setChildrenByPath((current) => ({
         ...current,
         [listedPath]: listedEntries,
@@ -115,7 +115,7 @@ export function useSftp({
 
   const listPath = useCallback(
     async (target: string) => {
-      const result = await sshSftpList(hostId, target);
+      const result = await hostFsList(hostId, target);
       return result;
     },
     [hostId],
@@ -324,9 +324,9 @@ export function useSftp({
   const mkdir = useCallback(async () => {
     const name = window.prompt("New directory name");
     if (!name?.trim()) return;
-    const remote = joinRemotePath(pathRef.current, name.trim());
+    const remote = joinFsPath(pathRef.current, name.trim());
     try {
-      await sshSftpMkdir(hostId, remote);
+      await hostFsMkdir(hostId, remote);
       await refresh();
     } catch (err) {
       setError(parseSshError(err).message);
@@ -334,9 +334,9 @@ export function useSftp({
   }, [hostId, refresh]);
 
   const removeEntry = useCallback(
-    async (entry: SftpEntry) => {
+    async (entry: FsEntry) => {
       try {
-        await sshSftpRemove(hostId, entry.path, entry.isDir);
+        await hostFsRemove(hostId, entry.path, entry.isDir);
         cacheInvalidate(hostId, entry.path);
         if (entry.isDir) {
           setExpandedPaths((current) => {
@@ -368,7 +368,7 @@ export function useSftp({
   );
 
   const renameEntry = useCallback(
-    async (entry: SftpEntry, nextName: string) => {
+    async (entry: FsEntry, nextName: string) => {
       const name = nextName.trim();
       if (!name || name === entry.name) return;
       if (name.includes("/") || name.includes("\\")) {
@@ -376,9 +376,9 @@ export function useSftp({
         return;
       }
       const parent = parentPath(entry.path) ?? pathRef.current;
-      const to = joinRemotePath(parent, name);
+      const to = joinFsPath(parent, name);
       try {
-        await sshSftpRename(hostId, entry.path, to);
+        await hostFsRename(hostId, entry.path, to);
         cacheMove(hostId, entry.path, to);
         if (entry.isDir) {
           setExpandedPaths((current) => {
@@ -398,7 +398,7 @@ export function useSftp({
             return next;
           });
           setChildrenByPath((current) => {
-            const next: Record<string, SftpEntry[]> = {};
+            const next: Record<string, FsEntry[]> = {};
             for (const [key, value] of Object.entries(current)) {
               if (key === entry.path) {
                 next[to] = value;
@@ -424,7 +424,7 @@ export function useSftp({
   );
 
   const findEntry = useCallback(
-    (entryPath: string): SftpEntry | null => {
+    (entryPath: string): FsEntry | null => {
       for (const list of Object.values(childrenByPath)) {
         const found = list.find((item) => item.path === entryPath);
         if (found) return found;
@@ -435,7 +435,7 @@ export function useSftp({
   );
 
   const openEntry = useCallback(
-    async (entry: SftpEntry): Promise<OpenedRemoteFile> => {
+    async (entry: FsEntry): Promise<OpenedFile> => {
       if (entry.isDir) {
         throw new Error("Cannot open a directory as a file");
       }
@@ -448,7 +448,7 @@ export function useSftp({
         bytes = cached.bytes;
         text = cached.text;
       } else {
-        const raw = await sshSftpRead(hostId, entry.path);
+        const raw = await hostFsRead(hostId, entry.path);
         bytes = bytesFromInvoke(raw);
         cachePut(hostId, entry.path, bytes, fingerprint, null);
       }
@@ -465,9 +465,9 @@ export function useSftp({
   );
 
   const saveText = useCallback(
-    async (entry: SftpEntry, text: string) => {
+    async (entry: FsEntry, text: string) => {
       const bytes = encodeText(text);
-      await sshSftpWrite(hostId, entry.path, bytes);
+      await hostFsWrite(hostId, entry.path, bytes);
       cacheUpdateText(
         hostId,
         entry.path,
@@ -481,7 +481,7 @@ export function useSftp({
   );
 
   const downloadEntry = useCallback(
-    async (entry: SftpEntry) => {
+    async (entry: FsEntry) => {
       if (entry.isDir) return;
       setTransfer({
         kind: "download",
@@ -496,7 +496,7 @@ export function useSftp({
         if (cached) {
           bytes = cached.bytes;
         } else {
-          const raw = await sshSftpRead(hostId, entry.path);
+          const raw = await hostFsRead(hostId, entry.path);
           bytes = bytesFromInvoke(raw);
           cachePut(hostId, entry.path, bytes, fingerprint, null);
         }
@@ -540,8 +540,8 @@ export function useSftp({
       const name = basename(localPath) || "upload.bin";
       setTransfer({ kind: "upload", name, busy: true, error: null });
       const data = await readFile(localPath);
-      const remote = joinRemotePath(pathRef.current, name);
-      await sshSftpWrite(hostId, remote, data);
+      const remote = joinFsPath(pathRef.current, name);
+      await hostFsWrite(hostId, remote, data);
       cachePut(
         hostId,
         remote,
@@ -587,4 +587,4 @@ export function useSftp({
   };
 }
 
-export type SftpController = ReturnType<typeof useSftp>;
+export type FilesController = ReturnType<typeof useFiles>;

@@ -1,17 +1,17 @@
 import { lazy, Suspense, useState, type ReactNode } from "react";
-import { SftpBinaryView } from "@/features/sftp/components/sftp-binary-view";
-import { SftpImageViewer } from "@/features/sftp/components/sftp-image-viewer";
+import { FileBinaryView } from "@/features/files/components/file-binary-view";
+import { FileImageViewer } from "@/features/files/components/file-image-viewer";
 import type { OpenFileState } from "@/features/session-tabs";
 import { parseSshError } from "@/features/ssh/errors";
 
-const SftpFileEditor = lazy(() =>
-  import("@/features/sftp/components/sftp-file-editor").then((mod) => ({
-    default: mod.SftpFileEditor,
+const FileEditor = lazy(() =>
+  import("@/features/files/components/file-editor").then((mod) => ({
+    default: mod.FileEditor,
   })),
 );
-const SftpPdfViewer = lazy(() =>
-  import("@/features/sftp/components/sftp-pdf-viewer").then((mod) => ({
-    default: mod.SftpPdfViewer,
+const FilePdfViewer = lazy(() =>
+  import("@/features/files/components/file-pdf-viewer").then((mod) => ({
+    default: mod.FilePdfViewer,
   })),
 );
 
@@ -23,7 +23,7 @@ function ViewerFallback({ label }: { label: string }) {
   );
 }
 
-type SftpFileWorkspaceProps = {
+type FileWorkspaceProps = {
   state: OpenFileState;
   onChangeText: (text: string) => void;
   onSave: () => Promise<void>;
@@ -31,13 +31,13 @@ type SftpFileWorkspaceProps = {
   onRevealFiles: () => void;
 };
 
-export function SftpFileWorkspace({
+export function FileWorkspace({
   state,
   onChangeText,
   onSave,
   onDownload,
   onRevealFiles,
-}: SftpFileWorkspaceProps) {
+}: FileWorkspaceProps) {
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
@@ -67,7 +67,7 @@ export function SftpFileWorkspace({
         id={`session-panel-file:${state.path}`}
         className="flex min-h-0 flex-1 flex-col"
       >
-        <SftpBinaryView
+        <FileBinaryView
           path={state.path}
           name={state.name}
           message={state.message}
@@ -84,7 +84,7 @@ export function SftpFileWorkspace({
   if (file.kind === "text") {
     body = (
       <Suspense fallback={<ViewerFallback label="Loading editor…" />}>
-        <SftpFileEditor
+        <FileEditor
           path={file.entry.path}
           name={file.entry.name}
           value={state.text}
@@ -109,7 +109,7 @@ export function SftpFileWorkspace({
     );
   } else if (file.kind === "image") {
     body = (
-      <SftpImageViewer
+      <FileImageViewer
         path={file.entry.path}
         name={file.entry.name}
         bytes={file.bytes}
@@ -119,7 +119,7 @@ export function SftpFileWorkspace({
   } else if (file.kind === "pdf") {
     body = (
       <Suspense fallback={<ViewerFallback label="Loading PDF…" />}>
-        <SftpPdfViewer
+        <FilePdfViewer
           path={file.entry.path}
           name={file.entry.name}
           bytes={file.bytes}
@@ -129,7 +129,7 @@ export function SftpFileWorkspace({
     );
   } else {
     body = (
-      <SftpBinaryView
+      <FileBinaryView
         path={file.entry.path}
         name={file.entry.name}
         message="This file is not a text, image, or PDF preview."

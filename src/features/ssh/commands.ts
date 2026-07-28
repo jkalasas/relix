@@ -2,7 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import type { HostConfig } from "@/features/hosts/types";
 import type {
   OpenShellResult,
-  SftpListResult,
+  FsListResult,
   SshConnectPayload,
   StartDynamicForwardPayload,
   StartLocalForwardPayload,
@@ -110,30 +110,30 @@ export async function sshStopForward(forwardId: string): Promise<void> {
   await invoke("ssh_stop_forward", { forwardId });
 }
 
-export async function sshSftpList(
+export async function hostFsList(
   hostId: string,
   path: string,
-): Promise<SftpListResult> {
-  return invoke<SftpListResult>("ssh_sftp_list", {
+): Promise<FsListResult> {
+  return invoke<FsListResult>("host_fs_list", {
     config: { hostId, path },
   });
 }
 
-export async function sshSftpRead(
+export async function hostFsRead(
   hostId: string,
   path: string,
 ): Promise<number[]> {
-  return invoke<number[]>("ssh_sftp_read", {
+  return invoke<number[]>("host_fs_read", {
     config: { hostId, path },
   });
 }
 
-export async function sshSftpWrite(
+export async function hostFsWrite(
   hostId: string,
   path: string,
   data: number[] | Uint8Array,
 ): Promise<void> {
-  await invoke("ssh_sftp_write", {
+  await invoke("host_fs_write", {
     config: {
       hostId,
       path,
@@ -142,27 +142,27 @@ export async function sshSftpWrite(
   });
 }
 
-export async function sshSftpMkdir(
+export async function hostFsMkdir(
   hostId: string,
   path: string,
 ): Promise<void> {
-  await invoke("ssh_sftp_mkdir", { config: { hostId, path } });
+  await invoke("host_fs_mkdir", { config: { hostId, path } });
 }
 
-export async function sshSftpRemove(
+export async function hostFsRemove(
   hostId: string,
   path: string,
   isDir: boolean,
 ): Promise<void> {
-  await invoke("ssh_sftp_remove", { config: { hostId, path, isDir } });
+  await invoke("host_fs_remove", { config: { hostId, path, isDir } });
 }
 
-export async function sshSftpRename(
+export async function hostFsRename(
   hostId: string,
   from: string,
   to: string,
 ): Promise<void> {
-  await invoke("ssh_sftp_rename", { config: { hostId, from, to } });
+  await invoke("host_fs_rename", { config: { hostId, from, to } });
 }
 
 export async function sshTmuxBootstrap(

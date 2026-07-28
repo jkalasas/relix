@@ -11,7 +11,7 @@ import { rust } from "@codemirror/lang-rust";
 import { sql } from "@codemirror/lang-sql";
 import { xml } from "@codemirror/lang-xml";
 import { yaml } from "@codemirror/lang-yaml";
-import { extensionOf } from "@/features/sftp/file-kind";
+import { extensionOf } from "@/features/files/file-kind";
 
 export function languageExtensionFor(name: string): Extension | null {
   const ext = extensionOf(name);

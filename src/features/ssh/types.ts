@@ -80,7 +80,7 @@ export type StartDynamicForwardPayload = {
   localPort: number;
 };
 
-export type SftpEntry = {
+export type FsEntry = {
   name: string;
   path: string;
   isDir: boolean;
@@ -88,9 +88,9 @@ export type SftpEntry = {
   mtime: number | null;
 };
 
-export type SftpListResult = {
+export type FsListResult = {
   path: string;
-  entries: SftpEntry[];
+  entries: FsEntry[];
 };
 
 export type SshDataEvent = { sessionId: string; data: string };

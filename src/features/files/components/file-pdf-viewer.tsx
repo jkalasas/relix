@@ -6,19 +6,19 @@ import { Button } from "@/components/ui/button";
 
 pdfjs.GlobalWorkerOptions.workerSrc = pdfWorker;
 
-type SftpPdfViewerProps = {
+type FilePdfViewerProps = {
   path: string;
   name: string;
   bytes: Uint8Array;
   onBack: () => void;
 };
 
-export function SftpPdfViewer({
+export function FilePdfViewer({
   path,
   name,
   bytes,
   onBack,
-}: SftpPdfViewerProps) {
+}: FilePdfViewerProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const docRef = useRef<pdfjs.PDFDocumentProxy | null>(null);
   const [page, setPage] = useState(1);

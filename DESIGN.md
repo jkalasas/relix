@@ -90,7 +90,7 @@ Same palette on every platform. Status colors are the product language; do not r
 | `--ring` | `oklch(0.72 0.12 75)` | Focus rings |
 | `--status-connected` | `oklch(0.74 0.13 155)` | SSH live |
 | `--status-tunnel` | `oklch(0.74 0.11 220)` | Active port forward |
-| `--status-transfer` | `oklch(0.78 0.12 85)` | SFTP in flight |
+| `--status-transfer` | `oklch(0.78 0.12 85)` | File transfer in flight |
 | `--destructive` | `oklch(0.68 0.18 25)` | Dead host, auth fail, errors |
 
 ### Color budget
@@ -100,7 +100,7 @@ Same palette on every platform. Status colors are the product language; do not r
 | Amber primary | Connect, New tunnel, primary buttons, active tab indicator |
 | Mint connected | Session dots, “connected” chips, healthy host |
 | Cyan tunnel | Forward type glyph, active tunnel state |
-| Amber transfer | SFTP progress only |
+| Amber transfer | File transfer progress only |
 | Rose | Auth fail, unreachable host, broken forward |
 | Neutrals | ~90% of pixels |
 
@@ -206,7 +206,7 @@ Hosts (root)                    Session (detail)
 
 1. **SSH / Terminal** — session readiness and PTY. Disconnected/error states explain next step and offer Connect / Retry. On mobile, terminal is full-bleed; soft keyboard must not permanently bury the prompt (scroll + visual viewport). Mobile OS (Android/iOS) shows a bottom accessory key bar (Esc, Ctrl, Alt, Shift, Tab, arrows) with sticky modifiers for the next soft-keyboard key.
 2. **Port forwards** — desktop: multi-column mono row. Mobile: stacked row (type + status on first line; endpoints below). L: local → remote; R: remote listen → local target; D: local bind + SOCKS5. Cyan on active only.
-3. **SFTP** — path in mono. Desktop: file tree always in the left rail while connected; main pane is shell/editor/Files empty. Mobile: single-pane list + transfer sheet.
+3. **Files** — path in mono. Desktop: file tree always in the left rail while connected; main pane is shell/editor/Files empty. Mobile: single-pane list + transfer sheet. Local host and remote hosts share the same Files surface.
 
 ### Empty states
 
@@ -231,10 +231,10 @@ Task-specific, one primary action, no fake metrics. Icon in a quiet bordered til
 | `SessionHeader` | `features/hosts/components/session-header.tsx` | Trigger + target + status + connect; back control on mobile |
 | `SessionTabBar` | `components/workspace/session-tab-bar.tsx` | Document tabs: shells · open files · Files · Ports |
 | `TerminalPanel` | `features/shells/components/terminal-panel.tsx` | Shell workspace |
-| `SftpPanel` | `features/sftp/components/sftp-panel.tsx` | Mobile file list browser / transfer |
-| `SftpTreeSidebar` | `features/sftp/components/sftp-tree-sidebar.tsx` | Desktop file tree content inside `AppSidebar` |
-| `SftpWorkspace` | `features/sftp/components/sftp-workspace.tsx` | Files empty pane + open file slot; mobile list host |
-| `SftpFileWorkspace` | `features/sftp/components/sftp-file-workspace.tsx` | Open file editor / preview tab |
+| `FilesPanel` | `features/files/components/files-panel.tsx` | Mobile file list browser / transfer |
+| `FileTreeSidebar` | `features/files/components/file-tree-sidebar.tsx` | Desktop file tree content inside `AppSidebar` |
+| `FilesWorkspace` | `features/files/components/files-workspace.tsx` | Files empty pane + open file slot; mobile list host |
+| `FileWorkspace` | `features/files/components/file-workspace.tsx` | Open file editor / preview tab |
 | `ForwardsPanel` | `features/forwards/components/forwards-panel.tsx` | Tunnel list / empty |
 | `EmptyState` | `components/workspace/empty-state.tsx` | Shared empty pattern (icon tile · title · guidance · CTA) |
 | `EmptyWorkspace` | `components/workspace/empty-workspace.tsx` | No host selected (desktop) |
@@ -329,7 +329,7 @@ Shortcuts are desktop accelerators. Mobile relies on visible controls and pinch 
 |---|---|
 | Color + type tokens | `src/index.css` |
 | Domain types | `src/features/*/types.ts` |
-| Feature hooks + UI | `src/features/{hosts,forwards,shells,sftp,ssh,android-background}/` |
+| Feature hooks + UI | `src/features/{hosts,forwards,shells,files,ssh,android-background}/` |
 | App orchestration (incl. mobile pane) | `src/app/App.tsx` |
 | Dark default | `index.html` → `class="dark"` |
 | Desktop window chrome | `src-tauri/tauri.conf.json` |

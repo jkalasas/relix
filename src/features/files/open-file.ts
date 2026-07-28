@@ -1,20 +1,20 @@
 import { save } from "@tauri-apps/plugin-dialog";
 import { writeFile } from "@tauri-apps/plugin-fs";
-import { sshSftpRead, sshSftpWrite } from "@/features/ssh";
-import type { SftpEntry } from "@/features/ssh";
+import { hostFsRead, hostFsWrite } from "@/features/ssh";
+import type { FsEntry } from "@/features/ssh";
 import {
   cacheGet,
   cachePut,
   cacheUpdateText,
-} from "@/features/sftp/file-cache";
+} from "@/features/files/file-cache";
 import {
   classifyFile,
   decodeText,
   encodeText,
-} from "@/features/sftp/file-kind";
-import type { OpenedRemoteFile } from "@/features/sftp/use-sftp";
+} from "@/features/files/file-kind";
+import type { OpenedFile } from "@/features/files/use-files";
 
-function fingerprintOf(entry: SftpEntry) {
+function fingerprintOf(entry: FsEntry) {
   return { size: entry.size, mtime: entry.mtime ?? null };
 }
 
@@ -22,10 +22,10 @@ function bytesFromInvoke(data: number[]): Uint8Array {
   return Uint8Array.from(data);
 }
 
-export async function openRemoteFile(
+export async function openFile(
   hostId: string,
-  entry: SftpEntry,
-): Promise<OpenedRemoteFile> {
+  entry: FsEntry,
+): Promise<OpenedFile> {
   if (entry.isDir) {
     throw new Error("Cannot open a directory as a file");
   }
@@ -39,7 +39,7 @@ export async function openRemoteFile(
     bytes = cached.bytes;
     text = cached.text;
   } else {
-    const raw = await sshSftpRead(hostId, entry.path);
+    const raw = await hostFsRead(hostId, entry.path);
     bytes = bytesFromInvoke(raw);
     cachePut(hostId, entry.path, bytes, fingerprint, null);
   }
@@ -53,22 +53,22 @@ export async function openRemoteFile(
   return { entry, kind, bytes, text };
 }
 
-export async function saveRemoteText(
+export async function saveText(
   hostId: string,
-  entry: SftpEntry,
+  entry: FsEntry,
   text: string,
 ): Promise<void> {
   const bytes = encodeText(text);
-  await sshSftpWrite(hostId, entry.path, bytes);
+  await hostFsWrite(hostId, entry.path, bytes);
   cacheUpdateText(hostId, entry.path, text, bytes, {
     size: bytes.byteLength,
     mtime: null,
   });
 }
 
-export async function downloadRemoteFile(
+export async function downloadFile(
   hostId: string,
-  entry: SftpEntry,
+  entry: FsEntry,
 ): Promise<void> {
   if (entry.isDir) return;
 
@@ -78,7 +78,7 @@ export async function downloadRemoteFile(
   if (cached) {
     bytes = cached.bytes;
   } else {
-    const raw = await sshSftpRead(hostId, entry.path);
+    const raw = await hostFsRead(hostId, entry.path);
     bytes = bytesFromInvoke(raw);
     cachePut(hostId, entry.path, bytes, fingerprint, null);
   }

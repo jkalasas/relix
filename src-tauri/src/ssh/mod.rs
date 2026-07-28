@@ -2,6 +2,7 @@ pub mod commands;
 pub mod connection;
 pub mod error;
 pub mod forward;
+pub mod host_fs;
 pub mod known_hosts;
 pub mod local_fs;
 pub mod local_shell;

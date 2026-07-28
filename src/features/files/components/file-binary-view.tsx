@@ -1,7 +1,7 @@
 import { ChevronLeft, FileWarning } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
-type SftpBinaryViewProps = {
+type FileBinaryViewProps = {
   path: string;
   name: string;
   message: string;
@@ -9,13 +9,13 @@ type SftpBinaryViewProps = {
   onDownload: () => void;
 };
 
-export function SftpBinaryView({
+export function FileBinaryView({
   path,
   name,
   message,
   onBack,
   onDownload,
-}: SftpBinaryViewProps) {
+}: FileBinaryViewProps) {
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="flex min-h-11 shrink-0 items-center gap-2 border-b border-border px-3 py-2 sm:px-4 md:min-h-10">

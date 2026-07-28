@@ -46,7 +46,7 @@ export function parentPath(path: string): string | null {
   return parent || "/";
 }
 
-export function joinRemotePath(dir: string, name: string): string {
+export function joinFsPath(dir: string, name: string): string {
   if (!dir || dir === ".") return name;
   const sep = pathSeparator(dir);
   if (dir.endsWith("/") || dir.endsWith("\\")) return `${dir}${name}`;

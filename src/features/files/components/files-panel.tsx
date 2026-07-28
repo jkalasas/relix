@@ -7,33 +7,33 @@ import {
   Upload,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { SftpDeleteDialog } from "@/features/sftp/components/sftp-delete-dialog";
+import { FileDeleteDialog } from "@/features/files/components/file-delete-dialog";
 import {
-  SftpEntryMenu,
-  type SftpEntryAction,
-  type SftpEntryMenuState,
-} from "@/features/sftp/components/sftp-entry-menu";
-import { FileTypeIcon } from "@/features/sftp/file-icon";
-import { formatBytes, parentPath } from "@/features/sftp/format";
-import { useSftp, type SftpController } from "@/features/sftp/use-sftp";
+  FileEntryMenu,
+  type FileEntryAction,
+  type FileEntryMenuState,
+} from "@/features/files/components/file-entry-menu";
+import { FileTypeIcon } from "@/features/files/file-icon";
+import { formatBytes, parentPath } from "@/features/files/format";
+import { useFiles, type FilesController } from "@/features/files/use-files";
 import { isLocalHost } from "@/features/hosts/local-host";
 import type { Host } from "@/features/hosts/types";
-import type { SftpEntry } from "@/features/ssh";
+import type { FsEntry } from "@/features/ssh";
 import { useLongPress } from "@/hooks/use-long-press";
 import { cn } from "@/lib/utils";
 
-type SftpPanelProps = {
+type FilesPanelProps = {
   host: Host;
-  sftp?: SftpController;
+  files?: FilesController;
   embedded?: boolean;
   shellCwd?: string | null;
   tmuxSession?: string | null;
   tmuxWindowId?: string | null;
   onConnect: () => void;
-  onOpenFile: (entry: SftpEntry) => void;
+  onOpenFile: (entry: FsEntry) => void;
 };
 
-function SftpEntryRow({
+function FsEntryRow({
   entry,
   renaming,
   renameValue,
@@ -44,7 +44,7 @@ function SftpEntryRow({
   onRenameCommit,
   onRenameCancel,
 }: {
-  entry: SftpEntry;
+  entry: FsEntry;
   renaming: boolean;
   renameValue: string;
   busy: boolean;
@@ -116,51 +116,51 @@ function SftpEntryRow({
   );
 }
 
-export function SftpPanel({
+export function FilesPanel({
   host,
-  sftp: sftpProp,
+  files: filesProp,
   embedded = false,
   shellCwd,
   tmuxSession,
   tmuxWindowId,
   onConnect,
   onOpenFile,
-}: SftpPanelProps) {
+}: FilesPanelProps) {
   const local = isLocalHost(host);
   const connected = host.status === "connected";
-  const ownedSftp = useSftp({
+  const ownedFiles = useFiles({
     hostId: host.id,
     connected,
-    enabled: !sftpProp,
-    shellCwd: sftpProp ? undefined : shellCwd,
-    tmuxSession: sftpProp || local ? undefined : tmuxSession,
-    tmuxWindowId: sftpProp || local ? undefined : tmuxWindowId,
+    enabled: !filesProp,
+    shellCwd: filesProp ? undefined : shellCwd,
+    tmuxSession: filesProp || local ? undefined : tmuxSession,
+    tmuxWindowId: filesProp || local ? undefined : tmuxWindowId,
   });
-  const sftp = sftpProp ?? ownedSftp;
-  const upPath = parentPath(sftp.path);
+  const files = filesProp ?? ownedFiles;
+  const upPath = parentPath(files.path);
   const pathLabel = local
-    ? sftp.path
-    : `${host.user}@${host.hostname}:${sftp.path}`;
+    ? files.path
+    : `${host.user}@${host.hostname}:${files.path}`;
 
-  const [menu, setMenu] = useState<SftpEntryMenuState | null>(null);
-  const [deleteTarget, setDeleteTarget] = useState<SftpEntry | null>(null);
+  const [menu, setMenu] = useState<FileEntryMenuState | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<FsEntry | null>(null);
   const [deleteBusy, setDeleteBusy] = useState(false);
   const [renamingPath, setRenamingPath] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
   const renameOriginalRef = useRef("");
 
   const openEntry = useCallback(
-    (entry: SftpEntry) => {
+    (entry: FsEntry) => {
       if (entry.isDir) {
-        sftp.openDir(entry.path);
+        files.openDir(entry.path);
         return;
       }
       onOpenFile(entry);
     },
-    [onOpenFile, sftp],
+    [onOpenFile, files],
   );
 
-  const beginRename = useCallback((entry: SftpEntry) => {
+  const beginRename = useCallback((entry: FsEntry) => {
     setRenamingPath(entry.path);
     setRenameValue(entry.name);
     renameOriginalRef.current = entry.name;
@@ -169,18 +169,18 @@ export function SftpPanel({
   const commitRename = useCallback(async () => {
     if (!renamingPath) return;
     const entry =
-      sftp.findEntry?.(renamingPath) ??
-      sftp.entries.find((item) => item.path === renamingPath) ??
+      files.findEntry?.(renamingPath) ??
+      files.entries.find((item) => item.path === renamingPath) ??
       null;
     const next = renameValue.trim();
     setRenamingPath(null);
     if (!entry || !next || next === renameOriginalRef.current) return;
     try {
-      await sftp.renameEntry(entry, next);
+      await files.renameEntry(entry, next);
     } catch {
-      // error surfaced via sftp.error
+      // error surfaced via files.error
     }
-  }, [renameValue, renamingPath, sftp]);
+  }, [renameValue, renamingPath, files]);
 
   const cancelRename = useCallback(() => {
     setRenamingPath(null);
@@ -188,7 +188,7 @@ export function SftpPanel({
   }, []);
 
   const onEntryAction = useCallback(
-    (action: SftpEntryAction, entry: SftpEntry) => {
+    (action: FileEntryAction, entry: FsEntry) => {
       switch (action) {
         case "view":
         case "open":
@@ -198,28 +198,28 @@ export function SftpPanel({
           beginRename(entry);
           break;
         case "download":
-          void sftp.downloadEntry(entry);
+          void files.downloadEntry(entry);
           break;
         case "delete":
           setDeleteTarget(entry);
           break;
       }
     },
-    [beginRename, openEntry, sftp],
+    [beginRename, openEntry, files],
   );
 
   const confirmDelete = useCallback(async () => {
     if (!deleteTarget) return;
     setDeleteBusy(true);
     try {
-      await sftp.removeEntry(deleteTarget);
+      await files.removeEntry(deleteTarget);
       setDeleteTarget(null);
     } catch {
       // keep dialog open; error on panel
     } finally {
       setDeleteBusy(false);
     }
-  }, [deleteTarget, sftp]);
+  }, [deleteTarget, files]);
 
   if (!connected) {
     return (
@@ -255,8 +255,8 @@ export function SftpPanel({
           type="button"
           size="sm"
           variant="outline"
-          onClick={() => upPath && sftp.openDir(upPath)}
-          disabled={!upPath || sftp.loading}
+          onClick={() => upPath && files.openDir(upPath)}
+          disabled={!upPath || files.loading}
           className="min-h-9 shrink-0 md:min-h-7"
           aria-label="Parent directory"
         >
@@ -269,18 +269,18 @@ export function SftpPanel({
           type="button"
           size="sm"
           variant="outline"
-          onClick={() => void sftp.refresh()}
-          disabled={sftp.loading}
+          onClick={() => void files.refresh()}
+          disabled={files.loading}
           className="min-h-9 shrink-0 md:min-h-7"
           aria-label="Refresh"
         >
-          <RefreshCw className={cn("size-4", sftp.loading && "animate-spin")} />
+          <RefreshCw className={cn("size-4", files.loading && "animate-spin")} />
         </Button>
         <Button
           type="button"
           size="sm"
           variant="outline"
-          onClick={() => void sftp.mkdir()}
+          onClick={() => void files.mkdir()}
           className="min-h-9 shrink-0 md:min-h-7"
           aria-label="New directory"
         >
@@ -289,8 +289,8 @@ export function SftpPanel({
         <Button
           type="button"
           size="sm"
-          onClick={() => void sftp.uploadFile()}
-          disabled={sftp.transfer?.busy}
+          onClick={() => void files.uploadFile()}
+          disabled={files.transfer?.busy}
           className="min-h-9 shrink-0 md:min-h-7"
         >
           <Upload data-icon="inline-start" />
@@ -298,16 +298,16 @@ export function SftpPanel({
         </Button>
       </div>
 
-      {sftp.error ? (
+      {files.error ? (
         <p
           className="border-b border-border bg-surface px-4 py-2 text-[13px] text-destructive"
           role="alert"
         >
-          {sftp.error}
+          {files.error}
         </p>
       ) : null}
 
-      {sftp.transfer ? (
+      {files.transfer ? (
         <div
           className="flex items-center justify-between gap-3 border-b border-border bg-surface px-4 py-2"
           role="status"
@@ -315,28 +315,28 @@ export function SftpPanel({
         >
           <p className="min-w-0 truncate text-[13px]">
             <span className="text-status-transfer">
-              {sftp.transfer.busy
-                ? sftp.transfer.kind === "upload"
+              {files.transfer.busy
+                ? files.transfer.kind === "upload"
                   ? "Uploading"
                   : "Downloading"
-                : sftp.transfer.error
+                : files.transfer.error
                   ? "Transfer failed"
-                  : sftp.transfer.kind === "upload"
+                  : files.transfer.kind === "upload"
                     ? "Uploaded"
                     : "Downloaded"}
             </span>
             <span className="text-muted-foreground"> · </span>
-            <span className="font-mono text-foreground">{sftp.transfer.name}</span>
-            {sftp.transfer.error ? (
-              <span className="text-destructive"> — {sftp.transfer.error}</span>
+            <span className="font-mono text-foreground">{files.transfer.name}</span>
+            {files.transfer.error ? (
+              <span className="text-destructive"> — {files.transfer.error}</span>
             ) : null}
           </p>
-          {!sftp.transfer.busy ? (
+          {!files.transfer.busy ? (
             <Button
               type="button"
               size="sm"
               variant="ghost"
-              onClick={sftp.clearTransfer}
+              onClick={files.clearTransfer}
               className="min-h-9 shrink-0 md:min-h-7"
             >
               Dismiss
@@ -346,11 +346,11 @@ export function SftpPanel({
       ) : null}
 
       <div className="min-h-0 flex-1 overflow-y-auto pb-[max(0.75rem,env(safe-area-inset-bottom))]">
-        {sftp.loading && sftp.entries.length === 0 ? (
+        {files.loading && files.entries.length === 0 ? (
           <p className="px-4 py-6 text-center text-[13px] text-muted-foreground">
             Listing…
           </p>
-        ) : sftp.entries.length === 0 ? (
+        ) : files.entries.length === 0 ? (
           <div className="flex flex-col items-center justify-center gap-2 px-6 py-12 text-center">
             <FolderOpen className="size-5 text-status-transfer" aria-hidden />
             <p className="text-sm font-medium">Empty directory</p>
@@ -360,13 +360,13 @@ export function SftpPanel({
           </div>
         ) : (
           <ul className="flex flex-col" aria-label={local ? "Local files" : "Remote files"}>
-            {sftp.entries.map((entry) => (
-              <SftpEntryRow
+            {files.entries.map((entry) => (
+              <FsEntryRow
                 key={entry.path}
                 entry={entry}
                 renaming={renamingPath === entry.path}
                 renameValue={renameValue}
-                busy={Boolean(sftp.transfer?.busy)}
+                busy={Boolean(files.transfer?.busy)}
                 onOpen={() => openEntry(entry)}
                 onMenu={(point) => setMenu({ entry, ...point })}
                 onRenameValue={setRenameValue}
@@ -378,13 +378,13 @@ export function SftpPanel({
         )}
       </div>
 
-      <SftpEntryMenu
+      <FileEntryMenu
         menu={menu}
-        busy={Boolean(sftp.transfer?.busy) || deleteBusy}
+        busy={Boolean(files.transfer?.busy) || deleteBusy}
         onClose={() => setMenu(null)}
         onAction={onEntryAction}
       />
-      <SftpDeleteDialog
+      <FileDeleteDialog
         entry={deleteTarget}
         busy={deleteBusy}
         onOpenChange={(open) => {
