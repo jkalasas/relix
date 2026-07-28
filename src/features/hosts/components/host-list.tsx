@@ -55,7 +55,7 @@ export function HostList({
                     onClick={() => onSelect(host.id)}
                     className={cn(
                       mobile &&
-                        "h-auto min-h-11 items-start rounded-lg px-2.5 py-2.5 text-sm",
+                        "h-auto min-h-11 rounded-lg px-2.5 py-2.5 text-sm",
                     )}
                   >
                     <span className="flex size-4 shrink-0 items-center justify-center">
