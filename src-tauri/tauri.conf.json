@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "relix",
+  "productName": "Relix",
   "version": "0.1.0",
   "identifier": "com.relix.app",
   "build": {
