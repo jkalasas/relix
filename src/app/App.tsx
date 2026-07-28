@@ -564,30 +564,31 @@ function App() {
     !workspace.formMode &&
     !workspace.forwardFormMode;
 
-  const sessionTabBar = sessionActive ? (
-    <SessionTabBar
-      tabs={selectedTabs}
-      activeId={activeTabId}
-      shells={selectedSessions}
-      files={selectedFiles}
-      showPorts={!selectedIsLocal}
-      onSelect={selectSessionTab}
-      onClose={closeSessionTab}
-      onRenameShell={(shellId, name) =>
-        shells.renameShell(selectedHost.id, shellId, name)
-      }
-      onReorder={(orderedIds) =>
-        sessionTabs.reorderTabs(selectedHost.id, orderedIds)
-      }
-      onNewShell={(launchId) => void openShell(selectedHost.id, launchId)}
-      onOpenFiles={() => {
-        setRailOverride(null);
-        sessionTabs.openToolTab(selectedHost.id, "files");
-      }}
-      onOpenPorts={() => sessionTabs.openToolTab(selectedHost.id, "ports")}
-      variant={useTitlebarSessionChrome ? "titlebar" : "default"}
-    />
-  ) : null;
+  const sessionTabBar =
+    sessionActive && selectedHost?.status === "connected" ? (
+      <SessionTabBar
+        tabs={selectedTabs}
+        activeId={activeTabId}
+        shells={selectedSessions}
+        files={selectedFiles}
+        showPorts={!selectedIsLocal}
+        onSelect={selectSessionTab}
+        onClose={closeSessionTab}
+        onRenameShell={(shellId, name) =>
+          shells.renameShell(selectedHost.id, shellId, name)
+        }
+        onReorder={(orderedIds) =>
+          sessionTabs.reorderTabs(selectedHost.id, orderedIds)
+        }
+        onNewShell={(launchId) => void openShell(selectedHost.id, launchId)}
+        onOpenFiles={() => {
+          setRailOverride(null);
+          sessionTabs.openToolTab(selectedHost.id, "files");
+        }}
+        onOpenPorts={() => sessionTabs.openToolTab(selectedHost.id, "ports")}
+        variant={useTitlebarSessionChrome ? "titlebar" : "default"}
+      />
+    ) : null;
 
   const sessionHeader = sessionActive && selectedHost ? (
     <SessionHeader
