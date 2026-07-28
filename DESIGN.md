@@ -196,7 +196,7 @@ Hosts (root)                    Session (detail)
 
 ### Feature surfaces (all platforms)
 
-1. **SSH / Terminal** — session readiness and PTY. Disconnected/error states explain next step and offer Connect / Retry. On mobile, terminal is full-bleed; soft keyboard must not permanently bury the prompt (scroll + visual viewport).
+1. **SSH / Terminal** — session readiness and PTY. Disconnected/error states explain next step and offer Connect / Retry. On mobile, terminal is full-bleed; soft keyboard must not permanently bury the prompt (scroll + visual viewport). Mobile OS (Android/iOS) shows a bottom accessory key bar (Esc, Ctrl, Alt, Shift, Tab, arrows) with sticky modifiers for the next soft-keyboard key.
 2. **Port forwards** — desktop: multi-column mono row. Mobile: stacked row (type + status on first line; endpoints below). L: local → remote; R: remote listen → local target; D: local bind + SOCKS5. Cyan on active only.
 3. **SFTP** — path in mono. Desktop may grow dual-pane later; mobile is single-pane + transfer sheet.
 
@@ -354,3 +354,4 @@ When adding UI:
 | 2026-03-26 | Multi-platform: desktop split + mobile list/detail, touch & safe-area rules |
 | 2026-03-27 | Android scaffold, system back, key import, SFTP, soft-keyboard terminal |
 | 2026-03-28 | Android background gate + FGS keepalive while hosts connected |
+| 2026-03-28 | Mobile terminal accessory key bar + soft-keyboard re-focus fix |

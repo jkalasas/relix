@@ -1,11 +1,21 @@
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { EmptyTerminal } from "@/features/shells/components/empty-terminal";
 import { ShellTabs } from "@/features/shells/components/shell-tabs";
-import { TerminalView } from "@/features/shells/components/terminal-view";
+import { TerminalKeyBar } from "@/features/shells/components/terminal-key-bar";
+import {
+  TerminalView,
+  type TerminalSessionApi,
+} from "@/features/shells/components/terminal-view";
 import {
   sessionDisplayTitle,
   type ShellLaunchId,
 } from "@/features/shells/launch";
+import { useIsMobileOs } from "@/features/shells/lib/mobile-os";
+import {
+  EMPTY_STICKY_MODS,
+  hasStickyMods,
+  type StickyMods,
+} from "@/features/shells/lib/terminal-keys";
 import type { ShellSession } from "@/features/shells/types";
 import type { Host } from "@/features/hosts/types";
 import { decodeSshData, listenSshData } from "@/features/ssh";
@@ -37,15 +47,36 @@ export function TerminalPanel({
   onReorderShells,
   onSessionCwd,
 }: TerminalPanelProps) {
-  const writersRef = useRef<Map<string, (data: string | Uint8Array) => void>>(
-    new Map(),
-  );
+  const isMobileOs = useIsMobileOs();
+  const writersRef = useRef<Map<string, TerminalSessionApi>>(new Map());
+  const [stickyMods, setStickyMods] = useState<StickyMods>(EMPTY_STICKY_MODS);
 
-  const setWriter = useCallback(
-    (channelId: string, write: (data: string | Uint8Array) => void) => {
-      writersRef.current.set(channelId, write);
+  const setApi = useCallback((channelId: string, api: TerminalSessionApi) => {
+    writersRef.current.set(channelId, api);
+  }, []);
+
+  const clearStickyMods = useCallback(() => {
+    setStickyMods(EMPTY_STICKY_MODS);
+  }, []);
+
+  const toggleStickyMod = useCallback((key: keyof StickyMods) => {
+    setStickyMods((prev) => ({ ...prev, [key]: !prev[key] }));
+  }, []);
+
+  const sendToActive = useCallback(
+    (data: string) => {
+      const active = sessions.find((session) => session.id === activeSessionId);
+      const channelId = active?.channelId;
+      if (!channelId) return;
+      const api = writersRef.current.get(channelId);
+      if (!api) return;
+      api.send(data);
+      if (hasStickyMods(stickyMods)) {
+        clearStickyMods();
+      }
+      api.focus({ force: true });
     },
-    [],
+    [activeSessionId, clearStickyMods, sessions, stickyMods],
   );
 
   useEffect(() => {
@@ -62,14 +93,18 @@ export function TerminalPanel({
   }, [sessions]);
 
   useEffect(() => {
+    clearStickyMods();
+  }, [activeSessionId, clearStickyMods]);
+
+  useEffect(() => {
     let disposed = false;
     let unlisten: (() => void) | undefined;
 
     void (async () => {
       const fn = await listenSshData((event) => {
-        const write = writersRef.current.get(event.sessionId);
-        if (!write) return;
-        write(decodeSshData(event.data));
+        const api = writersRef.current.get(event.sessionId);
+        if (!api) return;
+        api.write(decodeSshData(event.data));
       });
       if (disposed) {
         fn();
@@ -122,6 +157,7 @@ export function TerminalPanel({
 
   const activeSession =
     sessions.find((session) => session.id === activeSessionId) ?? null;
+  const showKeyBar = isMobileOs && visible && activeSession?.channelId != null;
 
   return (
     <div
@@ -148,7 +184,11 @@ export function TerminalPanel({
               sessionId={session.channelId}
               active={session.id === activeSessionId}
               visible={visible}
-              onReady={(api) => setWriter(session.channelId!, api.write)}
+              stickyMods={
+                session.id === activeSessionId ? stickyMods : EMPTY_STICKY_MODS
+              }
+              onStickyConsumed={clearStickyMods}
+              onReady={(api) => setApi(session.channelId!, api)}
               onCwdChange={(cwd) => onSessionCwd(session.id, cwd)}
             />
           );
@@ -159,6 +199,13 @@ export function TerminalPanel({
           </div>
         ) : null}
       </div>
+      {showKeyBar ? (
+        <TerminalKeyBar
+          mods={stickyMods}
+          onToggleMod={toggleStickyMod}
+          onSend={sendToActive}
+        />
+      ) : null}
     </div>
   );
 }

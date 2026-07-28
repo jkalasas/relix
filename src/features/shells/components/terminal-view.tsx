@@ -11,14 +11,29 @@ import {
   subscribeTerminalFontSize,
   TERMINAL_FONT_STEP,
 } from "@/features/shells/lib/terminal-font";
+import {
+  applyStickyToInput,
+  EMPTY_STICKY_MODS,
+  hasStickyMods,
+  type StickyMods,
+} from "@/features/shells/lib/terminal-keys";
+import { isMobileOs } from "@/features/shells/lib/mobile-os";
 import { sshResize, sshWrite } from "@/features/ssh";
 import { cn } from "@/lib/utils";
+
+export type TerminalSessionApi = {
+  write: (data: string | Uint8Array) => void;
+  send: (data: string) => void;
+  focus: (options?: { force?: boolean }) => void;
+};
 
 type TerminalViewProps = {
   sessionId: string;
   active: boolean;
   visible: boolean;
-  onReady?: (api: { write: (data: string | Uint8Array) => void }) => void;
+  stickyMods?: StickyMods;
+  onStickyConsumed?: () => void;
+  onReady?: (api: TerminalSessionApi) => void;
   onCwdChange?: (cwd: string) => void;
 };
 
@@ -27,7 +42,7 @@ function isTouchUi(): boolean {
   if (window.matchMedia("(hover: none) and (pointer: coarse)").matches) {
     return true;
   }
-  return /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+  return isMobileOs();
 }
 
 function attachWebgl(term: Terminal) {
@@ -66,12 +81,33 @@ function cellHeightPx(term: Terminal, element: HTMLElement): number {
   return Math.max(1, (term.options.fontSize ?? 12) * (term.options.lineHeight ?? 1));
 }
 
-function focusTerminal(term: Terminal) {
+function helperTextarea(term: Terminal): HTMLTextAreaElement | null {
+  return (
+    (term.element?.querySelector(
+      ".xterm-helper-textarea",
+    ) as HTMLTextAreaElement | null) ?? null
+  );
+}
+
+function focusTerminal(term: Terminal, options?: { force?: boolean }) {
+  const textarea = helperTextarea(term);
+  if (!textarea) {
+    term.focus();
+    return;
+  }
+
+  const alreadyFocused = document.activeElement === textarea;
+  if (alreadyFocused || options?.force) {
+    // Dismissing the soft keyboard often leaves the helper focused; a no-op
+    // focus() will not reopen the IME on Android/iOS WebViews.
+    textarea.blur();
+    term.focus();
+    textarea.focus({ preventScroll: true });
+    return;
+  }
+
   term.focus();
-  const textarea = term.element?.querySelector(
-    ".xterm-helper-textarea",
-  ) as HTMLTextAreaElement | null;
-  textarea?.focus({ preventScroll: true });
+  textarea.focus({ preventScroll: true });
 }
 
 function isZoomModifier(event: KeyboardEvent | WheelEvent): boolean {
@@ -113,6 +149,8 @@ function touchDistance(a: Touch, b: Touch): number {
 function attachMobileScroll(
   term: Terminal,
   container: HTMLElement,
+  shouldForceFocus: () => boolean,
+  clearForceFocus: () => void,
 ): () => void {
   if (!isTouchUi()) return () => {};
 
@@ -224,19 +262,31 @@ function attachMobileScroll(
     tracking = false;
     scrolling = false;
     remainder = 0;
-    if (wasTap) focusTerminal(term);
+    if (!wasTap) return;
+
+    const force = shouldForceFocus();
+    focusTerminal(term, { force });
+    clearForceFocus();
+  };
+
+  const onClick = () => {
+    const force = shouldForceFocus();
+    focusTerminal(term, { force });
+    clearForceFocus();
   };
 
   layer.addEventListener("touchstart", onTouchStart, { passive: true });
   layer.addEventListener("touchmove", onTouchMove, { passive: false });
   layer.addEventListener("touchend", onTouchEnd, { passive: true });
   layer.addEventListener("touchcancel", onTouchEnd, { passive: true });
+  layer.addEventListener("click", onClick);
 
   return () => {
     layer.removeEventListener("touchstart", onTouchStart);
     layer.removeEventListener("touchmove", onTouchMove);
     layer.removeEventListener("touchend", onTouchEnd);
     layer.removeEventListener("touchcancel", onTouchEnd);
+    layer.removeEventListener("click", onClick);
     layer.remove();
   };
 }
@@ -341,6 +391,8 @@ export function TerminalView({
   sessionId,
   active,
   visible,
+  stickyMods = EMPTY_STICKY_MODS,
+  onStickyConsumed,
   onReady,
   onCwdChange,
 }: TerminalViewProps) {
@@ -349,11 +401,16 @@ export function TerminalView({
   const fitRef = useRef<FitAddon | null>(null);
   const activeRef = useRef(active);
   const visibleRef = useRef(visible);
+  const stickyModsRef = useRef(stickyMods);
+  const onStickyConsumedRef = useRef(onStickyConsumed);
   const onReadyRef = useRef(onReady);
   const onCwdChangeRef = useRef(onCwdChange);
   const lastCwdRef = useRef<string | null>(null);
+  const forceFocusRef = useRef(false);
   activeRef.current = active;
   visibleRef.current = visible;
+  stickyModsRef.current = stickyMods;
+  onStickyConsumedRef.current = onStickyConsumed;
   onReadyRef.current = onReady;
   onCwdChangeRef.current = onCwdChange;
 
@@ -393,7 +450,14 @@ export function TerminalView({
     attachWebgl(term);
     fit.fit();
     void sshResize(sessionId, term.cols, term.rows);
-    const detachMobileScroll = attachMobileScroll(term, containerRef.current);
+    const detachMobileScroll = attachMobileScroll(
+      term,
+      containerRef.current,
+      () => forceFocusRef.current,
+      () => {
+        forceFocusRef.current = false;
+      },
+    );
     const detachFontZoom = attachFontZoom(
       term,
       fit,
@@ -403,7 +467,13 @@ export function TerminalView({
     );
 
     const dataSub = term.onData((data) => {
-      void sshWrite(sessionId, data);
+      const mods = stickyModsRef.current;
+      let payload = data;
+      if (hasStickyMods(mods)) {
+        payload = applyStickyToInput(data, mods);
+        onStickyConsumedRef.current?.();
+      }
+      void sshWrite(sessionId, payload);
     });
 
     const osc7Sub = term.parser.registerOscHandler(7, (data) => {
@@ -430,7 +500,17 @@ export function TerminalView({
 
     // Only refit on viewport *resize* (keyboard open/close). Refitting on
     // visualViewport scroll fights drag-to-scroll and Android IME pan.
-    const onViewportResize = () => scheduleFit();
+    let lastViewportHeight =
+      window.visualViewport?.height ?? window.innerHeight;
+    const onViewportResize = () => {
+      scheduleFit();
+      const nextHeight = window.visualViewport?.height ?? window.innerHeight;
+      // Height growth ≈ soft keyboard dismissed while the helper may stay focused.
+      if (nextHeight > lastViewportHeight + 80) {
+        forceFocusRef.current = true;
+      }
+      lastViewportHeight = nextHeight;
+    };
     window.addEventListener("resize", onViewportResize);
     window.visualViewport?.addEventListener("resize", onViewportResize);
 
@@ -440,6 +520,12 @@ export function TerminalView({
     onReadyRef.current?.({
       write: (data) => {
         term.write(data);
+      },
+      send: (data) => {
+        void sshWrite(sessionId, data);
+      },
+      focus: (options) => {
+        focusTerminal(term, options);
       },
     });
 
@@ -466,7 +552,8 @@ export function TerminalView({
 
     const frame = requestAnimationFrame(() => {
       restoreSurface(term, fit, sessionId);
-      if (active) term.focus();
+      if (active) focusTerminal(term, { force: forceFocusRef.current });
+      forceFocusRef.current = false;
     });
     return () => cancelAnimationFrame(frame);
   }, [active, visible, sessionId]);
