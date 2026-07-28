@@ -67,6 +67,19 @@ See [Tauri Android prerequisites](https://v2.tauri.app/start/prerequisites/#andr
 bun tauri build
 ```
 
+## CI / releases
+
+GitHub Actions (`.github/workflows/build.yml`) builds Linux, Windows, macOS (arm64), and Android on:
+
+- manual **workflow_dispatch**
+- version tags matching `v*` (creates a **draft** release with installers + APKs)
+
+Optional Android signing secrets (unsigned APK if omitted):
+
+- `ANDROID_KEY_BASE64` — `base64 -w0 upload-keystore.jks`
+- `ANDROID_KEY_ALIAS`
+- `ANDROID_KEY_PASSWORD`
+
 ## Project map
 
 See `AGENTS.md` and `DESIGN.md` for architecture and design rules.
