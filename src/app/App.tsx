@@ -403,6 +403,14 @@ function App() {
     setRailOverride(null);
   }, [selectedHost?.id]);
 
+  const selectHostFromRail = useCallback(
+    (id: string) => {
+      setRailOverride(null);
+      workspace.selectHost(id);
+    },
+    [workspace.selectHost],
+  );
+
   const showFileRail =
     isDesktop &&
     !workspace.formMode &&
@@ -654,7 +662,7 @@ function App() {
               onResizeEnd={sidebarWidth.endResize}
               hosts={hosts.hosts}
               selectedId={workspace.selectedId}
-              onSelect={workspace.selectHost}
+              onSelect={selectHostFromRail}
               onAddHost={workspace.openAddHost}
             />
           ) : null}
