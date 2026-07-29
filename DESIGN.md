@@ -53,7 +53,7 @@ One design system. Two layout modes. Same status language everywhere.
 
 Three words: **precise · infrastructural · quiet.**
 
-Copy is ops language: host, tunnel, forward, session, connect, disconnect. No marketing fluff. Empty states name the next action. Same words on phone and desktop.
+Copy is ops language: host, project, ad hoc, tunnel, forward, session, connect, disconnect. No marketing fluff. Empty states name the next action. Same words on phone and desktop.
 
 ---
 
@@ -144,69 +144,85 @@ On mobile, prefer the upper end of body sizes for scanability; do not shrink mon
 
 | Mode | Viewport | Shell |
 |---|---|---|
-| **Mobile** | `< md` (~768px) | List / detail — one primary surface at a time |
-| **Desktop** | `≥ md` | Persistent host rail + session workspace |
+| **Mobile** | `< md` (~768px) | Page stack — one primary surface at a time |
+| **Desktop** | `≥ md` | Same page stack; file tree rail only inside a connected workspace |
 
-Do not “squeeze” the desktop split below `md`. Switch structure.
+Do not “squeeze” a multi-pane desktop chrome below `md`. Switch density, not structure.
 
-### Desktop — split
+### Navigation stack (all platforms)
 
 ```
-┌──────────┬─────────────────────────────────────────────┐
-│ Hosts    │ Session: user@host:port          ● status   │
-│ ───────  ├─────────────────────────────────────────────┤
-│ ● prod   │ [shell] [file] [Files] …  [+] [Files] [Ports]│
-│ ○ stage  │                                             │
-│ ○ jump   │   active document panel                     │
-│ + Host   │                                             │
-└──────────┴─────────────────────────────────────────────┘
+Hosts page  →  Projects page  →  Workspace
+   list            Ad hoc +          shells / files / ports
+                   projects
+```
 
-Connected host (desktop — file tree always occupies the left rail):
-┌──────────────┬─────────────────────────────────────────┐
-│ File tree    │ Session header + tabs                   │
-│ (left rail)  │ shell / file editor / Files empty / …   │
-└──────────────┴─────────────────────────────────────────┘
+| Page | Role |
+|---|---|
+| **Hosts** | Full-page host catalog (home). Status dots + mono targets. + Host |
+| **Projects** | Per-host: **Ad hoc** (default, no project) + saved project directories. Connect / edit host here |
+| **Workspace** | Session for one host + scope (Ad hoc or project). Tabs, shells, files, host-level ports |
+
+**Ad hoc** — no saved project. Files follow the active shell cwd (OSC7 / tmux path).
+**Project** — saved name + directory on that host. Shells open in that path; files stay rooted there.
+
+Open workspaces stay alive in the background. Jump via **Recents** (header / title bar). Back: workspace → projects → hosts.
+
+Connections are **one SSH session per host**, shared by every project/Ad hoc on that host. Switching scope never reconnects.
+
+### Desktop — workspace chrome
+
+```
+Hosts / Projects — full-width pages (no host rail)
+
+Workspace (connected):
+┌─────────────────────────────────────────────────────────────┐
+│ titlebar: tabs · host/scope · recents · status · win ctrls  │
+├────────────┬────────────────────────────────────────────────┤
+│ file tree  │ shell / editor / files / ports                 │
+│ (optional) │                                                │
+└────────────┴────────────────────────────────────────────────┘
 ```
 
 | Region | Size | Notes |
 |---|---|---|
-| Title bar | 40px (`2.5rem`) | Frameless window (`decorations: false`). Full-width chrome: sidebar trigger · session tabs · window controls. Drag via `data-tauri-drag-region` |
-| Left rail | ~240px default, drag-resizable (180–480px); collapsible icon | Host list when idle/disconnected; file tree while host is connected (desktop). Hosts toggle in sidebar header. Drag the rail edge to resize; click / trigger / `⌘B` to collapse |
-| Session header | 40px desktop / 48px mobile | Mono target left; chip + connect right (no trigger on desktop — lives in title bar) |
+| Title bar | 40px (`2.5rem`) | Frameless window. Tabs + session header + window controls when in workspace. Drag via `data-tauri-drag-region` |
+| File tree rail | ~240px default, drag-resizable (180–480px); collapsible | Only on **connected workspace**. Not a host catalog. Hosts link returns to hosts page |
+| Session header | 40px desktop / 48px mobile | Host · scope label; chip + connect; back to projects; recents switcher |
 | Session tabs | title bar (desktop) / below header (mobile) | Document strip (shells, files, tools); elevated active pill |
 | Workspace body | flex-1 | Active tab panel (`SidebarInset`) |
 
 **Desktop window (Tauri):** frameless, default 1180×740, min ~360×560 (below `md`, mobile shell still applies if the window is narrow).
 
-### Mobile — list → session
+### Mobile — stack drill-in
 
 ```
-Hosts (root)                    Session (detail)
-┌─────────────────────┐         ┌─────────────────────┐
-│ Relix          [+]  │         │ ←  bastion-prod  ●  │
-│ Hosts               │         │ user@host:22  [conn]│
-│ ● bastion-prod    › │  ──▶    │ [shell][file]… [+]  │
-│ ○ staging         › │         │                     │
-│ ○ jump-2          › │         │   workspace         │
-└─────────────────────┘         └─────────────────────┘
+Hosts                        Projects                     Workspace
+┌──────────────────┐         ┌──────────────────┐         ┌──────────────────┐
+│ Relix       [+]  │         │ ← bastion-prod ● │         │ ← host · Ad hoc  │
+│ ● bastion-prod › │  ──▶    │ Ad hoc           │  ──▶    │ [shell][file]…   │
+│ ○ staging      › │         │ api  /srv/api    │         │ workspace body   │
+└──────────────────┘         │ + Project        │         └──────────────────┘
+                             └──────────────────┘
 ```
 
 | Rule | Detail |
 |---|---|
-| Root | Full-width host list is the home surface |
-| Open host | Pushes session full-screen (no side rail) |
-| Back | Returns to host list; keeps selection for when they re-enter |
-| Tabs | Scrollable document tabs (not equal-width modes); ≥44px tall |
-| Tools | Trailing Files / Ports icons open or focus singleton tool tabs |
-| Primary actions | Reachable in thumb zone (bottom half when possible for destructive/secondary less critical) |
-| Safe areas | Respect `env(safe-area-inset-*)` on notch/home-indicator devices |
+| Root | Full-width hosts page |
+| Open host | Pushes projects page |
+| Open Ad hoc / project | Pushes workspace full-screen |
+| Back | Workspace → projects → hosts; Esc / Android back same stack |
+| Tabs | Scrollable document tabs; ≥44px tall |
+| Tools | Trailing Files / Ports open or focus singleton tool tabs |
+| Primary actions | Thumb zone when possible |
+| Safe areas | `env(safe-area-inset-*)` on notch/home-indicator devices |
 | Sheets / forms | Full-screen or bottom sheet — not tiny centered modals |
 
 ### Feature surfaces (all platforms)
 
 1. **SSH / Terminal** — session readiness and PTY. Disconnected/error states explain next step and offer Connect / Retry. On mobile, terminal is full-bleed; soft keyboard must not permanently bury the prompt (scroll + visual viewport). Mobile OS (Android/iOS) shows a bottom accessory key bar (Esc, Ctrl, Alt, Shift, Tab, arrows) with sticky modifiers for the next soft-keyboard key.
-2. **Port forwards** — desktop: multi-column mono row. Mobile: stacked row (type + status on first line; endpoints below). L: local → remote; R: remote listen → local target; D: local bind + SOCKS5. Cyan on active only.
-3. **Files** — path in mono. Desktop: file tree always in the left rail while connected; main pane is shell/editor/Files empty. Mobile: single-pane list + transfer sheet. Local host and remote hosts share the same Files surface.
+2. **Port forwards** — **host-level** (shared across Ad hoc + projects). Desktop: multi-column mono row. Mobile: stacked row. L / R / D as before. Cyan on active only.
+3. **Files** — path in mono. **Ad hoc:** browser follows shell cwd. **Project:** rooted at project path. Desktop: file tree in left rail while workspace is connected; main pane is shell/editor/Files empty. Mobile: single-pane list + transfer sheet. Local host and remote hosts share the same Files surface.
 
 ### Empty states
 
@@ -225,19 +241,20 @@ Task-specific, one primary action, no fake metrics. Icon in a quiet bordered til
 |---|---|---|
 | `StatusDot` | `components/status/status-dot.tsx` | Host/session status glyph + accessible label |
 | `SessionChip` | `components/status/session-chip.tsx` | Connected / idle / error pill |
-| `AppSidebar` | `features/hosts/components/app-sidebar.tsx` | Desktop shadcn `Sidebar` shell (hosts or files mode) |
-| `HostList` | `features/hosts/components/host-list.tsx` | Host menu rows (sidebar + mobile root) |
-| `MobileHostPane` | `features/hosts/components/mobile-host-pane.tsx` | Full-width mobile hosts root (list → session drill-in) |
-| `SessionHeader` | `features/hosts/components/session-header.tsx` | Trigger + target + status + connect; back control on mobile |
+| `HostsPage` | `features/projects/components/hosts-page.tsx` | Full-page host catalog |
+| `ProjectsPage` | `features/projects/components/projects-page.tsx` | Per-host Ad hoc + project list |
+| `ProjectForm` | `features/projects/components/project-form.tsx` | Create / edit project directory |
+| `WorkspaceRecents` | `features/projects/components/workspace-recents.tsx` | Jump between open workspaces |
+| `AppSidebar` | `features/hosts/components/app-sidebar.tsx` | Desktop file-tree rail (workspace only) |
+| `SessionHeader` | `features/hosts/components/session-header.tsx` | Host · scope + status + connect; back to projects |
 | `SessionTabBar` | `components/workspace/session-tab-bar.tsx` | Document tabs: shells · open files · Files · Ports |
 | `TerminalPanel` | `features/shells/components/terminal-panel.tsx` | Shell workspace |
 | `FilesPanel` | `features/files/components/files-panel.tsx` | Mobile file list browser / transfer |
 | `FileTreeSidebar` | `features/files/components/file-tree-sidebar.tsx` | Desktop file tree content inside `AppSidebar` |
 | `FilesWorkspace` | `features/files/components/files-workspace.tsx` | Files empty pane + open file slot; mobile list host |
 | `FileWorkspace` | `features/files/components/file-workspace.tsx` | Open file editor / preview tab |
-| `ForwardsPanel` | `features/forwards/components/forwards-panel.tsx` | Tunnel list / empty |
+| `ForwardsPanel` | `features/forwards/components/forwards-panel.tsx` | Tunnel list / empty (host-level) |
 | `EmptyState` | `components/workspace/empty-state.tsx` | Shared empty pattern (icon tile · title · guidance · CTA) |
-| `EmptyWorkspace` | `components/workspace/empty-workspace.tsx` | No host selected (desktop) |
 | `Button` / `Input` / `Sidebar` | `components/ui/*` | shadcn CLI primitives — do not hand-edit; compose via variants / className / CSS tokens |
 
 ### Status mapping
@@ -277,10 +294,10 @@ Task-specific, one primary action, no fake metrics. Icon in a quiet bordered til
 
 | Shortcut | Action |
 |---|---|
-| `j` / `k` | Next / previous host |
-| `1` | Focus last shell tab (or open a shell) |
-| `2` | Open / focus Files |
-| `3` | Open / focus Ports |
+| `Esc` | Back one page (form → previous; workspace → projects → hosts) |
+| `1` | Focus last shell tab (or open a shell) — workspace only |
+| `2` | Open / focus Files — workspace only |
+| `3` | Open / focus Ports — workspace only |
 | `Ctrl+Tab` / `Ctrl+Shift+Tab` | Next / previous session tab |
 | `Ctrl/Cmd` + `=` / `-` | Zoom terminal font in / out |
 | `Ctrl/Cmd` + `0` | Reset terminal font |
@@ -303,7 +320,7 @@ Shortcuts are desktop accelerators. Mobile relies on visible controls and pinch 
 ### Platform notes
 
 - **Desktop:** multi-window later is optional; single window is the default product.
-- **Mobile:** system back / gesture back should leave the session and return to hosts when on the session surface.
+- **Mobile:** system back / gesture back walks the stack: workspace → projects → hosts.
 - **Both:** offline / reconnect states use the same status colors; copy stays plain.
 
 ---

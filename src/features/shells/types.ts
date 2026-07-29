@@ -1,6 +1,7 @@
 export type ShellSession = {
   id: string;
   hostId: string;
+  workspaceId: string;
   title: string;
   customTitle?: string;
   cwd?: string;

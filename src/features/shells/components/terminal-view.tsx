@@ -45,16 +45,29 @@ function isTouchUi(): boolean {
   return isMobileOs();
 }
 
-function attachWebgl(term: Terminal) {
-  if (isTouchUi()) return;
+function attachWebgl(
+  term: Terminal,
+  previous?: WebglAddon | null,
+): WebglAddon | null {
+  if (isTouchUi()) return null;
+  try {
+    previous?.dispose();
+  } catch {
+    // already disposed
+  }
   try {
     const webgl = new WebglAddon();
     webgl.onContextLoss(() => {
-      webgl.dispose();
+      try {
+        webgl.dispose();
+      } catch {
+        // ignore
+      }
     });
     term.loadAddon(webgl);
+    return webgl;
   } catch {
-    // canvas fallback if webgl unavailable
+    return null;
   }
 }
 
@@ -399,6 +412,7 @@ export function TerminalView({
   const containerRef = useRef<HTMLDivElement | null>(null);
   const termRef = useRef<Terminal | null>(null);
   const fitRef = useRef<FitAddon | null>(null);
+  const webglRef = useRef<WebglAddon | null>(null);
   const activeRef = useRef(active);
   const visibleRef = useRef(visible);
   const stickyModsRef = useRef(stickyMods);
@@ -407,6 +421,9 @@ export function TerminalView({
   const onCwdChangeRef = useRef(onCwdChange);
   const lastCwdRef = useRef<string | null>(null);
   const forceFocusRef = useRef(false);
+  // Drop click-through input (often Enter) when a UI click reveals this terminal.
+  const ignoreInputUntilRef = useRef(0);
+  const wasActiveVisibleRef = useRef(false);
   activeRef.current = active;
   visibleRef.current = visible;
   stickyModsRef.current = stickyMods;
@@ -443,11 +460,40 @@ export function TerminalView({
     term.loadAddon(fit);
     term.open(containerRef.current);
     term.attachCustomKeyEventHandler((event) => {
+      if (event.type !== "keydown") return true;
       if (event.key === "Tab" && event.ctrlKey) return false;
       if (isFontZoomKey(event)) return false;
+
+      const copyPasteChord =
+        event.ctrlKey &&
+        event.shiftKey &&
+        !event.altKey &&
+        !event.metaKey;
+      if (copyPasteChord && (event.key === "C" || event.key === "c")) {
+        event.preventDefault();
+        const text = term.getSelection();
+        if (text) {
+          void navigator.clipboard.writeText(text).catch(() => undefined);
+        }
+        return false;
+      }
+      if (copyPasteChord && (event.key === "V" || event.key === "v")) {
+        event.preventDefault();
+        void navigator.clipboard
+          .readText()
+          .then((text) => {
+            if (!text) return;
+            // Bypass click-through input guard for explicit paste.
+            ignoreInputUntilRef.current = 0;
+            term.paste(text);
+          })
+          .catch(() => undefined);
+        return false;
+      }
+
       return true;
     });
-    attachWebgl(term);
+    webglRef.current = attachWebgl(term, null);
     fit.fit();
     void sshResize(sessionId, term.cols, term.rows);
     const detachMobileScroll = attachMobileScroll(
@@ -467,6 +513,14 @@ export function TerminalView({
     );
 
     const dataSub = term.onData((data) => {
+      // Only drop accidental click-through Enter when a surface is revealed.
+      // Never drop CSI/SS3 terminal replies (DA, DSR, …) — shells like fish
+      // block startup until those answers arrive.
+      if (performance.now() < ignoreInputUntilRef.current) {
+        if (data === "\r" || data === "\n" || data === "\r\n") {
+          return;
+        }
+      }
       const mods = stickyModsRef.current;
       let payload = data;
       if (hasStickyMods(mods)) {
@@ -539,6 +593,12 @@ export function TerminalView({
       cancelAnimationFrame(fitFrame);
       window.removeEventListener("resize", onViewportResize);
       window.visualViewport?.removeEventListener("resize", onViewportResize);
+      try {
+        webglRef.current?.dispose();
+      } catch {
+        // ignore
+      }
+      webglRef.current = null;
       term.dispose();
       termRef.current = null;
       fitRef.current = null;
@@ -546,27 +606,51 @@ export function TerminalView({
   }, [sessionId]);
 
   useEffect(() => {
+    const activeVisible = active && visible;
+    const becameActiveVisible =
+      activeVisible && !wasActiveVisibleRef.current;
+    wasActiveVisibleRef.current = activeVisible;
+
     if (!visible) return;
     const term = termRef.current;
     const fit = fitRef.current;
     const element = containerRef.current;
     if (!term || !fit || !element) return;
 
+    if (becameActiveVisible) {
+      // Navigation clicks that reveal this surface must not reach the PTY.
+      ignoreInputUntilRef.current = performance.now() + 300;
+    }
+
     let frame = 0;
     let attempts = 0;
+    let focusTimer = 0;
     const run = () => {
-      // Parent may still be display:none for a frame after becoming "visible".
-      if (element.clientWidth === 0 && element.clientHeight === 0 && attempts < 12) {
+      // Parent may still be unlaid-out for a frame after becoming visible.
+      if (
+        element.clientWidth === 0 &&
+        element.clientHeight === 0 &&
+        attempts < 24
+      ) {
         attempts += 1;
         frame = requestAnimationFrame(run);
         return;
       }
       restoreSurface(term, fit, sessionId);
-      if (active) focusTerminal(term, { force: forceFocusRef.current });
-      forceFocusRef.current = false;
+      if (active) {
+        // Defer past the activating pointer/click so it cannot type into xterm.
+        focusTimer = window.setTimeout(() => {
+          if (!activeRef.current || !visibleRef.current) return;
+          focusTerminal(term, { force: forceFocusRef.current });
+          forceFocusRef.current = false;
+        }, becameActiveVisible ? 50 : 0);
+      }
     };
     frame = requestAnimationFrame(run);
-    return () => cancelAnimationFrame(frame);
+    return () => {
+      cancelAnimationFrame(frame);
+      window.clearTimeout(focusTimer);
+    };
   }, [active, visible, sessionId]);
 
   useEffect(() => {

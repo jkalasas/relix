@@ -15,3 +15,7 @@ export {
   type ShellHostOptions,
 } from "@/features/shells/use-shells";
 export { TerminalPanel } from "@/features/shells/components/terminal-panel";
+export {
+  TerminalHost,
+  type LiveTerminal,
+} from "@/features/shells/components/terminal-host";

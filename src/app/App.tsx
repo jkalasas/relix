@@ -11,7 +11,6 @@ import { useBoot } from "@/app/use-boot";
 import { useSshLifecycle } from "@/app/use-ssh-lifecycle";
 import { useWorkspace } from "@/app/use-workspace";
 import { DesktopTitleBar } from "@/components/workspace/desktop-title-bar";
-import { EmptyWorkspace } from "@/components/workspace/empty-workspace";
 import { SessionTabBar } from "@/components/workspace/session-tab-bar";
 import {
   SidebarInset,
@@ -35,7 +34,6 @@ import {
   HostForm,
   HostKeyDialog,
   isLocalHost,
-  MobileHostPane,
   SessionHeader,
   useHosts,
 } from "@/features/hosts";
@@ -47,15 +45,30 @@ import { FileTreeSidebar } from "@/features/files/components/file-tree-sidebar";
 import { FilesWorkspace } from "@/features/files/components/files-workspace";
 import { useFiles } from "@/features/files/use-files";
 import {
+  HostsPage,
+  ProjectForm,
+  ProjectsPage,
+  WorkspaceRecents,
+  adhocWorkspaceId,
+  parseWorkspaceId,
+  projectWorkspaceId,
+  scopeLabel,
+  useProjects,
+  type ProjectConfig,
+  type WorkspaceId,
+  type WorkspaceScope,
+} from "@/features/projects";
+import {
   useSessionTabShortcuts,
   useSessionTabs,
   type SessionTab,
 } from "@/features/session-tabs";
 import {
   DEFAULT_TMUX_SESSION,
-  TerminalPanel,
+  TerminalHost,
   useActiveShellFallback,
   useShells,
+  type LiveTerminal,
 } from "@/features/shells";
 import { useIsMobileOs } from "@/features/shells/lib/mobile-os";
 import type { FsEntry } from "@/features/ssh";
@@ -65,20 +78,20 @@ import { useSidebarWidth } from "@/hooks/use-sidebar-width";
 function App() {
   const isDesktop = useMediaQuery("(min-width: 768px)");
   const isMobileOs = useIsMobileOs();
-  // Frameless desktop always needs window chrome, even when the layout is narrow.
   const showWindowChrome = !isMobileOs;
   const useTitlebarSessionChrome = showWindowChrome && isDesktop;
   const sidebarWidth = useSidebarWidth();
   const forwards = useForwards();
   const shells = useShells();
   const sessionTabs = useSessionTabs();
-  const [railOverride, setRailOverride] = useState<"hosts" | null>(null);
+  const projects = useProjects();
   const [disconnectPrompt, setDisconnectPrompt] = useState<{
     hostId: string;
     sessionName: string;
   } | null>(null);
   const [disconnectBusy, setDisconnectBusy] = useState(false);
   const [discardTarget, setDiscardTarget] = useState<{
+    workspaceId: string;
     hostId: string;
     tabId: string;
     fileName: string;
@@ -111,8 +124,9 @@ function App() {
       forwards.removeHostForwards(hostId);
       shells.removeHostShells(hostId);
       sessionTabsRef.current.removeHost(hostId);
+      void projects.removeHostProjects(hostId);
     },
-    [forwards.removeHostForwards, shells.removeHostShells],
+    [forwards.removeHostForwards, projects.removeHostProjects, shells.removeHostShells],
   );
 
   const ensureBackgroundReadyRef = useRef<() => Promise<boolean>>(
@@ -149,20 +163,27 @@ function App() {
 
   ensureBackgroundReadyRef.current = androidBackground.ensureReady;
 
+  const workspaceIdRef = useRef<WorkspaceId | null>(null);
+  const hostIdRef = useRef<string | null>(null);
+  const workspaceScopeRef = useRef<WorkspaceScope | null>(null);
+
   const openShell = useCallback(
     async (
+      workspaceId: string,
       hostId: string,
-      launchId?: Parameters<typeof shells.openShell>[1],
+      launchId?: Parameters<typeof shells.openShell>[2],
+      cwd?: string,
     ) => {
       const host = hosts.hosts.find((item) => item.id === hostId);
       const local = host ? isLocalHost(host) : false;
       try {
-        const sessionId = await shells.openShell(hostId, launchId, {
+        const sessionId = await shells.openShell(workspaceId, hostId, launchId, {
           shellMode: local ? "plain" : host?.shellMode,
           tmuxSession: local ? undefined : host?.tmuxSession,
+          cwd,
         });
         if (sessionId) {
-          sessionTabsRef.current.activateShellTab(hostId, sessionId);
+          sessionTabsRef.current.activateShellTab(workspaceId, sessionId);
         }
       } catch {
         if (!local) {
@@ -174,8 +195,8 @@ function App() {
   );
 
   const selectShell = useCallback(
-    (hostId: string, sessionId: string) => {
-      void shells.selectShell(hostId, sessionId).catch(() => {
+    (workspaceId: string, hostId: string, sessionId: string) => {
+      void shells.selectShell(workspaceId, hostId, sessionId).catch(() => {
         hosts.setHostStatus(hostId, "error", "Failed to attach shell");
       });
     },
@@ -218,38 +239,44 @@ function App() {
     [disconnectPrompt, hosts.disconnectHost, shells.killTmuxSession],
   );
 
-  const selectedIdRef = useRef<string | null>(null);
-
   const workspace = useWorkspace({
-    hosts: hosts.hosts,
     onShortcutShell: () => {
-      const hostId = selectedIdRef.current;
-      if (!hostId) return;
-      const tabs = sessionTabsRef.current.tabsByHost[hostId] ?? [];
+      const workspaceId = workspaceIdRef.current;
+      const hostId = hostIdRef.current;
+      if (!workspaceId || !hostId) return;
+      const tabs = sessionTabsRef.current.tabsByWorkspace[workspaceId] ?? [];
       const shellTab = tabs.find((tab) => tab.kind === "shell");
       if (shellTab) {
-        sessionTabsRef.current.selectTab(hostId, shellTab.id);
-        selectShell(hostId, shellTab.shellId);
+        sessionTabsRef.current.selectTab(workspaceId, shellTab.id);
+        selectShell(workspaceId, hostId, shellTab.shellId);
         return;
       }
-      void openShell(hostId);
+      const scope = workspaceScopeRef.current;
+      const project =
+        scope?.kind === "project"
+          ? projects.getProject(hostId, scope.projectId)
+          : null;
+      void openShell(workspaceId, hostId, undefined, project?.path);
     },
     onShortcutFiles: () => {
-      const hostId = selectedIdRef.current;
-      if (!hostId) return;
-      setRailOverride(null);
-      sessionTabsRef.current.openToolTab(hostId, "files");
+      const workspaceId = workspaceIdRef.current;
+      if (!workspaceId) return;
+      sessionTabsRef.current.openToolTab(workspaceId, "files");
     },
     onShortcutPorts: () => {
-      const hostId = selectedIdRef.current;
-      if (!hostId) return;
+      const hostId = hostIdRef.current;
+      const workspaceId = workspaceIdRef.current;
+      if (!hostId || !workspaceId) return;
       const host = hosts.hosts.find((item) => item.id === hostId);
       if (!host || isLocalHost(host)) return;
-      sessionTabsRef.current.openToolTab(hostId, "ports");
+      sessionTabsRef.current.openToolTab(workspaceId, "ports");
     },
   });
 
-  selectedIdRef.current = workspace.selectedId;
+  workspaceIdRef.current = workspace.workspaceId;
+  hostIdRef.current = workspace.hostId;
+  workspaceScopeRef.current =
+    workspace.page.name === "workspace" ? workspace.page.scope : null;
 
   const handleBack = useCallback(() => {
     if (androidBackground.setupOpen) {
@@ -277,7 +304,7 @@ function App() {
   useBoot({
     setHosts: hosts.setHosts,
     loadForwards: forwards.loadForwards,
-    setSelectedId: workspace.setSelectedId,
+    loadProjects: projects.loadProjects,
     setBooting: hosts.setBooting,
   });
 
@@ -291,69 +318,138 @@ function App() {
     clearTabsForHost: sessionTabs.clearHost,
   });
 
+  const selectedHost = useMemo(() => {
+    if (!workspace.hostId) return null;
+    return hosts.hosts.find((host) => host.id === workspace.hostId) ?? null;
+  }, [hosts.hosts, workspace.hostId]);
+
+  useEffect(() => {
+    const pageName = workspace.page.name;
+    const pageHostId = workspace.hostId;
+    if (
+      (pageName === "projects" ||
+        pageName === "workspace" ||
+        pageName === "project-form") &&
+      pageHostId &&
+      !hosts.hosts.some((host) => host.id === pageHostId)
+    ) {
+      workspace.openHosts();
+    }
+  }, [
+    hosts.hosts,
+    workspace.hostId,
+    workspace.openHosts,
+    workspace.page.name,
+  ]);
+
+  const selectedIsLocal = selectedHost ? isLocalHost(selectedHost) : false;
+  const activeWorkspaceId = workspace.workspaceId;
+
+  const activeProject = useMemo(() => {
+    if (
+      workspace.page.name !== "workspace" ||
+      workspace.page.scope.kind !== "project" ||
+      !selectedHost
+    ) {
+      return null;
+    }
+    return projects.getProject(selectedHost.id, workspace.page.scope.projectId);
+  }, [projects, selectedHost, workspace.page]);
+
+  const activeScopeLabel = useMemo(() => {
+    if (workspace.page.name !== "workspace") return "Ad hoc";
+    return scopeLabel(workspace.page.scope, activeProject?.name);
+  }, [activeProject?.name, workspace.page]);
+
+  const projectRootPath =
+    workspace.page.name === "workspace" &&
+    workspace.page.scope.kind === "project"
+      ? (activeProject?.path ?? null)
+      : null;
+
   useActiveShellFallback(
-    workspace.selectedId,
-    shells.sessionsByHost,
-    shells.activeSessionByHost,
+    activeWorkspaceId,
+    selectedHost?.id ?? null,
+    shells.sessionsByWorkspace,
+    shells.activeSessionByWorkspace,
     selectShell,
   );
 
-  // Keep shell tabs in sync with shell sessions (tmux reconcile, close, etc.)
   useEffect(() => {
-    for (const [hostId, sessions] of Object.entries(shells.sessionsByHost)) {
+    if (!activeWorkspaceId) return;
+    const tabs = sessionTabs.tabsByWorkspace[activeWorkspaceId] ?? [];
+    if (tabs.length === 0) return;
+    const activeId =
+      sessionTabs.activeTabByWorkspace[activeWorkspaceId] ?? null;
+    if (activeId && tabs.some((tab) => tab.id === activeId)) return;
+    sessionTabs.selectTab(activeWorkspaceId, tabs[0].id);
+    const tab = tabs[0];
+    if (tab.kind === "shell" && selectedHost) {
+      selectShell(activeWorkspaceId, selectedHost.id, tab.shellId);
+    }
+  }, [
+    activeWorkspaceId,
+    selectShell,
+    selectedHost,
+    sessionTabs.activeTabByWorkspace,
+    sessionTabs.selectTab,
+    sessionTabs.tabsByWorkspace,
+  ]);
+
+  useEffect(() => {
+    for (const [workspaceId, sessions] of Object.entries(
+      shells.sessionsByWorkspace,
+    )) {
       sessionTabs.syncShellTabs(
-        hostId,
+        workspaceId,
         sessions.map((session) => session.id),
       );
     }
-  }, [sessionTabs.syncShellTabs, shells.sessionsByHost]);
+  }, [sessionTabs.syncShellTabs, shells.sessionsByWorkspace]);
 
-  // After tmux bootstrap, focus the active shell tab when nothing else is open.
   useEffect(() => {
-    for (const [hostId, activeShellId] of Object.entries(
-      shells.activeSessionByHost,
+    for (const [workspaceId, activeShellId] of Object.entries(
+      shells.activeSessionByWorkspace,
     )) {
       if (!activeShellId) continue;
-      const tabs = sessionTabs.tabsByHost[hostId] ?? [];
-      const activeTabId = sessionTabs.activeTabByHost[hostId];
+      const tabs = sessionTabs.tabsByWorkspace[workspaceId] ?? [];
+      const activeTabId = sessionTabs.activeTabByWorkspace[workspaceId];
       if (activeTabId) continue;
-      if (!tabs.some((tab) => tab.kind === "shell" && tab.shellId === activeShellId)) {
+      if (
+        !tabs.some(
+          (tab) => tab.kind === "shell" && tab.shellId === activeShellId,
+        )
+      ) {
         continue;
       }
-      sessionTabs.activateShellTab(hostId, activeShellId);
+      sessionTabs.activateShellTab(workspaceId, activeShellId);
     }
   }, [
     sessionTabs.activateShellTab,
-    sessionTabs.activeTabByHost,
-    sessionTabs.tabsByHost,
-    shells.activeSessionByHost,
+    sessionTabs.activeTabByWorkspace,
+    sessionTabs.tabsByWorkspace,
+    shells.activeSessionByWorkspace,
   ]);
 
-  const selectedHost = useMemo(
-    () => hosts.hosts.find((host) => host.id === workspace.selectedId) ?? null,
-    [hosts.hosts, workspace.selectedId],
-  );
-  const selectedIsLocal = selectedHost ? isLocalHost(selectedHost) : false;
-
-  const selectedSessions = selectedHost
-    ? (shells.sessionsByHost[selectedHost.id] ?? [])
+  const selectedSessions = activeWorkspaceId
+    ? (shells.sessionsByWorkspace[activeWorkspaceId] ?? [])
     : [];
-  const activeSessionId = selectedHost
-    ? (shells.activeSessionByHost[selectedHost.id] ?? null)
+  const activeSessionId = activeWorkspaceId
+    ? (shells.activeSessionByWorkspace[activeWorkspaceId] ?? null)
     : null;
   const activeSession =
     selectedSessions.find((session) => session.id === activeSessionId) ?? null;
 
-  const selectedTabs = selectedHost
-    ? (sessionTabs.tabsByHost[selectedHost.id] ?? [])
+  const selectedTabs = activeWorkspaceId
+    ? (sessionTabs.tabsByWorkspace[activeWorkspaceId] ?? [])
     : [];
-  const activeTabId = selectedHost
-    ? (sessionTabs.activeTabByHost[selectedHost.id] ?? null)
+  const activeTabId = activeWorkspaceId
+    ? (sessionTabs.activeTabByWorkspace[activeWorkspaceId] ?? null)
     : null;
   const activeTab =
     selectedTabs.find((tab) => tab.id === activeTabId) ?? null;
-  const selectedFiles = selectedHost
-    ? (sessionTabs.filesByHost[selectedHost.id] ?? {})
+  const selectedFiles = activeWorkspaceId
+    ? (sessionTabs.filesByWorkspace[activeWorkspaceId] ?? {})
     : {};
 
   const trackedSessionId =
@@ -363,129 +459,137 @@ function App() {
     activeSession;
   const activeShellCwd = trackedSession?.cwd ?? null;
 
-  // Keep the terminal surface mounted for the empty-tab state too, so a new
-  // shell can attach without swapping in a second TerminalPanel.
-  const shellChromeOpen =
-    !workspace.formMode &&
-    !workspace.forwardFormMode &&
+  const inWorkspace =
+    workspace.page.name === "workspace" &&
     selectedHost != null &&
-    (activeTab?.kind === "shell" || selectedTabs.length === 0);
+    !workspace.forwardFormMode;
 
   const explorerChromeOpen =
-    !workspace.formMode &&
-    !workspace.forwardFormMode &&
-    selectedHost != null &&
+    inWorkspace &&
     (activeTab?.kind === "files" || activeTab?.kind === "file");
 
   const portsChromeOpen =
-    !workspace.formMode &&
-    !workspace.forwardFormMode &&
-    selectedHost != null &&
+    inWorkspace &&
     !selectedIsLocal &&
     activeTab?.kind === "ports";
+
+  // Shell is the fallback surface so a stale/missing active tab never blanks the page.
+  const shellChromeOpen =
+    inWorkspace && !explorerChromeOpen && !portsChromeOpen;
 
   const files = useFiles({
     hostId: selectedHost?.id ?? "__none__",
     connected: selectedHost?.status === "connected",
-    enabled: selectedHost != null,
-    shellCwd: activeShellCwd,
+    enabled: inWorkspace,
+    shellCwd: projectRootPath ? null : activeShellCwd,
+    rootPath: projectRootPath,
     tmuxSession:
-      selectedIsLocal || !selectedHost
+      selectedIsLocal || !selectedHost || projectRootPath
         ? undefined
         : (trackedSession?.tmuxSession ?? selectedHost.tmuxSession),
     tmuxWindowId:
-      selectedIsLocal || !selectedHost
+      selectedIsLocal || !selectedHost || projectRootPath
         ? undefined
         : trackedSession?.tmuxWindowId,
   });
 
-  useEffect(() => {
-    setRailOverride(null);
-  }, [selectedHost?.id]);
-
-  const selectHostFromRail = useCallback(
-    (id: string) => {
-      setRailOverride(null);
-      workspace.selectHost(id);
-    },
-    [workspace.selectHost],
-  );
-
   const showFileRail =
     isDesktop &&
-    !workspace.formMode &&
-    !workspace.forwardFormMode &&
+    inWorkspace &&
     selectedHost != null &&
-    selectedHost.status === "connected" &&
-    railOverride !== "hosts";
+    selectedHost.status === "connected";
 
-  // Keep panels mounted across host switches so xterm scrollback and WebGL
-  // surfaces survive. Only the selected host is shown.
-  const terminalHosts = useMemo(() => {
-    return hosts.hosts.filter((host) => {
-      if (selectedHost?.id === host.id) return true;
-      return (shells.sessionsByHost[host.id] ?? []).length > 0;
-    });
-  }, [hosts.hosts, selectedHost?.id, shells.sessionsByHost]);
+  const liveTerminals = useMemo(() => {
+    const list: LiveTerminal[] = [];
+    for (const [workspaceId, sessions] of Object.entries(
+      shells.sessionsByWorkspace,
+    )) {
+      const hostId = sessions[0]?.hostId ?? parseWorkspaceId(workspaceId)?.hostId;
+      if (!hostId) continue;
+      const host = hosts.hosts.find((item) => item.id === hostId);
+      if (!host) continue;
+      for (const session of sessions) {
+        if (!session.channelId) continue;
+        list.push({ workspaceId, host, session });
+      }
+    }
+    return list;
+  }, [hosts.hosts, shells.sessionsByWorkspace]);
+
+  const shellActiveSessionId = useMemo(() => {
+    if (!activeWorkspaceId) return null;
+    if (activeTab?.kind === "shell") return activeTab.shellId;
+    return activeSessionId;
+  }, [activeSessionId, activeTab, activeWorkspaceId]);
+
+  const openWorkspaceIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const [workspaceId, sessions] of Object.entries(
+      shells.sessionsByWorkspace,
+    )) {
+      if (sessions.length > 0) ids.add(workspaceId);
+    }
+    for (const [workspaceId, tabs] of Object.entries(
+      sessionTabs.tabsByWorkspace,
+    )) {
+      if (tabs.length > 0) ids.add(workspaceId);
+    }
+    return ids;
+  }, [sessionTabs.tabsByWorkspace, shells.sessionsByWorkspace]);
 
   const selectSessionTab = useCallback(
     (tabId: string) => {
-      if (!selectedHost) return;
-      sessionTabs.selectTab(selectedHost.id, tabId);
-      const tab = (sessionTabs.tabsByHost[selectedHost.id] ?? []).find(
-        (item) => item.id === tabId,
-      );
+      if (!selectedHost || !activeWorkspaceId) return;
+      sessionTabs.selectTab(activeWorkspaceId, tabId);
+      const tab = (
+        sessionTabs.tabsByWorkspace[activeWorkspaceId] ?? []
+      ).find((item) => item.id === tabId);
       if (tab?.kind === "shell") {
-        selectShell(selectedHost.id, tab.shellId);
-      }
-      if (tab?.kind === "files" || tab?.kind === "file") {
-        setRailOverride(null);
+        selectShell(activeWorkspaceId, selectedHost.id, tab.shellId);
       }
     },
-    [selectedHost, selectShell, sessionTabs],
+    [activeWorkspaceId, selectedHost, selectShell, sessionTabs],
   );
 
   const closeSessionTab = useCallback(
     (tabId: string) => {
-      if (!selectedHost) return;
-      const tab = (sessionTabs.tabsByHost[selectedHost.id] ?? []).find(
-        (item) => item.id === tabId,
-      );
+      if (!selectedHost || !activeWorkspaceId) return;
+      const tab = (
+        sessionTabs.tabsByWorkspace[activeWorkspaceId] ?? []
+      ).find((item) => item.id === tabId);
       if (!tab) return;
 
-      // Shell tabs are removed via session sync after the PTY closes.
       if (tab.kind === "shell") {
-        void shells.closeShell(selectedHost.id, tab.shellId);
+        void shells.closeShell(
+          activeWorkspaceId,
+          selectedHost.id,
+          tab.shellId,
+        );
         return;
       }
 
-      const result = sessionTabs.closeTab(selectedHost.id, tabId);
+      const result = sessionTabs.closeTab(activeWorkspaceId, tabId);
       if (!result.closed && result.dirty && result.tab?.kind === "file") {
         setDiscardTarget({
+          workspaceId: activeWorkspaceId,
           hostId: selectedHost.id,
           tabId,
           fileName: result.tab.name,
         });
       }
     },
-    [selectedHost, sessionTabs, shells],
+    [activeWorkspaceId, selectedHost, sessionTabs, shells],
   );
 
   const confirmDiscardTab = useCallback(() => {
     if (!discardTarget) return;
-    const { hostId, tabId } = discardTarget;
-    const result = sessionTabs.closeTab(hostId, tabId, { force: true });
+    const { workspaceId, tabId } = discardTarget;
+    sessionTabs.closeTab(workspaceId, tabId, { force: true });
     setDiscardTarget(null);
-    if (result.closed && result.tab?.kind === "shell") {
-      void shells.closeShell(hostId, result.tab.shellId);
-    }
-  }, [discardTarget, sessionTabs, shells]);
+  }, [discardTarget, sessionTabs]);
 
   useSessionTabShortcuts({
-    enabled:
-      selectedHost != null &&
-      !workspace.formMode &&
-      !workspace.forwardFormMode,
+    enabled: inWorkspace,
     tabs: selectedTabs,
     activeId: activeTabId,
     onSelect: selectSessionTab,
@@ -494,12 +598,20 @@ function App() {
   const selectedForwards = selectedHost
     ? (forwards.forwardsByHost[selectedHost.id] ?? [])
     : [];
-  const formMode = workspace.formMode;
-  const forwardFormMode = workspace.forwardFormMode;
+
+  const page = workspace.page;
+
   const editingHost =
-    formMode?.type === "edit"
-      ? (hosts.hosts.find((host) => host.id === formMode.id) ?? null)
+    page.name === "host-form" && page.mode === "edit" && page.hostId
+      ? (hosts.hosts.find((host) => host.id === page.hostId) ?? null)
       : null;
+
+  const editingProject =
+    page.name === "project-form" && page.mode === "edit" && page.projectId
+      ? projects.getProject(page.hostId, page.projectId)
+      : null;
+
+  const forwardFormMode = workspace.forwardFormMode;
   const editingForward =
     forwardFormMode?.type === "edit"
       ? (selectedForwards.find(
@@ -524,14 +636,88 @@ function App() {
     [hosts.deleteHost, workspace.afterDeleteHost],
   );
 
+  const handleSaveProject = useCallback(
+    async (config: ProjectConfig) => {
+      const migrateFromAdhoc =
+        page.name === "project-form" && page.migrateFromAdhoc === true;
+      await projects.saveProject(config);
+
+      if (migrateFromAdhoc) {
+        const fromId = adhocWorkspaceId(config.hostId);
+        const toId = projectWorkspaceId(config.hostId, config.id);
+        shells.moveWorkspaceShells(fromId, toId);
+        sessionTabs.moveWorkspace(fromId, toId);
+      }
+
+      workspace.afterSaveProject(config.hostId, config.id);
+    },
+    [
+      page,
+      projects.saveProject,
+      sessionTabs.moveWorkspace,
+      shells.moveWorkspaceShells,
+      workspace.afterSaveProject,
+    ],
+  );
+
+  const handleSaveAdhocAsProject = useCallback(() => {
+    if (!selectedHost) return;
+    if (
+      workspace.page.name !== "workspace" ||
+      workspace.page.scope.kind !== "adhoc"
+    ) {
+      return;
+    }
+    const path =
+      activeShellCwd?.trim() ||
+      files.path?.trim() ||
+      "";
+    if (!path || path === ".") return;
+    workspace.openAddProject(selectedHost.id, {
+      initialPath: path,
+      migrateFromAdhoc: true,
+    });
+  }, [
+    activeShellCwd,
+    files.path,
+    selectedHost,
+    workspace,
+  ]);
+
+  const handleDeleteProject = useCallback(
+    async (hostId: string, projectId: string) => {
+      const workspaceId = projectWorkspaceId(hostId, projectId);
+      const sessions = shells.sessionsByWorkspace[workspaceId] ?? [];
+      for (const session of sessions) {
+        await shells.closeShell(workspaceId, hostId, session.id);
+      }
+      sessionTabs.removeWorkspace(workspaceId);
+      shells.removeWorkspaceShells(workspaceId);
+      await projects.deleteProject(hostId, projectId);
+      workspace.afterDeleteProject(hostId, projectId);
+    },
+    [
+      projects.deleteProject,
+      sessionTabs,
+      shells,
+      workspace.afterDeleteProject,
+    ],
+  );
+
   const handleSaveForward = useCallback(
     (config: PortForwardConfig) => {
-      if (!selectedHost) return;
+      if (!selectedHost || !activeWorkspaceId) return;
       forwards.saveForward(selectedHost.id, config);
       workspace.afterSaveForward();
-      sessionTabs.openToolTab(selectedHost.id, "ports");
+      sessionTabs.openToolTab(activeWorkspaceId, "ports");
     },
-    [forwards.saveForward, selectedHost, sessionTabs, workspace.afterSaveForward],
+    [
+      activeWorkspaceId,
+      forwards.saveForward,
+      selectedHost,
+      sessionTabs,
+      workspace.afterSaveForward,
+    ],
   );
 
   const handleDeleteForward = useCallback(
@@ -545,21 +731,35 @@ function App() {
 
   const handleOpenFile = useCallback(
     (entry: FsEntry) => {
-      if (!selectedHost) return;
-      void sessionTabs.openFileTab(selectedHost.id, entry);
+      if (!selectedHost || !activeWorkspaceId) return;
+      void sessionTabs.openFileTab(activeWorkspaceId, selectedHost.id, entry);
     },
-    [selectedHost, sessionTabs],
+    [activeWorkspaceId, selectedHost, sessionTabs],
   );
 
-  const showSession =
-    workspace.mobilePane === "session" ? "flex" : "hidden md:flex";
-  const showMobileHosts = workspace.mobilePane === "hosts";
+  const handleOpenShell = useCallback(
+    (launchId?: Parameters<typeof shells.openShell>[2]) => {
+      if (!selectedHost || !activeWorkspaceId) return;
+      void openShell(
+        activeWorkspaceId,
+        selectedHost.id,
+        launchId,
+        projectRootPath ?? undefined,
+      );
+    },
+    [activeWorkspaceId, openShell, projectRootPath, selectedHost],
+  );
 
   const openFileTabs = useMemo(() => {
     return selectedTabs.filter(
       (tab): tab is Extract<SessionTab, { kind: "file" }> => tab.kind === "file",
     );
   }, [selectedTabs]);
+
+  const projectsHost =
+    page.name === "projects" || page.name === "project-form"
+      ? (hosts.hosts.find((host) => host.id === page.hostId) ?? null)
+      : null;
 
   if (hosts.booting) {
     return (
@@ -569,13 +769,8 @@ function App() {
     );
   }
 
-  const sessionActive =
-    selectedHost != null &&
-    !workspace.formMode &&
-    !workspace.forwardFormMode;
-
   const sessionTabBar =
-    sessionActive && selectedHost?.status === "connected" ? (
+    inWorkspace && selectedHost?.status === "connected" ? (
       <SessionTabBar
         tabs={selectedTabs}
         activeId={activeTabId}
@@ -585,32 +780,61 @@ function App() {
         onSelect={selectSessionTab}
         onClose={closeSessionTab}
         onRenameShell={(shellId, name) =>
-          shells.renameShell(selectedHost.id, shellId, name)
+          shells.renameShell(activeWorkspaceId!, shellId, name)
         }
         onReorder={(orderedIds) =>
-          sessionTabs.reorderTabs(selectedHost.id, orderedIds)
+          sessionTabs.reorderTabs(activeWorkspaceId!, orderedIds)
         }
-        onNewShell={(launchId) => void openShell(selectedHost.id, launchId)}
-        onOpenFiles={() => {
-          setRailOverride(null);
-          sessionTabs.openToolTab(selectedHost.id, "files");
-        }}
-        onOpenPorts={() => sessionTabs.openToolTab(selectedHost.id, "ports")}
+        onNewShell={(launchId) => handleOpenShell(launchId)}
+        onOpenFiles={() =>
+          sessionTabs.openToolTab(activeWorkspaceId!, "files")
+        }
+        onOpenPorts={() =>
+          sessionTabs.openToolTab(activeWorkspaceId!, "ports")
+        }
         variant={useTitlebarSessionChrome ? "titlebar" : "default"}
       />
     ) : null;
 
-  const sessionHeader = sessionActive && selectedHost ? (
-    <SessionHeader
-      host={selectedHost}
-      connecting={hosts.connectingId === selectedHost.id}
-      onConnect={() => void hosts.connectHost(selectedHost.id)}
-      onDisconnect={() => requestDisconnect(selectedHost)}
-      onEdit={() => workspace.openEditHost(selectedHost.id)}
-      onBack={workspace.backToHosts}
-      variant={useTitlebarSessionChrome ? "titlebar" : "default"}
+  const recentsControl = (
+    <WorkspaceRecents
+      recents={workspace.recents}
+      hosts={hosts.hosts}
+      projectsByHost={projects.projectsByHost}
+      activeWorkspaceId={activeWorkspaceId}
+      onSelect={workspace.openRecent}
+      onReorder={workspace.reorderRecents}
     />
-  ) : null;
+  );
+
+  const canSaveAdhocProject =
+    inWorkspace &&
+    selectedHost != null &&
+    workspace.page.name === "workspace" &&
+    workspace.page.scope.kind === "adhoc" &&
+    Boolean(
+      (activeShellCwd?.trim() && activeShellCwd.trim() !== ".") ||
+        (files.path?.trim() && files.path.trim() !== "."),
+    );
+
+  const sessionHeader =
+    inWorkspace && selectedHost ? (
+      <SessionHeader
+        host={selectedHost}
+        scopeLabel={activeScopeLabel}
+        scopePath={activeProject?.path ?? (canSaveAdhocProject ? activeShellCwd ?? files.path : null)}
+        connecting={hosts.connectingId === selectedHost.id}
+        onConnect={() => void hosts.connectHost(selectedHost.id)}
+        onDisconnect={() => requestDisconnect(selectedHost)}
+        onEdit={() => workspace.openEditHost(selectedHost.id)}
+        onBack={workspace.handleBack}
+        onSaveProject={
+          canSaveAdhocProject ? handleSaveAdhocAsProject : undefined
+        }
+        leadingExtra={recentsControl}
+        variant={useTitlebarSessionChrome ? "titlebar" : "default"}
+      />
+    ) : null;
 
   return (
     <TooltipProvider>
@@ -627,7 +851,7 @@ function App() {
       >
         {showWindowChrome ? (
           <DesktopTitleBar
-            showSidebarTrigger={isDesktop}
+            showSidebarTrigger={isDesktop && showFileRail}
             trailing={useTitlebarSessionChrome ? sessionHeader : null}
           >
             {useTitlebarSessionChrome ? sessionTabBar : null}
@@ -635,212 +859,232 @@ function App() {
         ) : null}
 
         <div className="flex min-h-0 w-full flex-1 flex-row overflow-hidden">
-          {isDesktop && showFileRail && selectedHost ? (
+          {showFileRail && selectedHost ? (
             <AppSidebar
-              mode="files"
               widthPx={sidebarWidth.widthPx}
               onWidthChange={sidebarWidth.setWidthPx}
               onResizeStart={sidebarWidth.beginResize}
               onResizeEnd={sidebarWidth.endResize}
-              onShowHosts={() => setRailOverride("hosts")}
+              rootLabel={activeProject?.name ?? selectedHost.name}
+              onShowHosts={workspace.openHosts}
             >
               <FileTreeSidebar
                 files={files}
-                rootLabel={selectedHost.name}
+                rootLabel={activeProject?.name ?? selectedHost.name}
                 selectedPath={
                   activeTab?.kind === "file" ? activeTab.path : null
                 }
                 onOpenFile={handleOpenFile}
               />
             </AppSidebar>
-          ) : isDesktop ? (
-            <AppSidebar
-              mode="hosts"
-              widthPx={sidebarWidth.widthPx}
-              onWidthChange={sidebarWidth.setWidthPx}
-              onResizeStart={sidebarWidth.beginResize}
-              onResizeEnd={sidebarWidth.endResize}
-              hosts={hosts.hosts}
-              selectedId={workspace.selectedId}
-              onSelect={selectHostFromRail}
-              onAddHost={workspace.openAddHost}
-            />
           ) : null}
 
-          <MobileHostPane
-            hosts={hosts.hosts}
-            selectedId={workspace.selectedId}
-            onSelect={workspace.selectHost}
-            onAddHost={workspace.openAddHost}
-            className={showMobileHosts ? "flex md:hidden" : "hidden"}
-          />
+          <SidebarInset className="min-h-0 min-w-0 flex-1 overflow-hidden">
+            {page.name === "hosts" ? (
+              <HostsPage
+                hosts={hosts.hosts}
+                onSelect={workspace.openProjects}
+                onAddHost={workspace.openAddHost}
+              />
+            ) : null}
 
-          <SidebarInset
-            className={`min-h-0 min-w-0 overflow-hidden ${showSession}`}
-          >
-            {workspace.formMode ? (
+            {page.name === "projects" ? (
+              projectsHost ? (
+                <ProjectsPage
+                  host={projectsHost}
+                  projects={projects.projectsForHost(projectsHost.id)}
+                  connecting={hosts.connectingId === projectsHost.id}
+                  openWorkspaceIds={openWorkspaceIds}
+                  onBack={workspace.openHosts}
+                  onOpenAdhoc={() => workspace.openAdhoc(projectsHost.id)}
+                  onOpenProject={(projectId) =>
+                    workspace.openProject(projectsHost.id, projectId)
+                  }
+                  onAddProject={() =>
+                    workspace.openAddProject(projectsHost.id)
+                  }
+                  onEditProject={(projectId) =>
+                    workspace.openEditProject(projectsHost.id, projectId)
+                  }
+                  onConnect={() => void hosts.connectHost(projectsHost.id)}
+                  onDisconnect={() => requestDisconnect(projectsHost)}
+                  onEditHost={() => workspace.openEditHost(projectsHost.id)}
+                />
+              ) : (
+                <HostsPage
+                  hosts={hosts.hosts}
+                  onSelect={workspace.openProjects}
+                  onAddHost={workspace.openAddHost}
+                />
+              )
+            ) : null}
+
+            {page.name === "host-form" ? (
               <HostForm
                 initial={editingHost}
                 onSave={(config) => void handleSaveHost(config)}
                 onCancel={workspace.closeHostForm}
                 onDelete={
-                  workspace.formMode.type === "edit"
+                  page.mode === "edit" && page.hostId
                     ? (id) => void handleDeleteHost(id)
                     : undefined
                 }
               />
-            ) : workspace.forwardFormMode && selectedHost ? (
-              <ForwardForm
-                initial={editingForward}
-                onSave={handleSaveForward}
-                onCancel={workspace.closeForwardForm}
+            ) : null}
+
+            {page.name === "project-form" && projectsHost ? (
+              <ProjectForm
+                host={projectsHost}
+                initial={editingProject}
+                initialPath={
+                  page.mode === "add" ? page.initialPath : editingProject?.path
+                }
+                connecting={hosts.connectingId === projectsHost.id}
+                onConnect={() => void hosts.connectHost(projectsHost.id)}
+                onSave={(config) => void handleSaveProject(config)}
+                onCancel={workspace.closeProjectForm}
                 onDelete={
-                  workspace.forwardFormMode.type === "edit"
-                    ? (id) => void handleDeleteForward(id)
+                  page.mode === "edit"
+                    ? (id) => void handleDeleteProject(page.hostId, id)
                     : undefined
                 }
               />
-            ) : selectedHost ? (
-              <>
-                {useTitlebarSessionChrome ? null : sessionHeader}
-                {useTitlebarSessionChrome ? null : sessionTabBar}
-
-            {portsChromeOpen ? (
-              <ForwardsPanel
-                host={selectedHost}
-                forwards={selectedForwards}
-                onConnect={() => void hosts.connectHost(selectedHost.id)}
-                onAddForward={workspace.openAddForward}
-                onStartForward={(id) => {
-                  const forward = selectedForwards.find((item) => item.id === id);
-                  if (forward) {
-                    void forwards.startForward(selectedHost.id, forward);
-                  }
-                }}
-                onStopForward={(id) =>
-                  void forwards.stopForward(selectedHost.id, id)
-                }
-                onEditForward={workspace.openEditForward}
-                onDeleteForward={(id) => void handleDeleteForward(id)}
-              />
             ) : null}
 
-            {selectedHost ? (
-              <div
-                className={
-                  explorerChromeOpen
-                    ? "flex min-h-0 flex-1 flex-col"
-                    : "hidden"
-                }
-                aria-hidden={!explorerChromeOpen}
-              >
-                <FilesWorkspace
-                  host={selectedHost}
-                  files={files}
-                  activeKind={
-                    activeTab?.kind === "file" ? "file" : "files"
-                  }
-                  onConnect={() => void hosts.connectHost(selectedHost.id)}
-                  onOpenFile={handleOpenFile}
-                  fileSlot={openFileTabs.map((tab) => {
-                    const state = selectedFiles[tab.path];
-                    if (!state) return null;
-                    const active =
-                      activeTab?.kind === "file" &&
-                      activeTab.path === tab.path;
-                    return (
-                      <div
-                        key={tab.id}
-                        className={
-                          active
-                            ? "flex min-h-0 flex-1 flex-col"
-                            : "hidden"
-                        }
-                        aria-hidden={!active}
-                      >
-                        <FileWorkspace
-                          state={state}
-                          onChangeText={(text) =>
-                            sessionTabs.setFileText(
-                              selectedHost.id,
-                              tab.path,
-                              text,
-                            )
-                          }
-                          onSave={() =>
-                            sessionTabs.saveFile(selectedHost.id, tab.path)
-                          }
-                          onDownload={() =>
-                            void sessionTabs.downloadFile(
-                              selectedHost.id,
-                              tab.path,
-                            )
-                          }
-                          onRevealFiles={() =>
-                            sessionTabs.openToolTab(selectedHost.id, "files")
-                          }
-                        />
-                      </div>
-                    );
-                  })}
-                />
+            {page.name === "workspace" && !selectedHost ? (
+              <div className="flex min-h-0 flex-1 items-center justify-center text-sm text-muted-foreground">
+                Host unavailable
               </div>
             ) : null}
-          </>
-        ) : (
-          <div className="hidden min-h-0 flex-1 flex-col md:flex">
-            <EmptyWorkspace onAddHost={workspace.openAddHost} />
-          </div>
-        )}
 
-        {terminalHosts.length > 0 ? (
-          <div
-            className={
-              shellChromeOpen
-                ? "flex min-h-0 flex-1 flex-col"
-                : "hidden"
-            }
-            aria-hidden={!shellChromeOpen}
-          >
-            {terminalHosts.map((host) => {
-              const selected = selectedHost?.id === host.id;
-              const sessions = shells.sessionsByHost[host.id] ?? [];
-              const hostActiveSessionId =
-                shells.activeSessionByHost[host.id] ?? null;
-              const hostActiveTabId =
-                sessionTabs.activeTabByHost[host.id] ?? null;
-              const hostActiveTab = (
-                sessionTabs.tabsByHost[host.id] ?? []
-              ).find((tab) => tab.id === hostActiveTabId);
-              const visibleShellId =
-                hostActiveTab?.kind === "shell"
-                  ? hostActiveTab.shellId
-                  : hostActiveSessionId;
-
-              return (
-                <div
-                  key={host.id}
-                  className={
-                    selected
-                      ? "flex min-h-0 flex-1 flex-col"
-                      : "hidden"
+            {page.name === "workspace" && selectedHost ? (
+              workspace.forwardFormMode ? (
+                <ForwardForm
+                  initial={editingForward}
+                  onSave={handleSaveForward}
+                  onCancel={workspace.closeForwardForm}
+                  onDelete={
+                    workspace.forwardFormMode.type === "edit"
+                      ? (id) => void handleDeleteForward(id)
+                      : undefined
                   }
-                  aria-hidden={!selected}
-                >
-                  <TerminalPanel
-                    host={host}
-                    sessions={sessions}
-                    activeSessionId={visibleShellId}
-                    visible={shellChromeOpen && selected}
-                    onConnect={() => void hosts.connectHost(host.id)}
-                    onOpenShell={(launchId) => void openShell(host.id, launchId)}
-                    onSessionCwd={shells.setSessionCwd}
-                  />
-                </div>
-              );
-            })}
-          </div>
-        ) : null}
+                />
+              ) : (
+                <>
+                  {useTitlebarSessionChrome ? null : sessionHeader}
+                  {useTitlebarSessionChrome ? null : sessionTabBar}
+
+                  {portsChromeOpen ? (
+                    <ForwardsPanel
+                      host={selectedHost}
+                      forwards={selectedForwards}
+                      onConnect={() => void hosts.connectHost(selectedHost.id)}
+                      onAddForward={workspace.openAddForward}
+                      onStartForward={(id) => {
+                        const forward = selectedForwards.find(
+                          (item) => item.id === id,
+                        );
+                        if (forward) {
+                          void forwards.startForward(selectedHost.id, forward);
+                        }
+                      }}
+                      onStopForward={(id) =>
+                        void forwards.stopForward(selectedHost.id, id)
+                      }
+                      onEditForward={workspace.openEditForward}
+                      onDeleteForward={(id) => void handleDeleteForward(id)}
+                    />
+                  ) : null}
+
+                  <div
+                    className={
+                      explorerChromeOpen
+                        ? "flex min-h-0 flex-1 flex-col"
+                        : "hidden"
+                    }
+                    aria-hidden={!explorerChromeOpen}
+                  >
+                    <FilesWorkspace
+                      host={selectedHost}
+                      files={files}
+                      activeKind={
+                        activeTab?.kind === "file" ? "file" : "files"
+                      }
+                      onConnect={() => void hosts.connectHost(selectedHost.id)}
+                      onOpenFile={handleOpenFile}
+                      fileSlot={openFileTabs.map((tab) => {
+                        const state = selectedFiles[tab.path];
+                        if (!state) return null;
+                        const active =
+                          activeTab?.kind === "file" &&
+                          activeTab.path === tab.path;
+                        return (
+                          <div
+                            key={tab.id}
+                            className={
+                              active
+                                ? "flex min-h-0 flex-1 flex-col"
+                                : "hidden"
+                            }
+                            aria-hidden={!active}
+                          >
+                            <FileWorkspace
+                              state={state}
+                              onChangeText={(text) =>
+                                sessionTabs.setFileText(
+                                  activeWorkspaceId!,
+                                  tab.path,
+                                  text,
+                                )
+                              }
+                              onSave={() =>
+                                sessionTabs.saveFile(
+                                  activeWorkspaceId!,
+                                  selectedHost.id,
+                                  tab.path,
+                                )
+                              }
+                              onDownload={() =>
+                                void sessionTabs.downloadFile(
+                                  activeWorkspaceId!,
+                                  selectedHost.id,
+                                  tab.path,
+                                )
+                              }
+                              onRevealFiles={() =>
+                                sessionTabs.openToolTab(
+                                  activeWorkspaceId!,
+                                  "files",
+                                )
+                              }
+                            />
+                          </div>
+                        );
+                      })}
+                    />
+                  </div>
+                </>
+              )
+            ) : null}
+
+            <TerminalHost
+              terminals={liveTerminals}
+              activeWorkspaceId={activeWorkspaceId}
+              activeSessionId={shellActiveSessionId}
+              surfaceOpen={shellChromeOpen}
+              emptyHost={selectedHost}
+              emptyWorkspaceId={activeWorkspaceId}
+              onConnect={(hostId) => void hosts.connectHost(hostId)}
+              onOpenShell={(workspaceId, hostId, launchId) => {
+                const parsed = parseWorkspaceId(workspaceId);
+                const root =
+                  parsed?.scope.kind === "project"
+                    ? projects.getProject(hostId, parsed.scope.projectId)?.path
+                    : projectRootPath ?? undefined;
+                void openShell(workspaceId, hostId, launchId, root);
+              }}
+              onSessionCwd={shells.setSessionCwd}
+            />
           </SidebarInset>
         </div>
 

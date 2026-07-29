@@ -19,12 +19,13 @@
 
 | Path | Role |
 |---|---|
-| `src/app/` | Composition root: `App.tsx`, workspace + SSH lifecycle hooks |
-| `src/features/hosts/` | Host types, store, CRUD/connect hooks, sidebar/list/form/header UI |
-| `src/features/forwards/` | Tunnel types, store, start/stop hooks, panel/form UI |
-| `src/features/shells/` | Shell sessions, launch menu, xterm terminal panel |
+| `src/app/` | Composition root: `App.tsx`, page-stack navigation + SSH lifecycle hooks |
+| `src/features/hosts/` | Host types, store, CRUD/connect hooks, form/header/file-tree sidebar UI |
+| `src/features/projects/` | Per-host projects (dirs), workspace ids, hosts/projects pages, recents |
+| `src/features/forwards/` | Tunnel types, store, start/stop hooks, panel/form UI (host-scoped) |
+| `src/features/shells/` | Shell sessions (workspace-scoped), launch menu, xterm terminal panel |
 | `src/features/files/` | Host filesystem browser, open-file workspace, transfer (local + remote) |
-| `src/features/session-tabs/` | Unified session tabs (shells, files, tools) |
+| `src/features/session-tabs/` | Unified session tabs (shells, files, tools) — workspace-scoped |
 | `src/features/android-background/` | Android background gate + session FGS keepalive |
 | `src/features/ssh/` | Tauri SSH bridge: commands, errors, events |
 | `src/components/ui/` | shadcn CLI primitives — do not hand-edit; compose via variants / className / CSS tokens |
@@ -38,11 +39,13 @@
 
 Load **DESIGN.md** for any UI work. Summary:
 
-- **Voice:** precise · infrastructural · quiet. Ops language only (host, tunnel, forward, session).
+- **Voice:** precise · infrastructural · quiet. Ops language only (host, project, ad hoc, tunnel, forward, session).
 - **Theme:** dark-first Relay Night — cool ink neutrals (hue 250) + signal amber accent (hue 75). OKLCH only.
 - **Status language:** mint = connected, cyan = tunnel, amber = transfer, rose = error. Status is never color-only.
-- **Desktop (`≥ md`):** host rail + session workspace split.
-- **Mobile (`< md`):** list → session drill-in. No squeezed desktop chrome.
+- **Navigation:** hosts page → projects page (Ad hoc + projects) → workspace. Recents for open workspaces.
+- **Desktop (`≥ md`):** same page stack; file tree rail only inside a connected workspace.
+- **Mobile (`< md`):** full-page stack drill-in. No squeezed desktop chrome.
+- **Connections:** one SSH connection per host, shared across all projects/Ad hoc on that host.
 - **Density:** high on desktop; ≥44px targets on mobile; safe-area insets on mobile shells.
 - **Typography:** Geist (UI) + Geist Mono (hosts, paths, ports, forwards).
 

@@ -43,6 +43,8 @@ type UseFilesOptions = {
   shellCwd?: string | null;
   tmuxSession?: string | null;
   tmuxWindowId?: string | null;
+  /** When set, browser is rooted here and does not follow shell cwd. */
+  rootPath?: string | null;
 };
 
 function fingerprintOf(entry: FsEntry) {
@@ -68,6 +70,7 @@ export function useFiles({
   shellCwd,
   tmuxSession,
   tmuxWindowId,
+  rootPath,
 }: UseFilesOptions) {
   const [path, setPath] = useState(".");
   const [entries, setEntries] = useState<FsEntry[]>([]);
@@ -237,8 +240,16 @@ export function useFiles({
     }
 
     let cancelled = false;
+    const fixedRoot = rootPath?.trim() || null;
 
-    async function followShellDir() {
+    async function syncPath() {
+      if (fixedRoot) {
+        if (cancelled) return;
+        if (pathsEqual(fixedRoot, pathRef.current)) return;
+        await refresh(fixedRoot);
+        return;
+      }
+
       let target = "";
       const windowId = tmuxWindowId?.trim();
       if (windowId) {
@@ -259,7 +270,7 @@ export function useFiles({
       await refresh(target);
     }
 
-    void followShellDir();
+    void syncPath();
     return () => {
       cancelled = true;
     };
@@ -267,6 +278,7 @@ export function useFiles({
     connected,
     enabled,
     hostId,
+    rootPath,
     shellCwd,
     tmuxSession,
     tmuxWindowId,

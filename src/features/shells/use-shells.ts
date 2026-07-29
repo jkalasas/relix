@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ShellMode } from "@/features/hosts/types";
 import {
+  adhocWorkspaceId,
+  isWorkspaceForHost,
+} from "@/features/projects";
+import {
   launchBaseTitle,
   nextSessionTitle,
   shellLaunchById,
@@ -24,6 +28,7 @@ export const DEFAULT_TMUX_SESSION = "relix";
 export type ShellHostOptions = {
   shellMode?: ShellMode;
   tmuxSession?: string;
+  cwd?: string;
 };
 
 type UseShellsOptions = {
@@ -44,8 +49,27 @@ async function closeChannel(channelId?: string) {
   }
 }
 
+function workspaceIdsForHost(
+  map: Record<string, unknown>,
+  hostId: string,
+): string[] {
+  return Object.keys(map).filter((id) => isWorkspaceForHost(id, hostId));
+}
+
+function findSessionLocation(
+  sessionsByWorkspace: Record<string, ShellSession[]>,
+  predicate: (session: ShellSession) => boolean,
+): { workspaceId: string; session: ShellSession } | null {
+  for (const [workspaceId, sessions] of Object.entries(sessionsByWorkspace)) {
+    const session = sessions.find(predicate);
+    if (session) return { workspaceId, session };
+  }
+  return null;
+}
+
 function mergeTmuxSessions(
   hostId: string,
+  workspaceId: string,
   tmuxSession: string,
   existing: ShellSession[],
   windows: TmuxWindow[],
@@ -68,6 +92,7 @@ function mergeTmuxSessions(
       ...prior,
       title: window.name || prior.title,
       tmuxSession,
+      workspaceId,
     });
   }
 
@@ -76,6 +101,7 @@ function mergeTmuxSessions(
     sessions.push({
       id: crypto.randomUUID(),
       hostId,
+      workspaceId,
       title: window.name,
       tmuxWindowId: window.id,
       tmuxSession,
@@ -93,18 +119,19 @@ function mergeTmuxSessions(
 export function useShells(options: UseShellsOptions = {}) {
   const { onOpenFailed } = options;
 
-  const [sessionsByHost, setSessionsByHost] = useState<
+  const [sessionsByWorkspace, setSessionsByWorkspace] = useState<
     Record<string, ShellSession[]>
   >({});
-  const [activeSessionByHost, setActiveSessionByHost] = useState<
+  const [activeSessionByWorkspace, setActiveSessionByWorkspace] = useState<
     Record<string, string | null>
   >({});
-  const sessionsByHostRef = useRef(sessionsByHost);
-  sessionsByHostRef.current = sessionsByHost;
+  const sessionsByWorkspaceRef = useRef(sessionsByWorkspace);
+  sessionsByWorkspaceRef.current = sessionsByWorkspace;
 
   const attachTmuxWindow = useCallback(
     async (
       hostId: string,
+      workspaceId: string,
       sessionId: string,
       tmuxSession: string,
       tmuxWindowId: string,
@@ -112,11 +139,11 @@ export function useShells(options: UseShellsOptions = {}) {
       const { sessionId: channelId } = await sshOpenShell(hostId, {
         command: tmuxAttachCommand(tmuxSession, tmuxWindowId),
       });
-      setSessionsByHost((current) => {
-        const list = current[hostId] ?? [];
+      setSessionsByWorkspace((current) => {
+        const list = current[workspaceId] ?? [];
         return {
           ...current,
-          [hostId]: list.map((session) =>
+          [workspaceId]: list.map((session) =>
             session.id === sessionId ? { ...session, channelId } : session,
           ),
         };
@@ -126,38 +153,48 @@ export function useShells(options: UseShellsOptions = {}) {
     [],
   );
 
-  const reconcileTmux = useCallback(async (hostId: string, tmuxSession: string) => {
-    try {
-      const result = await sshTmuxListWindows(hostId, tmuxSession);
-      const existing = sessionsByHostRef.current[hostId] ?? [];
-      const { sessions, deadChannels } = mergeTmuxSessions(
-        hostId,
-        result.session,
-        existing,
-        result.windows,
-      );
-      for (const channelId of deadChannels) {
-        void closeChannel(channelId);
+  const reconcileTmux = useCallback(
+    async (workspaceId: string, hostId: string, tmuxSession: string) => {
+      try {
+        const result = await sshTmuxListWindows(hostId, tmuxSession);
+        const existing = sessionsByWorkspaceRef.current[workspaceId] ?? [];
+        const { sessions, deadChannels } = mergeTmuxSessions(
+          hostId,
+          workspaceId,
+          result.session,
+          existing,
+          result.windows,
+        );
+        for (const channelId of deadChannels) {
+          void closeChannel(channelId);
+        }
+        sessionsByWorkspaceRef.current = {
+          ...sessionsByWorkspaceRef.current,
+          [workspaceId]: sessions,
+        };
+        setSessionsByWorkspace((current) => ({
+          ...current,
+          [workspaceId]: sessions,
+        }));
+        setActiveSessionByWorkspace((current) => {
+          const activeId = current[workspaceId];
+          if (!activeId) return current;
+          if (sessions.some((session) => session.id === activeId)) {
+            return current;
+          }
+          return { ...current, [workspaceId]: sessions[0]?.id ?? null };
+        });
+        return sessions;
+      } catch {
+        return sessionsByWorkspaceRef.current[workspaceId] ?? [];
       }
-      sessionsByHostRef.current = {
-        ...sessionsByHostRef.current,
-        [hostId]: sessions,
-      };
-      setSessionsByHost((current) => ({ ...current, [hostId]: sessions }));
-      setActiveSessionByHost((current) => {
-        const activeId = current[hostId];
-        if (!activeId) return current;
-        if (sessions.some((session) => session.id === activeId)) return current;
-        return { ...current, [hostId]: sessions[0]?.id ?? null };
-      });
-      return sessions;
-    } catch {
-      return sessionsByHostRef.current[hostId] ?? [];
-    }
-  }, []);
+    },
+    [],
+  );
 
   const bootstrapTmux = useCallback(
     async (hostId: string, tmuxSession?: string) => {
+      const workspaceId = adhocWorkspaceId(hostId);
       try {
         const result = await sshTmuxBootstrap(
           hostId,
@@ -166,6 +203,7 @@ export function useShells(options: UseShellsOptions = {}) {
         const sessions: ShellSession[] = result.windows.map((window) => ({
           id: crypto.randomUUID(),
           hostId,
+          workspaceId,
           title: window.name,
           tmuxWindowId: window.id,
           tmuxSession: result.session,
@@ -177,15 +215,19 @@ export function useShells(options: UseShellsOptions = {}) {
             (session) => session.tmuxWindowId === activeWindow?.id,
           ) ?? sessions[0];
 
-        setSessionsByHost((current) => ({ ...current, [hostId]: sessions }));
-        setActiveSessionByHost((current) => ({
+        setSessionsByWorkspace((current) => ({
           ...current,
-          [hostId]: activeSession?.id ?? null,
+          [workspaceId]: sessions,
+        }));
+        setActiveSessionByWorkspace((current) => ({
+          ...current,
+          [workspaceId]: activeSession?.id ?? null,
         }));
 
         if (activeSession?.tmuxWindowId) {
           await attachTmuxWindow(
             hostId,
+            workspaceId,
             activeSession.id,
             result.session,
             activeSession.tmuxWindowId,
@@ -201,6 +243,7 @@ export function useShells(options: UseShellsOptions = {}) {
 
   const openShell = useCallback(
     async (
+      workspaceId: string,
       hostId: string,
       launchId: ShellLaunchId = "shell",
       hostOptions: ShellHostOptions = {},
@@ -209,11 +252,11 @@ export function useShells(options: UseShellsOptions = {}) {
       const baseTitle = launchBaseTitle(launch);
       const shellMode = hostOptions.shellMode === "tmux" ? "tmux" : "plain";
       const tmuxSession = resolveTmuxSession(hostOptions.tmuxSession);
-      const activeId = activeSessionByHost[hostId] ?? null;
-      const activeSession = (sessionsByHost[hostId] ?? []).find(
+      const activeId = activeSessionByWorkspace[workspaceId] ?? null;
+      const activeSession = (sessionsByWorkspace[workspaceId] ?? []).find(
         (session) => session.id === activeId,
       );
-      const cwd = activeSession?.cwd;
+      const cwd = hostOptions.cwd?.trim() || activeSession?.cwd;
 
       try {
         if (shellMode === "tmux") {
@@ -228,22 +271,32 @@ export function useShells(options: UseShellsOptions = {}) {
           const next: ShellSession = {
             id: sessionId,
             hostId,
+            workspaceId,
             title:
               window.name ||
-              nextSessionTitle(sessionsByHost[hostId] ?? [], baseTitle),
+              nextSessionTitle(
+                sessionsByWorkspace[workspaceId] ?? [],
+                baseTitle,
+              ),
             cwd,
             tmuxWindowId: window.id,
             tmuxSession,
           };
-          setSessionsByHost((current) => {
-            const existing = current[hostId] ?? [];
-            return { ...current, [hostId]: [...existing, next] };
+          setSessionsByWorkspace((current) => {
+            const existing = current[workspaceId] ?? [];
+            return { ...current, [workspaceId]: [...existing, next] };
           });
-          setActiveSessionByHost((current) => ({
+          setActiveSessionByWorkspace((current) => ({
             ...current,
-            [hostId]: sessionId,
+            [workspaceId]: sessionId,
           }));
-          await attachTmuxWindow(hostId, sessionId, tmuxSession, window.id);
+          await attachTmuxWindow(
+            hostId,
+            workspaceId,
+            sessionId,
+            tmuxSession,
+            window.id,
+          );
           return sessionId;
         }
 
@@ -252,20 +305,21 @@ export function useShells(options: UseShellsOptions = {}) {
           cwd,
         });
         const sessionId = crypto.randomUUID();
-        setSessionsByHost((current) => {
-          const existing = current[hostId] ?? [];
+        setSessionsByWorkspace((current) => {
+          const existing = current[workspaceId] ?? [];
           const next: ShellSession = {
             id: sessionId,
             hostId,
+            workspaceId,
             title: nextSessionTitle(existing, baseTitle),
             cwd,
             channelId,
           };
-          return { ...current, [hostId]: [...existing, next] };
+          return { ...current, [workspaceId]: [...existing, next] };
         });
-        setActiveSessionByHost((current) => ({
+        setActiveSessionByWorkspace((current) => ({
           ...current,
-          [hostId]: sessionId,
+          [workspaceId]: sessionId,
         }));
         return sessionId;
       } catch (error) {
@@ -273,14 +327,19 @@ export function useShells(options: UseShellsOptions = {}) {
         throw error;
       }
     },
-    [activeSessionByHost, attachTmuxWindow, onOpenFailed, sessionsByHost],
+    [
+      activeSessionByWorkspace,
+      attachTmuxWindow,
+      onOpenFailed,
+      sessionsByWorkspace,
+    ],
   );
 
   const renameShell = useCallback(
-    (hostId: string, sessionId: string, name: string) => {
+    (workspaceId: string, sessionId: string, name: string) => {
       const trimmed = name.trim();
-      setSessionsByHost((current) => {
-        const list = current[hostId] ?? [];
+      setSessionsByWorkspace((current) => {
+        const list = current[workspaceId] ?? [];
         let changed = false;
         const next = list.map((session) => {
           if (session.id !== sessionId) return session;
@@ -294,43 +353,18 @@ export function useShells(options: UseShellsOptions = {}) {
           changed = true;
           return { ...session, customTitle: trimmed };
         });
-        return changed ? { ...current, [hostId]: next } : current;
+        return changed ? { ...current, [workspaceId]: next } : current;
       });
     },
     [],
   );
 
-  const reorderShells = useCallback((hostId: string, orderedIds: string[]) => {
-    setSessionsByHost((current) => {
-      const list = current[hostId] ?? [];
-      if (list.length <= 1) return current;
-      const byId = new Map(list.map((session) => [session.id, session]));
-      const next: ShellSession[] = [];
-      for (const id of orderedIds) {
-        const session = byId.get(id);
-        if (!session) continue;
-        next.push(session);
-        byId.delete(id);
-      }
-      for (const session of list) {
-        if (byId.has(session.id)) next.push(session);
-      }
-      if (
-        next.length !== list.length ||
-        next.some((session, index) => session.id !== list[index]?.id)
-      ) {
-        return { ...current, [hostId]: next };
-      }
-      return current;
-    });
-  }, []);
-
   const setSessionCwd = useCallback((sessionId: string, cwd: string) => {
-    setSessionsByHost((current) => {
+    setSessionsByWorkspace((current) => {
       let changed = false;
       const next: Record<string, ShellSession[]> = {};
-      for (const [hostId, sessions] of Object.entries(current)) {
-        next[hostId] = sessions.map((session) => {
+      for (const [workspaceId, sessions] of Object.entries(current)) {
+        next[workspaceId] = sessions.map((session) => {
           if (session.id !== sessionId || session.cwd === cwd) return session;
           changed = true;
           return { ...session, cwd };
@@ -341,8 +375,8 @@ export function useShells(options: UseShellsOptions = {}) {
   }, []);
 
   const closeShell = useCallback(
-    async (hostId: string, sessionId: string) => {
-      const session = (sessionsByHostRef.current[hostId] ?? []).find(
+    async (workspaceId: string, hostId: string, sessionId: string) => {
+      const session = (sessionsByWorkspaceRef.current[workspaceId] ?? []).find(
         (item) => item.id === sessionId,
       );
       if (session?.tmuxWindowId && session.tmuxSession) {
@@ -357,13 +391,15 @@ export function useShells(options: UseShellsOptions = {}) {
         }
       }
       await closeChannel(session?.channelId);
-      setSessionsByHost((current) => ({
+      setSessionsByWorkspace((current) => ({
         ...current,
-        [hostId]: (current[hostId] ?? []).filter((s) => s.id !== sessionId),
+        [workspaceId]: (current[workspaceId] ?? []).filter(
+          (s) => s.id !== sessionId,
+        ),
       }));
-      setActiveSessionByHost((current) => {
-        if (current[hostId] !== sessionId) return current;
-        return { ...current, [hostId]: null };
+      setActiveSessionByWorkspace((current) => {
+        if (current[workspaceId] !== sessionId) return current;
+        return { ...current, [workspaceId]: null };
       });
     },
     [],
@@ -371,35 +407,54 @@ export function useShells(options: UseShellsOptions = {}) {
 
   const killTmuxSession = useCallback(
     async (hostId: string, tmuxSession?: string) => {
-      const sessions = sessionsByHostRef.current[hostId] ?? [];
+      const workspaceIds = workspaceIdsForHost(
+        sessionsByWorkspaceRef.current,
+        hostId,
+      );
+      const allSessions = workspaceIds.flatMap(
+        (workspaceId) => sessionsByWorkspaceRef.current[workspaceId] ?? [],
+      );
       const sessionName = resolveTmuxSession(
         tmuxSession ??
-          sessions.find((session) => session.tmuxSession)?.tmuxSession,
+          allSessions.find((session) => session.tmuxSession)?.tmuxSession,
       );
       try {
         await sshTmuxKillSession(hostId, sessionName);
       } finally {
-        for (const session of sessions) {
+        for (const session of allSessions) {
           await closeChannel(session.channelId);
         }
-        setSessionsByHost((current) => ({ ...current, [hostId]: [] }));
-        setActiveSessionByHost((current) => ({
-          ...current,
-          [hostId]: null,
-        }));
+        setSessionsByWorkspace((current) => {
+          const next = { ...current };
+          for (const workspaceId of workspaceIds) {
+            next[workspaceId] = [];
+          }
+          return next;
+        });
+        setActiveSessionByWorkspace((current) => {
+          const next = { ...current };
+          for (const workspaceId of workspaceIds) {
+            next[workspaceId] = null;
+          }
+          return next;
+        });
       }
     },
     [],
   );
 
   const selectShell = useCallback(
-    async (hostId: string, sessionId: string) => {
-      const session = (sessionsByHostRef.current[hostId] ?? []).find(
+    async (workspaceId: string, hostId: string, sessionId: string) => {
+      const session = (sessionsByWorkspaceRef.current[workspaceId] ?? []).find(
         (item) => item.id === sessionId,
       );
-      let sessions = sessionsByHostRef.current[hostId] ?? [];
+      let sessions = sessionsByWorkspaceRef.current[workspaceId] ?? [];
       if (session?.tmuxSession) {
-        sessions = await reconcileTmux(hostId, session.tmuxSession);
+        sessions = await reconcileTmux(
+          workspaceId,
+          hostId,
+          session.tmuxSession,
+        );
       }
 
       const target =
@@ -410,19 +465,23 @@ export function useShells(options: UseShellsOptions = {}) {
         sessions[0];
 
       if (!target) {
-        setActiveSessionByHost((current) => ({ ...current, [hostId]: null }));
+        setActiveSessionByWorkspace((current) => ({
+          ...current,
+          [workspaceId]: null,
+        }));
         return;
       }
 
-      setActiveSessionByHost((current) => ({
+      setActiveSessionByWorkspace((current) => ({
         ...current,
-        [hostId]: target.id,
+        [workspaceId]: target.id,
       }));
 
       if (target.tmuxWindowId && target.tmuxSession && !target.channelId) {
         try {
           await attachTmuxWindow(
             hostId,
+            workspaceId,
             target.id,
             target.tmuxSession,
             target.tmuxWindowId,
@@ -437,124 +496,232 @@ export function useShells(options: UseShellsOptions = {}) {
   );
 
   const clearHostShells = useCallback(async (hostId: string) => {
-    const sessions = sessionsByHostRef.current[hostId] ?? [];
-    for (const session of sessions) {
-      await closeChannel(session.channelId);
+    const workspaceIds = workspaceIdsForHost(
+      sessionsByWorkspaceRef.current,
+      hostId,
+    );
+    for (const workspaceId of workspaceIds) {
+      const sessions = sessionsByWorkspaceRef.current[workspaceId] ?? [];
+      for (const session of sessions) {
+        await closeChannel(session.channelId);
+      }
     }
-    setSessionsByHost((current) => ({ ...current, [hostId]: [] }));
-    setActiveSessionByHost((current) => ({ ...current, [hostId]: null }));
+    setSessionsByWorkspace((current) => {
+      const next = { ...current };
+      for (const workspaceId of workspaceIds) {
+        next[workspaceId] = [];
+      }
+      return next;
+    });
+    setActiveSessionByWorkspace((current) => {
+      const next = { ...current };
+      for (const workspaceId of workspaceIds) {
+        next[workspaceId] = null;
+      }
+      return next;
+    });
   }, []);
 
   const removeHostShells = useCallback((hostId: string) => {
-    setSessionsByHost((current) => {
+    setSessionsByWorkspace((current) => {
       const next = { ...current };
-      delete next[hostId];
+      for (const workspaceId of workspaceIdsForHost(next, hostId)) {
+        delete next[workspaceId];
+      }
       return next;
     });
-    setActiveSessionByHost((current) => {
+    setActiveSessionByWorkspace((current) => {
       const next = { ...current };
-      delete next[hostId];
+      for (const workspaceId of workspaceIdsForHost(next, hostId)) {
+        delete next[workspaceId];
+      }
       return next;
     });
   }, []);
 
+  const removeWorkspaceShells = useCallback((workspaceId: string) => {
+    setSessionsByWorkspace((current) => {
+      if (!(workspaceId in current)) return current;
+      const next = { ...current };
+      delete next[workspaceId];
+      return next;
+    });
+    setActiveSessionByWorkspace((current) => {
+      if (!(workspaceId in current)) return current;
+      const next = { ...current };
+      delete next[workspaceId];
+      return next;
+    });
+  }, []);
+
+  const moveWorkspaceShells = useCallback(
+    (fromWorkspaceId: string, toWorkspaceId: string) => {
+      if (fromWorkspaceId === toWorkspaceId) return;
+      const sessions =
+        sessionsByWorkspaceRef.current[fromWorkspaceId] ?? [];
+      const moved = sessions.map((session) => ({
+        ...session,
+        workspaceId: toWorkspaceId,
+      }));
+      sessionsByWorkspaceRef.current = {
+        ...sessionsByWorkspaceRef.current,
+        [fromWorkspaceId]: [],
+        [toWorkspaceId]: [
+          ...(sessionsByWorkspaceRef.current[toWorkspaceId] ?? []),
+          ...moved,
+        ],
+      };
+      setSessionsByWorkspace((current) => {
+        const next = { ...current };
+        const from = next[fromWorkspaceId] ?? [];
+        delete next[fromWorkspaceId];
+        next[toWorkspaceId] = [
+          ...(next[toWorkspaceId] ?? []),
+          ...from.map((session) => ({
+            ...session,
+            workspaceId: toWorkspaceId,
+          })),
+        ];
+        return next;
+      });
+      setActiveSessionByWorkspace((current) => {
+        const next = { ...current };
+        const fromActive = next[fromWorkspaceId] ?? null;
+        delete next[fromWorkspaceId];
+        if (fromActive && !next[toWorkspaceId]) {
+          next[toWorkspaceId] = fromActive;
+        } else if (!next[toWorkspaceId]) {
+          next[toWorkspaceId] =
+            sessionsByWorkspaceRef.current[toWorkspaceId]?.[0]?.id ?? null;
+        }
+        return next;
+      });
+    },
+    [],
+  );
+
   const handleChannelClosed = useCallback(
     (hostId: string, channelId: string) => {
-      const list = sessionsByHostRef.current[hostId] ?? [];
-      const session = list.find((item) => item.channelId === channelId);
-      if (!session) return;
+      const found = findSessionLocation(
+        sessionsByWorkspaceRef.current,
+        (session) =>
+          session.hostId === hostId && session.channelId === channelId,
+      );
+      if (!found) return;
 
+      const { workspaceId, session } = found;
       if (session.tmuxWindowId && session.tmuxSession) {
-        void reconcileTmux(hostId, session.tmuxSession);
+        void reconcileTmux(workspaceId, hostId, session.tmuxSession);
         return;
       }
 
-      setSessionsByHost((current) => ({
+      setSessionsByWorkspace((current) => ({
         ...current,
-        [hostId]: (current[hostId] ?? []).filter(
+        [workspaceId]: (current[workspaceId] ?? []).filter(
           (item) => item.id !== session.id,
         ),
       }));
-      setActiveSessionByHost((current) => {
-        if (current[hostId] !== session.id) return current;
-        return { ...current, [hostId]: null };
+      setActiveSessionByWorkspace((current) => {
+        if (current[workspaceId] !== session.id) return current;
+        return { ...current, [workspaceId]: null };
       });
     },
     [reconcileTmux],
   );
 
-  const removeSession = useCallback((hostId: string, sessionId: string) => {
-    setSessionsByHost((current) => {
-      const list = (current[hostId] ?? []).filter((s) => s.id !== sessionId);
-      return { ...current, [hostId]: list };
-    });
-    setActiveSessionByHost((current) => {
-      if (current[hostId] !== sessionId) return current;
-      return { ...current, [hostId]: null };
-    });
-  }, []);
-
   const clearSessionsForHost = useCallback((hostId: string) => {
-    setSessionsByHost((current) => ({ ...current, [hostId]: [] }));
-    setActiveSessionByHost((current) => ({ ...current, [hostId]: null }));
+    setSessionsByWorkspace((current) => {
+      const next = { ...current };
+      for (const workspaceId of workspaceIdsForHost(next, hostId)) {
+        next[workspaceId] = [];
+      }
+      return next;
+    });
+    setActiveSessionByWorkspace((current) => {
+      const next = { ...current };
+      for (const workspaceId of workspaceIdsForHost(next, hostId)) {
+        next[workspaceId] = null;
+      }
+      return next;
+    });
   }, []);
 
   useEffect(() => {
-    const targets = Object.entries(sessionsByHost)
-      .map(([hostId, sessions]) => {
-        const tmuxSession = sessions.find(
-          (session) => session.tmuxSession,
-        )?.tmuxSession;
-        return tmuxSession ? { hostId, tmuxSession } : null;
-      })
-      .filter((item): item is { hostId: string; tmuxSession: string } =>
-        Boolean(item),
-      );
+    const targets: Array<{
+      workspaceId: string;
+      hostId: string;
+      tmuxSession: string;
+    }> = [];
+
+    for (const [workspaceId, sessions] of Object.entries(sessionsByWorkspace)) {
+      const tmuxSession = sessions.find(
+        (session) => session.tmuxSession,
+      )?.tmuxSession;
+      const hostId = sessions[0]?.hostId;
+      if (tmuxSession && hostId) {
+        targets.push({ workspaceId, hostId, tmuxSession });
+      }
+    }
 
     if (targets.length === 0) return;
 
     const timer = window.setInterval(() => {
       for (const target of targets) {
-        void reconcileTmux(target.hostId, target.tmuxSession);
+        void reconcileTmux(
+          target.workspaceId,
+          target.hostId,
+          target.tmuxSession,
+        );
       }
     }, 2500);
 
     return () => window.clearInterval(timer);
-  }, [reconcileTmux, sessionsByHost]);
+  }, [reconcileTmux, sessionsByWorkspace]);
 
   return {
-    sessionsByHost,
-    activeSessionByHost,
+    sessionsByWorkspace,
+    activeSessionByWorkspace,
     bootstrapTmux,
     openShell,
     renameShell,
-    reorderShells,
     setSessionCwd,
     closeShell,
     killTmuxSession,
     selectShell,
     clearHostShells,
     removeHostShells,
+    removeWorkspaceShells,
+    moveWorkspaceShells,
     handleChannelClosed,
-    removeSession,
     clearSessionsForHost,
   };
 }
 
 export function useActiveShellFallback(
-  selectedId: string | null,
-  sessionsByHost: Record<string, ShellSession[]>,
-  activeSessionByHost: Record<string, string | null>,
-  selectShell: (hostId: string, sessionId: string) => void,
+  workspaceId: string | null,
+  hostId: string | null,
+  sessionsByWorkspace: Record<string, ShellSession[]>,
+  activeSessionByWorkspace: Record<string, string | null>,
+  selectShell: (
+    workspaceId: string,
+    hostId: string,
+    sessionId: string,
+  ) => void,
 ) {
   useEffect(() => {
-    if (!selectedId) return;
-    const sessions = sessionsByHost[selectedId] ?? [];
-    const active = activeSessionByHost[selectedId] ?? null;
+    if (!workspaceId || !hostId) return;
+    const sessions = sessionsByWorkspace[workspaceId] ?? [];
+    const active = activeSessionByWorkspace[workspaceId] ?? null;
     const activeExists =
       active != null && sessions.some((session) => session.id === active);
     if ((!active || !activeExists) && sessions[0]) {
-      void selectShell(selectedId, sessions[0].id);
+      void selectShell(workspaceId, hostId, sessions[0].id);
     }
-  }, [selectedId, sessionsByHost, activeSessionByHost, selectShell]);
+  }, [
+    workspaceId,
+    hostId,
+    sessionsByWorkspace,
+    activeSessionByWorkspace,
+    selectShell,
+  ]);
 }

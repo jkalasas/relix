@@ -10,8 +10,8 @@ export function EmptyWorkspace({ onAddHost }: EmptyWorkspaceProps) {
   return (
     <EmptyState
       icon={Cable}
-      title="Pick a host to open a session"
-      description="Relix keeps SSH, ports, and files in one session. Select a host from the rail, or add a new one to get started."
+      title="Pick a host to get started"
+      description="Choose a host, open Ad hoc or a project, then work with shells, files, and tunnels."
       iconClassName="text-primary"
       action={
         <Button type="button" size="sm" onClick={onAddHost}>
