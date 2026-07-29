@@ -189,6 +189,16 @@
   -webkit-backdrop-filter: none;
 }
 
+[data-slot="sidebar-wrapper"][data-resizing="true"] [data-slot="sidebar-gap"],
+[data-slot="sidebar-wrapper"][data-resizing="true"] [data-slot="sidebar-container"] {
+  transition: none !important;
+}
+
+[data-slot="sidebar-wrapper"][data-resizing="true"] {
+  cursor: col-resize;
+  user-select: none;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

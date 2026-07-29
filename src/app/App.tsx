@@ -60,6 +60,7 @@ import {
 import { useIsMobileOs } from "@/features/shells/lib/mobile-os";
 import type { FsEntry } from "@/features/ssh";
 import { useMediaQuery } from "@/hooks/use-media-query";
+import { useSidebarWidth } from "@/hooks/use-sidebar-width";
 
 function App() {
   const isDesktop = useMediaQuery("(min-width: 768px)");
@@ -67,6 +68,7 @@ function App() {
   // Frameless desktop always needs window chrome, even when the layout is narrow.
   const showWindowChrome = !isMobileOs;
   const useTitlebarSessionChrome = showWindowChrome && isDesktop;
+  const sidebarWidth = useSidebarWidth();
   const forwards = useForwards();
   const shells = useShells();
   const sessionTabs = useSessionTabs();
@@ -608,10 +610,11 @@ function App() {
         className="h-full min-h-0 flex-col overflow-hidden bg-background text-foreground"
         style={
           {
-            "--sidebar-width": "15rem",
+            "--sidebar-width": sidebarWidth.widthCss,
             "--titlebar-height": showWindowChrome ? "2.5rem" : "0px",
           } as CSSProperties
         }
+        data-resizing={sidebarWidth.resizing ? "true" : undefined}
         onContextMenu={(event) => event.preventDefault()}
       >
         {showWindowChrome ? (
@@ -627,6 +630,10 @@ function App() {
           {isDesktop && showFileRail && selectedHost ? (
             <AppSidebar
               mode="files"
+              widthPx={sidebarWidth.widthPx}
+              onWidthChange={sidebarWidth.setWidthPx}
+              onResizeStart={sidebarWidth.beginResize}
+              onResizeEnd={sidebarWidth.endResize}
               onShowHosts={() => setRailOverride("hosts")}
             >
               <FileTreeSidebar
@@ -641,6 +648,10 @@ function App() {
           ) : isDesktop ? (
             <AppSidebar
               mode="hosts"
+              widthPx={sidebarWidth.widthPx}
+              onWidthChange={sidebarWidth.setWidthPx}
+              onResizeStart={sidebarWidth.beginResize}
+              onResizeEnd={sidebarWidth.endResize}
               hosts={hosts.hosts}
               selectedId={workspace.selectedId}
               onSelect={workspace.selectHost}

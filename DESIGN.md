@@ -171,7 +171,7 @@ Connected host (desktop — file tree always occupies the left rail):
 | Region | Size | Notes |
 |---|---|---|
 | Title bar | 40px (`2.5rem`) | Frameless window (`decorations: false`). Full-width chrome: sidebar trigger · session tabs · window controls. Drag via `data-tauri-drag-region` |
-| Left rail | ~240px (`15rem`, shadcn `Sidebar` collapsible icon) | Host list when idle/disconnected; file tree while host is connected (desktop). Hosts toggle in sidebar header. Collapse via rail / trigger / `⌘B` |
+| Left rail | ~240px default, drag-resizable (180–480px); collapsible icon | Host list when idle/disconnected; file tree while host is connected (desktop). Hosts toggle in sidebar header. Drag the rail edge to resize; click / trigger / `⌘B` to collapse |
 | Session header | 40px desktop / 48px mobile | Mono target left; chip + connect right (no trigger on desktop — lives in title bar) |
 | Session tabs | title bar (desktop) / below header (mobile) | Document strip (shells, files, tools); elevated active pill |
 | Workspace body | flex-1 | Active tab panel (`SidebarInset`) |

@@ -5,12 +5,19 @@ import {
   Sidebar,
   SidebarContent,
   SidebarHeader,
-  SidebarRail,
 } from "@/components/ui/sidebar";
+import { SidebarResizeRail } from "@/features/hosts/components/sidebar-resize-rail";
 import { HostList } from "@/features/hosts/components/host-list";
 import type { Host } from "@/features/hosts/types";
 
-type AppSidebarHostsProps = {
+type SidebarResizeProps = {
+  widthPx: number;
+  onWidthChange: (px: number) => void;
+  onResizeStart: () => void;
+  onResizeEnd: (px: number) => void;
+};
+
+type AppSidebarHostsProps = SidebarResizeProps & {
   mode: "hosts";
   hosts: Host[];
   selectedId: string | null;
@@ -18,7 +25,7 @@ type AppSidebarHostsProps = {
   onAddHost: () => void;
 };
 
-type AppSidebarFilesProps = {
+type AppSidebarFilesProps = SidebarResizeProps & {
   mode: "files";
   onShowHosts: () => void;
   children: ReactNode;
@@ -77,7 +84,12 @@ export function AppSidebar(props: AppSidebarProps) {
         )}
       </SidebarContent>
 
-      <SidebarRail />
+      <SidebarResizeRail
+        widthPx={props.widthPx}
+        onWidthChange={props.onWidthChange}
+        onResizeStart={props.onResizeStart}
+        onResizeEnd={props.onResizeEnd}
+      />
     </Sidebar>
   );
 }
