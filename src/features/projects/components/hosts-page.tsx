@@ -2,8 +2,7 @@ import { Plus, Server } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { StatusDot } from "@/components/status/status-dot";
 import { EmptyState } from "@/components/workspace/empty-state";
-import { isLocalHost } from "@/features/hosts/local-host";
-import type { Host } from "@/features/hosts/types";
+import { isLocalHost, type Host } from "@/features/hosts";
 import { cn } from "@/lib/utils";
 import { ChevronRight } from "lucide-react";
 

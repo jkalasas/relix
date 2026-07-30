@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { ShellMode } from "@/features/hosts/types";
+import type { ShellMode } from "@/features/hosts";
 import {
   adhocWorkspaceId,
   isWorkspaceForHost,

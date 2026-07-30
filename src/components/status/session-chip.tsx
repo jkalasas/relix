@@ -1,5 +1,5 @@
 import { cn } from "@/lib/utils";
-import type { HostStatus } from "@/features/hosts/types";
+import type { HostStatus } from "@/features/hosts";
 import { StatusDot } from "@/components/status/status-dot";
 
 const chipClass: Record<HostStatus, string> = {

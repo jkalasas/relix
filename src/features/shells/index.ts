@@ -19,3 +19,4 @@ export {
   TerminalHost,
   type LiveTerminal,
 } from "@/features/shells/components/terminal-host";
+export { isMobileOs, useIsMobileOs } from "@/features/shells/lib/mobile-os";

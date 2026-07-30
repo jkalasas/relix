@@ -1,4 +1,4 @@
-import type { OpenedFile } from "@/features/files/use-files";
+import type { OpenedFile } from "@/features/files";
 
 export type SessionTab =
   | { id: string; kind: "shell"; shellId: string }

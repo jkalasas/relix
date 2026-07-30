@@ -102,7 +102,6 @@ export function FileEditor({
       viewRef.current = null;
     };
     // remount only when the remote file identity changes
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [path, name]);
 
   useEffect(() => {

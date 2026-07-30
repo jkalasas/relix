@@ -3,10 +3,10 @@ import {
   downloadFile as downloadHostFile,
   openFile,
   saveText,
-} from "@/features/files/open-file";
+} from "@/features/files";
 import { isWorkspaceForHost } from "@/features/projects";
 import type { FsEntry } from "@/features/ssh";
-import { parseSshError } from "@/features/ssh/errors";
+import { parseSshError } from "@/features/ssh";
 import {
   FILES_TAB_ID,
   PORTS_TAB_ID,

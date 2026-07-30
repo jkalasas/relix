@@ -15,13 +15,13 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { StatusDot } from "@/components/status/status-dot";
-import type { Host } from "@/features/hosts/types";
+import type { Host } from "@/features/hosts";
 import {
   scopeLabel,
   toWorkspaceId,
+  type ProjectConfig,
   type WorkspaceRef,
 } from "@/features/projects";
-import type { ProjectConfig } from "@/features/projects/types";
 import { useMediaQuery } from "@/hooks/use-media-query";
 import { cn } from "@/lib/utils";
 

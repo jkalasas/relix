@@ -12,7 +12,7 @@ import {
   decodeText,
   encodeText,
 } from "@/features/files/file-kind";
-import type { OpenedFile } from "@/features/files/use-files";
+import type { OpenedFile } from "@/features/files/types";
 
 function fingerprintOf(entry: FsEntry) {
   return { size: entry.size, mtime: entry.mtime ?? null };

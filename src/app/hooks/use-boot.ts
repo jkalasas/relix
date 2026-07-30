@@ -1,8 +1,10 @@
 import { useEffect } from "react";
-import { configsToHosts } from "@/features/hosts/convert";
-import { withoutLocalHost } from "@/features/hosts/local-host";
-import { loadHostConfigs } from "@/features/hosts/store";
-import type { Host } from "@/features/hosts/types";
+import {
+  configsToHosts,
+  loadHostConfigs,
+  withoutLocalHost,
+  type Host,
+} from "@/features/hosts";
 import { localShellAvailable } from "@/features/ssh";
 
 type UseBootOptions = {

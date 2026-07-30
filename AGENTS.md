@@ -19,7 +19,15 @@
 
 | Path | Role |
 |---|---|
-| `src/app/` | Composition root: `App.tsx`, page-stack navigation + SSH lifecycle hooks |
+| `src/app/App.tsx` | Entry: boot gate + `<AppShell />` |
+| `src/app/hooks/use-app-controller.ts` | Composes all app hooks into one controller object |
+| `src/app/hooks/use-workspace.ts` | Page-stack navigation, recents, form modes |
+| `src/app/hooks/use-host-lifecycle.ts` | Host connect side-effects, disconnect dialog, Android background gate |
+| `src/app/hooks/use-session-bridge.ts` | Shell ↔ session-tab sync, open/select shell, discard dirty tabs |
+| `src/app/hooks/use-workspace-view.ts` | Active workspace view-model (host, chrome flags, files controller) |
+| `src/app/hooks/use-workspace-actions.ts` | Host/project/forward save-delete + adhoc→project migrate |
+| `src/app/hooks/use-boot.ts` / `use-ssh-lifecycle.ts` / `use-android-back.ts` | Boot load, SSH event fan-out, Android back |
+| `src/app/components/` | Composition-only UI shells (`app-shell`, `page-stack`, `workspace-shell`, `app-dialogs`) |
 | `src/features/hosts/` | Host types, store, CRUD/connect hooks, form/header/file-tree sidebar UI |
 | `src/features/projects/` | Per-host projects (dirs), workspace ids, hosts/projects pages, recents |
 | `src/features/forwards/` | Tunnel types, store, start/stop hooks, panel/form UI (host-scoped) |
@@ -65,7 +73,8 @@ When adding UI:
 - TypeScript strict; path alias `@/` → `src/`.
 - Minimal comments; self-documenting names. One function = one purpose.
 - Domain code lives under `src/features/<name>/` (types, store, hooks, components, barrel `index.ts`).
-- App composition stays in `src/app/` — no domain logic dumps in `App.tsx`.
+- App composition stays in `src/app/` — no domain logic dumps in `App.tsx`. Cross-feature policy lives in `src/app/hooks/`; page/workspace render shells under `src/app/components/`.
+- **Feature barrels are the external API.** Callers outside a feature import from `@/features/<name>` only — not deep paths like `@/features/files/open-file`. Same-feature internals may deep-import. Enforced by ESLint `no-restricted-imports` (`bun run lint`).
 - Shared status UI under `src/components/status/`; workspace chrome under `src/components/workspace/`.
 - Do not invent new status colors or layout modes outside DESIGN.md.
 - SSH IPC surface is `src/features/ssh/` (frontend) and `src-tauri/src/ssh/` (backend). Keep command/event names stable.
@@ -100,6 +109,7 @@ When adding UI:
 bun install
 bun run dev              # Vite only
 bun run build            # tsc + vite build
+bun run lint             # ESLint (feature barrel boundaries)
 bun tauri dev            # desktop
 bun tauri build
 bun tauri android init   # once

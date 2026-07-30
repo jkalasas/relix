@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { HostConfig } from "@/features/hosts/types";
+import type { HostConfig } from "@/features/hosts";
 import type {
   OpenShellResult,
   FsListResult,

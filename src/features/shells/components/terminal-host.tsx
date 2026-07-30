@@ -16,8 +16,7 @@ import {
   type StickyMods,
 } from "@/features/shells/lib/terminal-keys";
 import type { ShellSession } from "@/features/shells/types";
-import { isLocalHost } from "@/features/hosts/local-host";
-import type { Host } from "@/features/hosts/types";
+import { isLocalHost, type Host } from "@/features/hosts";
 import { decodeSshData, listenSshData } from "@/features/ssh";
 
 export type LiveTerminal = {

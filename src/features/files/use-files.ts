@@ -11,7 +11,7 @@ import {
   sshTmuxWindowPath,
 } from "@/features/ssh";
 import type { FsEntry } from "@/features/ssh";
-import { parseSshError } from "@/features/ssh/errors";
+import { parseSshError } from "@/features/ssh";
 import {
   cacheClearHost,
   cacheGet,
@@ -24,17 +24,11 @@ import {
   classifyFile,
   decodeText,
   encodeText,
-  type FileKind,
 } from "@/features/files/file-kind";
 import { basename, joinFsPath, parentPath } from "@/features/files/format";
-import type { FileTransferState } from "@/features/files/types";
+import type { FileTransferState, OpenedFile } from "@/features/files/types";
 
-export type OpenedFile = {
-  entry: FsEntry;
-  kind: FileKind;
-  bytes: Uint8Array;
-  text: string | null;
-};
+export type { OpenedFile };
 
 type UseFilesOptions = {
   hostId: string;

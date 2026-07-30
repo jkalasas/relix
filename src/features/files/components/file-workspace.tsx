@@ -2,7 +2,7 @@ import { lazy, Suspense, useState, type ReactNode } from "react";
 import { FileBinaryView } from "@/features/files/components/file-binary-view";
 import { FileImageViewer } from "@/features/files/components/file-image-viewer";
 import type { OpenFileState } from "@/features/session-tabs";
-import { parseSshError } from "@/features/ssh/errors";
+import { parseSshError } from "@/features/ssh";
 
 const FileEditor = lazy(() =>
   import("@/features/files/components/file-editor").then((mod) => ({

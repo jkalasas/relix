@@ -8,16 +8,18 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Field } from "@/components/workspace/field";
-import { FileTypeIcon } from "@/features/files/file-icon";
-import { basename, parentPath } from "@/features/files/format";
-import { useFiles } from "@/features/files/use-files";
-import { isLocalHost } from "@/features/hosts/local-host";
-import type { Host } from "@/features/hosts/types";
-import type { ProjectConfig } from "@/features/projects/types";
+import {
+  FileTypeIcon,
+  basename,
+  parentPath,
+  useFiles,
+} from "@/features/files";
+import { isLocalHost, type Host } from "@/features/hosts";
 import {
   normalizeProjectConfig,
   validateProjectConfig,
-} from "@/features/projects/validate";
+  type ProjectConfig,
+} from "@/features/projects";
 import { cn } from "@/lib/utils";
 
 type ProjectFormProps = {

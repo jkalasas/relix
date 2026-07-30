@@ -16,8 +16,7 @@ import {
 import { FileTypeIcon } from "@/features/files/file-icon";
 import { formatBytes, parentPath } from "@/features/files/format";
 import { useFiles, type FilesController } from "@/features/files/use-files";
-import { isLocalHost } from "@/features/hosts/local-host";
-import type { Host } from "@/features/hosts/types";
+import { isLocalHost, type Host } from "@/features/hosts";
 import type { FsEntry } from "@/features/ssh";
 import { useLongPress } from "@/hooks/use-long-press";
 import { cn } from "@/lib/utils";

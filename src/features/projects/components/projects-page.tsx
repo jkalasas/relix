@@ -10,9 +10,8 @@ import { Button } from "@/components/ui/button";
 import { SessionChip } from "@/components/status/session-chip";
 import { StatusDot } from "@/components/status/status-dot";
 import { EmptyState } from "@/components/workspace/empty-state";
-import { isLocalHost } from "@/features/hosts/local-host";
-import type { Host } from "@/features/hosts/types";
-import type { ProjectConfig } from "@/features/projects/types";
+import { isLocalHost, type Host } from "@/features/hosts";
+import type { ProjectConfig } from "@/features/projects";
 import { cn } from "@/lib/utils";
 
 type ProjectsPageProps = {

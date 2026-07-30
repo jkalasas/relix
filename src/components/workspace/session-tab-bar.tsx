@@ -37,8 +37,8 @@ import {
   shellLaunchById,
   sessionDisplayTitle,
   type ShellLaunchId,
-} from "@/features/shells/launch";
-import type { ShellSession } from "@/features/shells/types";
+  type ShellSession,
+} from "@/features/shells";
 import type { OpenFileState, SessionTab } from "@/features/session-tabs";
 import { useMediaQuery } from "@/hooks/use-media-query";
 import { cn } from "@/lib/utils";

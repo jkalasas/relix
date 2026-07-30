@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/workspace/empty-state";
 import { ForwardRow } from "@/features/forwards/components/forward-row";
 import type { PortForward } from "@/features/forwards/types";
-import type { Host } from "@/features/hosts/types";
+import type { Host } from "@/features/hosts";
 
 type ForwardsPanelProps = {
   host: Host;
