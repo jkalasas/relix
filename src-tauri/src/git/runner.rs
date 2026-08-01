@@ -15,7 +15,7 @@ use crate::ssh::local_shell::is_local_host_id;
 
 const AVAILABILITY_TTL: Duration = Duration::from_secs(60);
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 enum Availability {
     Ok,
     NotInstalled,
@@ -124,9 +124,26 @@ async fn probe_git_availability(backend: &GitBackend) -> Result<Availability> {
         }
         Err(err) => return Err(err),
     };
+    classify_probe_output(&output)
+}
 
-    if output.timed_out || output.exit_code != Some(0) {
-        return Ok(Availability::NotInstalled);
+fn classify_probe_output(output: &GitOutput) -> Result<Availability> {
+    if output.timed_out {
+        return Err(GitError::new(
+            GitErrorCode::TimedOut,
+            "git --version timed out",
+        ));
+    }
+    if output.exit_code != Some(0) {
+        let detail = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        return Err(GitError::new(
+            GitErrorCode::CommandFailed,
+            if detail.is_empty() {
+                "git --version failed".into()
+            } else {
+                format!("git --version failed: {detail}")
+            },
+        ));
     }
 
     let stdout = String::from_utf8_lossy(&output.stdout);
@@ -193,6 +210,13 @@ fn run_local(cwd: &str, args: &[&str], timeout_secs: u64) -> Result<GitOutput> {
 
     if !cwd.is_empty() {
         cmd.current_dir(cwd);
+    }
+
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+        cmd.creation_flags(CREATE_NO_WINDOW);
     }
 
     let mut child = cmd
@@ -395,7 +419,21 @@ fn drain<R: Read>(reader: &mut R) -> (Vec<u8>, bool) {
 
 #[cfg(test)]
 mod tests {
-    use super::{parse_git_version, version_meets_minimum};
+    use super::{
+        classify_probe_output, parse_git_version, version_meets_minimum, Availability,
+    };
+    use crate::git::error::GitErrorCode;
+    use crate::git::types::GitOutput;
+
+    fn probe_output(stdout: &str, exit_code: Option<i32>, timed_out: bool) -> GitOutput {
+        GitOutput {
+            stdout: stdout.as_bytes().to_vec(),
+            stderr: Vec::new(),
+            exit_code,
+            timed_out,
+            truncated: false,
+        }
+    }
 
     #[test]
     fn parse_version_line() {
@@ -419,5 +457,26 @@ mod tests {
         assert!(!version_meets_minimum("1.9.5", "2.23"));
         assert!(version_meets_minimum("2.23.5", "2.23.4"));
         assert!(!version_meets_minimum("2.23.3", "2.23.4"));
+    }
+
+    #[test]
+    fn classify_probe_ok_and_too_old() {
+        let ok = classify_probe_output(&probe_output("git version 2.42.0\n", Some(0), false))
+            .expect("ok");
+        assert!(matches!(ok, Availability::Ok));
+
+        let too_old =
+            classify_probe_output(&probe_output("git version 2.20.0\n", Some(0), false))
+                .expect("too old");
+        assert!(matches!(too_old, Availability::TooOld(v) if v == "2.20.0"));
+    }
+
+    #[test]
+    fn classify_probe_timeout_and_nonzero_are_errors() {
+        let timed_out = classify_probe_output(&probe_output("", None, true)).unwrap_err();
+        assert!(matches!(timed_out.code, GitErrorCode::TimedOut));
+
+        let failed = classify_probe_output(&probe_output("", Some(1), false)).unwrap_err();
+        assert!(matches!(failed.code, GitErrorCode::CommandFailed));
     }
 }
