@@ -116,4 +116,38 @@ mod tests {
         assert!(!sha_is_safe("../x"));
         assert!(!sha_is_safe(&"a".repeat(65)));
     }
+
+    #[test]
+    fn local_dir_rejects_empty() {
+        assert!(validate_local_dir("").is_err());
+        assert!(validate_local_dir("   ").is_err());
+    }
+
+    #[test]
+    fn local_dir_rejects_missing() {
+        let missing = std::env::temp_dir().join("relix_validate_local_dir_missing_path");
+        let _ = std::fs::remove_dir_all(&missing);
+        assert!(validate_local_dir(missing.to_str().unwrap()).is_err());
+    }
+
+    #[test]
+    fn local_dir_rejects_file() {
+        let file = std::env::temp_dir().join("relix_validate_local_dir_file");
+        std::fs::write(&file, b"x").unwrap();
+        let result = validate_local_dir(file.to_str().unwrap());
+        let _ = std::fs::remove_file(&file);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn local_dir_accepts_dir() {
+        let dir = std::env::temp_dir().join("relix_validate_local_dir_ok");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let result = validate_local_dir(dir.to_str().unwrap());
+        let _ = std::fs::remove_dir_all(&dir);
+        let canonical = result.unwrap();
+        assert!(!canonical.is_empty());
+        assert!(!canonical.contains('\\'));
+    }
 }
