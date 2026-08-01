@@ -306,7 +306,15 @@ fn sh_single_quote(value: &str) -> String {
 }
 
 fn build_remote_git_command(cwd: &str, args: &[&str]) -> String {
-    let mut parts = Vec::with_capacity(args.len() + 4);
+    // env VAR=value ... git -C 'cwd' --no-pager 'args...'
+    let mut parts = Vec::new();
+    parts.push("env".to_string());
+    parts.push("GIT_TERMINAL_PROMPT=0".to_string());
+    parts.push("GIT_ASKPASS=".to_string());
+    parts.push("SSH_ASKPASS=".to_string());
+    parts.push("GIT_OPTIONAL_LOCKS=0".to_string());
+    parts.push("GCM_INTERACTIVE=never".to_string());
+    parts.push("LC_ALL=C".to_string());
     parts.push("git".to_string());
     parts.push("-C".to_string());
     parts.push(sh_single_quote(cwd));
@@ -361,6 +369,11 @@ async fn run_remote(
                     if stderr.len() < MAX_OUTPUT_BYTES {
                         let take = data.len().min(MAX_OUTPUT_BYTES - stderr.len());
                         stderr.extend_from_slice(&data[..take]);
+                        if take < data.len() {
+                            truncated = true;
+                        }
+                    } else {
+                        truncated = true;
                     }
                 }
                 Some(ChannelMsg::ExitStatus { exit_status: code }) => {
@@ -576,7 +589,9 @@ mod tests {
     #[test]
     fn builds_remote_command() {
         let cmd = build_remote_git_command("/home/u/repo", &["status", "--porcelain=v2"]);
-        assert!(cmd.starts_with("git -C '/home/u/repo' --no-pager 'status'"));
+        assert!(cmd.contains("GIT_TERMINAL_PROMPT=0"));
+        assert!(cmd.contains("git -C '/home/u/repo' --no-pager 'status'"));
         assert!(cmd.contains("'--porcelain=v2'"));
+        assert!(cmd.starts_with("env "));
     }
 }
