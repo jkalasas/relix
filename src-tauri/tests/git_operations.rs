@@ -289,3 +289,73 @@ async fn unstage_and_diff() {
     assert!(content.modified_content.contains("hello world"));
     assert!(!content.is_binary);
 }
+
+#[tokio::test]
+async fn commit_files_reports_status_and_numstat() {
+    let fx = Fixture::new();
+    let backend = GitBackend::Local;
+    let root = fx.root_str();
+
+    fx.write("m.txt", "line1\n");
+    operations::stage(&backend, HOST, root, &["m.txt".into()])
+        .await
+        .expect("stage base");
+    operations::commit(&backend, HOST, root, "base")
+        .await
+        .expect("commit base");
+
+    fx.write("m.txt", "line1\nline2\nline3\n");
+    operations::stage(&backend, HOST, root, &["m.txt".into()])
+        .await
+        .expect("stage modify");
+    let commit = operations::commit(&backend, HOST, root, "modify")
+        .await
+        .expect("commit modify");
+
+    let files = operations::commit_files(&backend, HOST, root, &commit.commit_sha)
+        .await
+        .expect("commit_files");
+    assert_eq!(files.len(), 1, "expected one file change: {files:?}");
+    let f = &files[0];
+    assert_eq!(f.path, "m.txt");
+    assert_eq!(f.status, "M");
+    assert_eq!(f.status_label, "Modified");
+    assert!(f.added > 0, "expected non-zero added, got {f:?}");
+    assert_eq!(f.removed, 0);
+    assert!(!f.is_binary);
+}
+
+#[tokio::test]
+async fn stage_literal_pathspec_with_glob_chars() {
+    let fx = Fixture::new();
+    let backend = GitBackend::Local;
+    let root = fx.root_str();
+
+    // Filename is literally "star*.txt"; without :(literal) git would treat * as a glob.
+    let name = "star*.txt";
+    fx.write(name, "globby\n");
+    fx.write("starX.txt", "other\n");
+
+    operations::stage(&backend, HOST, root, &[name.into()])
+        .await
+        .expect("stage literal glob name");
+
+    let status = operations::status(&backend, HOST, root)
+        .await
+        .expect("status");
+    let staged: Vec<_> = status
+        .changed_files
+        .iter()
+        .filter(|f| f.staged)
+        .map(|f| f.path.as_str())
+        .collect();
+    assert_eq!(staged, vec![name], "staged paths: {staged:?}");
+    assert!(
+        status
+            .changed_files
+            .iter()
+            .any(|f| f.path == "starX.txt" && f.untracked),
+        "starX.txt should remain untracked: {:?}",
+        status.changed_files
+    );
+}

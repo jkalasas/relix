@@ -30,6 +30,10 @@ pub fn validate_repo_rel_path(path: &str) -> Result<String> {
     Ok(normalized)
 }
 
+pub fn literal_pathspec(path: &str) -> String {
+    format!(":(literal){path}")
+}
+
 pub fn validate_branch_name(name: &str) -> Result<()> {
     let name = name.trim();
     if name.is_empty() || name.starts_with('-') || name.contains('\0') {
@@ -78,6 +82,12 @@ mod tests {
     #[test]
     fn accepts_simple_relative() {
         assert_eq!(validate_repo_rel_path("src/a.rs").unwrap(), "src/a.rs");
+    }
+
+    #[test]
+    fn literal_pathspec_prefixes() {
+        assert_eq!(literal_pathspec("star*.txt"), ":(literal)star*.txt");
+        assert_eq!(literal_pathspec("src/a.rs"), ":(literal)src/a.rs");
     }
 
     #[test]

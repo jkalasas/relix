@@ -4,7 +4,8 @@ use std::path::Path;
 use crate::git::error::{GitError, GitErrorCode, Result};
 use crate::git::parser::{parse_porcelain_v2, parse_shortstat};
 use crate::git::path::{
-    sha_is_safe, validate_branch_name, validate_local_dir, validate_repo_rel_path,
+    literal_pathspec, sha_is_safe, validate_branch_name, validate_local_dir,
+    validate_repo_rel_path,
 };
 use crate::git::runner::{
     ensure_git_available, ensure_success, git_stdout_line_opt, git_stdout_lines, GitBackend,
@@ -199,7 +200,8 @@ fn stdout_to_string(bytes: Vec<u8>) -> String {
 fn validate_paths(paths: &[String]) -> Result<Vec<String>> {
     let mut out = Vec::with_capacity(paths.len());
     for p in paths {
-        out.push(validate_repo_rel_path(p)?);
+        let rel = validate_repo_rel_path(p)?;
+        out.push(literal_pathspec(&rel));
     }
     Ok(out)
 }
@@ -394,10 +396,11 @@ pub async fn discard(
     let mut untracked: Vec<String> = Vec::new();
     for entry in entries {
         let path = validate_repo_rel_path(&entry.path)?;
+        let pathspec = literal_pathspec(&path);
         if entry.untracked {
-            untracked.push(path);
+            untracked.push(pathspec);
         } else {
-            tracked.push(path);
+            tracked.push(pathspec);
         }
     }
 
@@ -784,7 +787,7 @@ async fn diff_inner(
         args.push("--cached".into());
     }
     let pathspec = match path.filter(|p| !p.is_empty()) {
-        Some(p) => Some(validate_repo_rel_path(p)?),
+        Some(p) => Some(literal_pathspec(&validate_repo_rel_path(p)?)),
         None => None,
     };
     if let Some(ref spec) = pathspec {
@@ -955,7 +958,7 @@ pub async fn commit_files(
         return Err(GitError::command("git diff-tree", "invalid commit sha"));
     }
 
-    let output = backend
+    let name_status = backend
         .run(
             &repo_root,
             &[
@@ -964,38 +967,32 @@ pub async fn commit_files(
                 "-r",
                 "-z",
                 "--name-status",
+                sha,
+            ],
+            DEFAULT_TIMEOUT_SECS,
+        )
+        .await?;
+    ensure_success(&name_status, "git diff-tree --name-status failed")?;
+
+    let numstat = backend
+        .run(
+            &repo_root,
+            &[
+                "diff-tree",
+                "--no-commit-id",
+                "-r",
+                "-z",
                 "--numstat",
                 sha,
             ],
             DEFAULT_TIMEOUT_SECS,
         )
         .await?;
-    ensure_success(&output, "git diff-tree failed")?;
+    ensure_success(&numstat, "git diff-tree --numstat failed")?;
 
-    let (name_status_bytes, numstat_bytes) = split_name_status_numstat(&output.stdout);
-    let mut files = parse_diff_tree_name_status(name_status_bytes);
-    apply_numstat(&mut files, numstat_bytes);
+    let mut files = parse_diff_tree_name_status(&name_status.stdout);
+    apply_numstat(&mut files, &numstat.stdout);
     Ok(files)
-}
-
-fn split_name_status_numstat(bytes: &[u8]) -> (&[u8], &[u8]) {
-    let s = std::str::from_utf8(bytes).unwrap_or("");
-    let tokens: Vec<(usize, &str)> = s
-        .split('\0')
-        .scan(0usize, |off, t| {
-            let start = *off;
-            *off += t.len() + 1;
-            Some((start, t))
-        })
-        .collect();
-    let mut split_at = bytes.len();
-    for tok in &tokens {
-        if tok.1.contains('\t') {
-            split_at = tok.0;
-            break;
-        }
-    }
-    (&bytes[..split_at], &bytes[split_at..])
 }
 
 fn parse_diff_tree_name_status(bytes: &[u8]) -> Vec<GitCommitFileChange> {
@@ -1132,10 +1129,10 @@ pub async fn commit_file_diff(
         "--first-parent".into(),
         sha.into(),
         "--".into(),
-        rel.clone(),
+        literal_pathspec(&rel),
     ];
     if original_rel != rel {
-        diff_args.push(original_rel);
+        diff_args.push(literal_pathspec(&original_rel));
     }
     let arg_refs: Vec<&str> = diff_args.iter().map(|s| s.as_str()).collect();
     let patch_output = backend
