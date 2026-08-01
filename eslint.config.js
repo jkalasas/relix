@@ -4,6 +4,7 @@ const features = [
   "android-background",
   "files",
   "forwards",
+  "git",
   "hosts",
   "projects",
   "session-tabs",
