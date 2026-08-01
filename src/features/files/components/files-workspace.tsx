@@ -3,7 +3,7 @@ import { FolderOpen } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/workspace/empty-state";
 import { FilesPanel } from "@/features/files/components/files-panel";
-import type { FilesController } from "@/features/files/use-files";
+import type { FilesController } from "@/features/files/hooks/use-files";
 import type { Host } from "@/features/hosts";
 import type { FsEntry } from "@/features/ssh";
 import { cn } from "@/lib/utils";

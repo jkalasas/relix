@@ -10,7 +10,7 @@ import {
   descriptionForForwardType,
   normalizeForwardConfig,
   validateForwardConfig,
-} from "@/features/forwards/validate";
+} from "@/features/forwards/lib/validate";
 
 type ForwardFormProps = {
   initial?: PortForward | null;

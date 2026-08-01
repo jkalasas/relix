@@ -11,7 +11,7 @@ import {
 import { oneDark } from "@codemirror/theme-one-dark";
 import { ChevronLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { languageExtensionFor } from "@/features/files/language";
+import { languageExtensionFor } from "@/features/files/lib/language";
 import { cn } from "@/lib/utils";
 
 type FileEditorProps = {

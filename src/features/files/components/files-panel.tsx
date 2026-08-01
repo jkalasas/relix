@@ -13,9 +13,9 @@ import {
   type FileEntryAction,
   type FileEntryMenuState,
 } from "@/features/files/components/file-entry-menu";
-import { FileTypeIcon } from "@/features/files/file-icon";
-import { formatBytes, parentPath } from "@/features/files/format";
-import { useFiles, type FilesController } from "@/features/files/use-files";
+import { FileTypeIcon } from "@/features/files/components/file-icon";
+import { formatBytes, parentPath } from "@/features/files/lib/format";
+import { useFiles, type FilesController } from "@/features/files/hooks/use-files";
 import { isLocalHost, type Host } from "@/features/hosts";
 import type { FsEntry } from "@/features/ssh";
 import { useLongPress } from "@/hooks/use-long-press";

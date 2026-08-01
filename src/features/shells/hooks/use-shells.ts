@@ -9,7 +9,7 @@ import {
   nextSessionTitle,
   shellLaunchById,
   type ShellLaunchId,
-} from "@/features/shells/launch";
+} from "@/features/shells/lib/launch";
 import type { ShellSession } from "@/features/shells/types";
 import {
   sshCloseShell,

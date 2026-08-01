@@ -19,13 +19,13 @@ import {
   cacheMove,
   cachePut,
   cacheUpdateText,
-} from "@/features/files/file-cache";
+} from "@/features/files/lib/file-cache";
 import {
   classifyFile,
   decodeText,
   encodeText,
-} from "@/features/files/file-kind";
-import { basename, joinFsPath, parentPath } from "@/features/files/format";
+} from "@/features/files/lib/file-kind";
+import { basename, joinFsPath, parentPath } from "@/features/files/lib/format";
 import type { FileTransferState, OpenedFile } from "@/features/files/types";
 
 export type { OpenedFile };

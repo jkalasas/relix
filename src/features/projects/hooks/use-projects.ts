@@ -4,7 +4,7 @@ import {
   saveProjectsByHost,
 } from "@/features/projects/store";
 import type { ProjectConfig } from "@/features/projects/types";
-import { normalizeProjectConfig } from "@/features/projects/validate";
+import { normalizeProjectConfig } from "@/features/projects/lib/validate";
 
 export function useProjects() {
   const [projectsByHost, setProjectsByHost] = useState<

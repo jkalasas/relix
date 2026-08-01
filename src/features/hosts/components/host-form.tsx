@@ -7,7 +7,7 @@ import type { Host, HostConfig, ShellMode } from "@/features/hosts/types";
 import {
   normalizeHostConfig,
   validateHostConfig,
-} from "@/features/hosts/validate";
+} from "@/features/hosts/lib/validate";
 
 const SHELL_MODES = [
   { id: "plain" as ShellMode, label: "Plain" },

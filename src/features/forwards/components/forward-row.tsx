@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import {
   formatForwardSource,
   formatForwardTarget,
-} from "@/features/forwards/format";
+} from "@/features/forwards/lib/format";
 import type { PortForward } from "@/features/forwards/types";
 import { cn } from "@/lib/utils";
 

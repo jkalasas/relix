@@ -1,5 +1,5 @@
 import type { FsEntry } from "@/features/ssh";
-import type { FileKind } from "@/features/files/file-kind";
+import type { FileKind } from "@/features/files/lib/file-kind";
 
 export type FileTransferKind = "upload" | "download";
 

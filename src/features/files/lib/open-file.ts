@@ -6,12 +6,12 @@ import {
   cacheGet,
   cachePut,
   cacheUpdateText,
-} from "@/features/files/file-cache";
+} from "@/features/files/lib/file-cache";
 import {
   classifyFile,
   decodeText,
   encodeText,
-} from "@/features/files/file-kind";
+} from "@/features/files/lib/file-kind";
 import type { OpenedFile } from "@/features/files/types";
 
 function fingerprintOf(entry: FsEntry) {

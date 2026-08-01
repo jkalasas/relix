@@ -9,7 +9,7 @@ import {
   requestNotifications,
   startKeepalive,
   stopKeepalive,
-} from "@/features/android-background/api";
+} from "@/features/android-background/lib/api";
 import type { BackgroundReadiness } from "@/features/android-background/types";
 
 const IDLE_READINESS: BackgroundReadiness = {

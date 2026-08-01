@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
 import type { AuthCheckPrompt } from "@/features/hosts/components/auth-check-dialog";
-import { toHostConfig } from "@/features/hosts/convert";
+import { toHostConfig } from "@/features/hosts/lib/convert";
 import {
   isLocalHostId,
   withLocalHost,
   withoutLocalHost,
-} from "@/features/hosts/local-host";
+} from "@/features/hosts/lib/local-host";
 import { saveHostConfigs } from "@/features/hosts/store";
 import type { Host, HostConfig } from "@/features/hosts/types";
 import {

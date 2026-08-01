@@ -14,9 +14,9 @@ import {
   type FileEntryAction,
   type FileEntryMenuState,
 } from "@/features/files/components/file-entry-menu";
-import { FileTypeIcon } from "@/features/files/file-icon";
-import { basename, parentPath } from "@/features/files/format";
-import type { FilesController } from "@/features/files/use-files";
+import { FileTypeIcon } from "@/features/files/components/file-icon";
+import { basename, parentPath } from "@/features/files/lib/format";
+import type { FilesController } from "@/features/files/hooks/use-files";
 import type { FsEntry } from "@/features/ssh";
 import { cn } from "@/lib/utils";
 

@@ -7,13 +7,13 @@ export {
   shellLaunchById,
   type ShellLaunch,
   type ShellLaunchId,
-} from "@/features/shells/launch";
+} from "@/features/shells/lib/launch";
 export {
   DEFAULT_TMUX_SESSION,
   useActiveShellFallback,
   useShells,
   type ShellHostOptions,
-} from "@/features/shells/use-shells";
+} from "@/features/shells/hooks/use-shells";
 export { TerminalPanel } from "@/features/shells/components/terminal-panel";
 export {
   TerminalHost,

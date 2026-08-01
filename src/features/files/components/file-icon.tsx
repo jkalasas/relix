@@ -12,7 +12,7 @@ import {
   Settings2,
   Terminal,
 } from "lucide-react";
-import { extensionOf } from "@/features/files/file-kind";
+import { extensionOf } from "@/features/files/lib/file-kind";
 import { cn } from "@/lib/utils";
 
 type IconComponent = ComponentType<{ className?: string; "aria-hidden"?: boolean }>;

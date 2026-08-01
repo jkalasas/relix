@@ -1,5 +1,5 @@
 export type * from "@/features/hosts/types";
-export { configsToHosts, toHostConfig } from "@/features/hosts/convert";
+export { configsToHosts, toHostConfig } from "@/features/hosts/lib/convert";
 export {
   LOCAL_HOST_ID,
   createLocalHost,
@@ -7,9 +7,9 @@ export {
   isLocalHostId,
   withLocalHost,
   withoutLocalHost,
-} from "@/features/hosts/local-host";
+} from "@/features/hosts/lib/local-host";
 export { loadHostConfigs, saveHostConfigs } from "@/features/hosts/store";
-export { useHosts } from "@/features/hosts/use-hosts";
+export { useHosts } from "@/features/hosts/hooks/use-hosts";
 export { AppSidebar } from "@/features/hosts/components/app-sidebar";
 export { HostList } from "@/features/hosts/components/host-list";
 export { MobileHostPane } from "@/features/hosts/components/mobile-host-pane";

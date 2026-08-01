@@ -8,7 +8,7 @@ import {
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
 import { StatusDot } from "@/components/status/status-dot";
-import { isLocalHost } from "@/features/hosts/local-host";
+import { isLocalHost } from "@/features/hosts/lib/local-host";
 import type { Host } from "@/features/hosts/types";
 import { cn } from "@/lib/utils";
 

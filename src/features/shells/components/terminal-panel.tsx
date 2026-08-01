@@ -8,7 +8,7 @@ import {
 import {
   sessionDisplayTitle,
   type ShellLaunchId,
-} from "@/features/shells/launch";
+} from "@/features/shells/lib/launch";
 import { useIsMobileOs } from "@/features/shells/lib/mobile-os";
 import {
   EMPTY_STICKY_MODS,

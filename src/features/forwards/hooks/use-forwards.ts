@@ -3,7 +3,7 @@ import {
   configsToForwards,
   idleForwards,
   toPortForwardConfig,
-} from "@/features/forwards/format";
+} from "@/features/forwards/lib/format";
 import {
   loadForwardsByHost,
   saveForwardsByHost,

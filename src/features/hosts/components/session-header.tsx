@@ -2,7 +2,7 @@ import { ArrowLeft, FolderPlus } from "lucide-react";
 import type { ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { SessionChip } from "@/components/status/session-chip";
-import { isLocalHost } from "@/features/hosts/local-host";
+import { isLocalHost } from "@/features/hosts/lib/local-host";
 import type { Host } from "@/features/hosts/types";
 import { cn } from "@/lib/utils";
 

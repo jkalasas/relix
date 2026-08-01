@@ -1,7 +1,7 @@
 import { useEffect, useMemo } from "react";
 import { ChevronLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { mimeForImage } from "@/features/files/file-kind";
+import { mimeForImage } from "@/features/files/lib/file-kind";
 
 type FileImageViewerProps = {
   path: string;

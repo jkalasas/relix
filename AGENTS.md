@@ -72,9 +72,9 @@ When adding UI:
 
 - TypeScript strict; path alias `@/` → `src/`.
 - Minimal comments; self-documenting names. One function = one purpose.
-- Domain code lives under `src/features/<name>/` (types, store, hooks, components, barrel `index.ts`).
+- Domain code lives under `src/features/<name>/` with `hooks/`, `components/`, `lib/` (helpers), plus root `types.ts` / `store.ts` and barrel `index.ts`. Keep `ssh/` flat (IPC bridge only).
 - App composition stays in `src/app/` — no domain logic dumps in `App.tsx`. Cross-feature policy lives in `src/app/hooks/`; page/workspace render shells under `src/app/components/`.
-- **Feature barrels are the external API.** Callers outside a feature import from `@/features/<name>` only — not deep paths like `@/features/files/open-file`. Same-feature internals may deep-import. Enforced by ESLint `no-restricted-imports` (`bun run lint`).
+- **Feature barrels are the external API.** Callers outside a feature import from `@/features/<name>` only — not deep paths like `@/features/files/lib/open-file`. Same-feature internals may deep-import. Enforced by ESLint `no-restricted-imports` (`bun run lint`).
 - Shared status UI under `src/components/status/`; workspace chrome under `src/components/workspace/`.
 - Do not invent new status colors or layout modes outside DESIGN.md.
 - SSH IPC surface is `src/features/ssh/` (frontend) and `src-tauri/src/ssh/` (backend). Keep command/event names stable.
