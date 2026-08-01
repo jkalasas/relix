@@ -5,7 +5,7 @@ use crate::git::error::{GitError, GitErrorCode, Result};
 use crate::git::parser::{parse_porcelain_v2, parse_shortstat};
 use crate::git::path::{
     literal_pathspec, sha_is_safe, validate_branch_name, validate_local_dir,
-    validate_repo_rel_path,
+    validate_repo_rel_path, validate_worktree_path,
 };
 use crate::git::runner::{
     ensure_git_available, ensure_success, git_stdout_line_opt, git_stdout_lines, GitBackend,
@@ -13,8 +13,8 @@ use crate::git::runner::{
 use crate::git::types::{
     DiscardEntry, GitBranchEntry, GitBranchListResult, GitCommitFileChange, GitCommitResult,
     GitDiffContentResult, GitDiffResult, GitLogEntry, GitOutput, GitPanelSnapshot, GitPushResult,
-    GitRepoInfo, GitStatusSnapshot, TextSource, DEFAULT_TIMEOUT_SECS, MAX_FILE_BYTES,
-    MAX_LOG_LIMIT, NETWORK_TIMEOUT_SECS,
+    GitRepoInfo, GitStatusSnapshot, GitWorktreeEntry, GitWorktreeListResult, TextSource,
+    DEFAULT_TIMEOUT_SECS, MAX_FILE_BYTES, MAX_LOG_LIMIT, NETWORK_TIMEOUT_SECS,
 };
 
 const LOG_FORMAT: &str = "%H%x1f%an%x1f%ae%x1f%at%x1f%P%x1f%s";
@@ -729,6 +729,236 @@ pub async fn checkout_branch(
         .run(&repo_root, &["checkout", name], DEFAULT_TIMEOUT_SECS)
         .await?;
     ensure_success(&output, "git checkout failed")
+}
+
+pub async fn list_worktrees(
+    backend: &GitBackend,
+    host_id: &str,
+    cwd: &str,
+) -> Result<GitWorktreeListResult> {
+    let cwd = prepare_cwd(backend, cwd)?;
+    ensure_git_available(backend, host_id).await?;
+
+    let Some(root_line) =
+        git_stdout_line_opt(backend, &cwd, &["rev-parse", "--show-toplevel"]).await?
+    else {
+        return Ok(GitWorktreeListResult {
+            worktrees: Vec::new(),
+        });
+    };
+    let repo_root = prepare_cwd(backend, &root_line)?;
+
+    let lines =
+        git_stdout_lines(backend, &repo_root, &["worktree", "list", "--porcelain"]).await?;
+
+    let mut worktrees: Vec<GitWorktreeEntry> = Vec::new();
+    let mut current_path: Option<String> = None;
+    let mut head: Option<String> = None;
+    let mut branch: Option<String> = None;
+    let mut bare = false;
+    let mut detached = false;
+    let mut locked = false;
+    let mut prunable = false;
+
+    let flush = |worktrees: &mut Vec<GitWorktreeEntry>,
+                 path: Option<String>,
+                 head: Option<String>,
+                 branch: Option<String>,
+                 bare: bool,
+                 detached: bool,
+                 locked: bool,
+                 prunable: bool| {
+        let Some(path) = path else {
+            return;
+        };
+        if bare {
+            return;
+        }
+        let is_main = worktrees.is_empty();
+        worktrees.push(GitWorktreeEntry {
+            path,
+            head,
+            branch,
+            bare: false,
+            detached,
+            locked,
+            prunable,
+            is_main,
+        });
+    };
+
+    for line in &lines {
+        if let Some(rest) = line.strip_prefix("worktree ") {
+            flush(
+                &mut worktrees,
+                current_path.take(),
+                head.take(),
+                branch.take(),
+                bare,
+                detached,
+                locked,
+                prunable,
+            );
+            current_path = Some(rest.trim().replace('\\', "/"));
+            head = None;
+            branch = None;
+            bare = false;
+            detached = false;
+            locked = false;
+            prunable = false;
+        } else if let Some(rest) = line.strip_prefix("HEAD ") {
+            head = Some(rest.trim().to_string());
+        } else if let Some(rest) = line.strip_prefix("branch ") {
+            let raw = rest.trim();
+            branch = Some(
+                raw.strip_prefix("refs/heads/")
+                    .unwrap_or(raw)
+                    .to_string(),
+            );
+            detached = false;
+        } else if line.starts_with("detached") {
+            detached = true;
+            branch = None;
+        } else if line.starts_with("bare") {
+            bare = true;
+        } else if line.starts_with("locked") {
+            locked = true;
+        } else if line.starts_with("prunable") {
+            prunable = true;
+        }
+    }
+    flush(
+        &mut worktrees,
+        current_path.take(),
+        head.take(),
+        branch.take(),
+        bare,
+        detached,
+        locked,
+        prunable,
+    );
+
+    Ok(GitWorktreeListResult { worktrees })
+}
+
+pub async fn add_worktree(
+    backend: &GitBackend,
+    host_id: &str,
+    repo_root: &str,
+    path: &str,
+    branch: Option<&str>,
+    create_branch: bool,
+    start_point: Option<&str>,
+) -> Result<GitWorktreeEntry> {
+    let repo_root = prepare_cwd(backend, repo_root)?;
+    ensure_git_available(backend, host_id).await?;
+    let path = validate_worktree_path(path)?;
+
+    let mut args: Vec<String> = vec!["worktree".into(), "add".into()];
+    if create_branch {
+        let branch = branch.ok_or_else(|| {
+            GitError::new(
+                GitErrorCode::InvalidPath,
+                "branch name is required when creating a branch",
+            )
+        })?;
+        validate_branch_name(branch)?;
+        args.push("-b".into());
+        args.push(branch.trim().to_string());
+        args.push(path.clone());
+        if let Some(start) = start_point.map(str::trim).filter(|s| !s.is_empty()) {
+            if start.starts_with('-') || start.contains('\0') {
+                return Err(GitError::new(
+                    GitErrorCode::InvalidPath,
+                    format!("invalid start point: {start}"),
+                ));
+            }
+            args.push(start.to_string());
+        }
+    } else if let Some(branch) = branch.map(str::trim).filter(|s| !s.is_empty()) {
+        validate_branch_name(branch)?;
+        args.push(path.clone());
+        args.push(branch.to_string());
+    } else {
+        args.push("--detach".into());
+        args.push(path.clone());
+        if let Some(start) = start_point.map(str::trim).filter(|s| !s.is_empty()) {
+            if start.starts_with('-') || start.contains('\0') {
+                return Err(GitError::new(
+                    GitErrorCode::InvalidPath,
+                    format!("invalid start point: {start}"),
+                ));
+            }
+            args.push(start.to_string());
+        }
+    }
+
+    let arg_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
+    let output = backend
+        .run(&repo_root, &arg_refs, DEFAULT_TIMEOUT_SECS)
+        .await?;
+    ensure_success(&output, "git worktree add failed")?;
+
+    let listed = list_worktrees(backend, host_id, &repo_root).await?;
+    listed
+        .worktrees
+        .into_iter()
+        .find(|entry| paths_match(&entry.path, &path))
+        .ok_or_else(|| {
+            GitError::new(
+                GitErrorCode::Internal,
+                "worktree added but not found in list",
+            )
+        })
+}
+
+pub async fn remove_worktree(
+    backend: &GitBackend,
+    host_id: &str,
+    repo_root: &str,
+    path: &str,
+    force: bool,
+) -> Result<()> {
+    let repo_root = prepare_cwd(backend, repo_root)?;
+    ensure_git_available(backend, host_id).await?;
+    let path = validate_worktree_path(path)?;
+
+    let listed = list_worktrees(backend, host_id, &repo_root).await?;
+    let target = listed
+        .worktrees
+        .iter()
+        .find(|entry| paths_match(&entry.path, &path))
+        .ok_or_else(|| {
+            GitError::new(
+                GitErrorCode::InvalidPath,
+                format!("worktree not found: {path}"),
+            )
+        })?;
+    if target.is_main {
+        return Err(GitError::new(
+            GitErrorCode::CommandFailed,
+            "cannot remove the main worktree",
+        ));
+    }
+
+    let mut args: Vec<String> = vec!["worktree".into(), "remove".into()];
+    if force {
+        args.push("--force".into());
+    }
+    args.push(path.clone());
+    let arg_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
+    let output = backend
+        .run(&repo_root, &arg_refs, DEFAULT_TIMEOUT_SECS)
+        .await?;
+    ensure_success(&output, "git worktree remove failed")
+}
+
+fn paths_match(a: &str, b: &str) -> bool {
+    let normalize = |value: &str| {
+        let trimmed = value.trim().replace('\\', "/");
+        trimmed.trim_end_matches('/').to_string()
+    };
+    normalize(a) == normalize(b)
 }
 
 pub async fn create_branch(

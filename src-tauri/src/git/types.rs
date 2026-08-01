@@ -132,6 +132,25 @@ pub struct GitBranchListResult {
     pub branches: Vec<GitBranchEntry>,
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GitWorktreeEntry {
+    pub path: String,
+    pub head: Option<String>,
+    pub branch: Option<String>,
+    pub bare: bool,
+    pub detached: bool,
+    pub locked: bool,
+    pub prunable: bool,
+    pub is_main: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GitWorktreeListResult {
+    pub worktrees: Vec<GitWorktreeEntry>,
+}
+
 #[derive(Debug, Clone)]
 pub struct GitOutput {
     pub stdout: Vec<u8>,

@@ -16,12 +16,21 @@ function getStore(): Promise<LazyStore> {
 function isProjectConfig(value: unknown): value is ProjectConfig {
   if (typeof value !== "object" || value === null) return false;
   const obj = value as Record<string, unknown>;
-  return (
-    typeof obj.id === "string" &&
-    typeof obj.hostId === "string" &&
-    typeof obj.name === "string" &&
-    typeof obj.path === "string"
-  );
+  if (
+    typeof obj.id !== "string" ||
+    typeof obj.hostId !== "string" ||
+    typeof obj.name !== "string" ||
+    typeof obj.path !== "string"
+  ) {
+    return false;
+  }
+  if (
+    obj.activeWorktreePath != null &&
+    typeof obj.activeWorktreePath !== "string"
+  ) {
+    return false;
+  }
+  return true;
 }
 
 export async function loadProjectsByHost(): Promise<

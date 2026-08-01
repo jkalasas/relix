@@ -117,3 +117,18 @@ export type GitBranchEntry = {
 export type GitBranchListResult = {
   branches: GitBranchEntry[];
 };
+
+export type GitWorktreeEntry = {
+  path: string;
+  head: string | null;
+  branch: string | null;
+  bare: boolean;
+  detached: boolean;
+  locked: boolean;
+  prunable: boolean;
+  isMain: boolean;
+};
+
+export type GitWorktreeListResult = {
+  worktrees: GitWorktreeEntry[];
+};

@@ -17,6 +17,7 @@ import {
 import { isLocalHost, type Host } from "@/features/hosts";
 import {
   normalizeProjectConfig,
+  pathsMatch,
   validateProjectConfig,
   type ProjectConfig,
 } from "@/features/projects";
@@ -112,7 +113,10 @@ export function ProjectForm({
   function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
     const path = (form.path || files.path || "").trim();
-    const next = { ...form, hostId: host.id, path };
+    const next: ProjectConfig = { ...form, hostId: host.id, path };
+    if (initial && !pathsMatch(path, initial.path)) {
+      next.activeWorktreePath = null;
+    }
     const nextError = validateProjectConfig(next);
     if (nextError) {
       setError(nextError);

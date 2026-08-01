@@ -247,24 +247,40 @@ export function GitPanel({ host, git, onConnect }: GitPanelProps) {
       className="flex min-h-0 flex-1 flex-col"
     >
       <div className="flex min-h-11 shrink-0 items-center justify-between gap-3 border-b border-border px-3 sm:px-4 md:h-10 md:min-h-0">
-        <div className="min-w-0 flex items-center gap-2 text-xs text-muted-foreground">
-          {branch ? (
-            <span className="truncate font-mono text-foreground">{branch}</span>
-          ) : (
-            <span>Git</span>
-          )}
-          {tracking ? (
-            <span className="shrink-0 font-mono text-[11px] tabular-nums">
-              {tracking}
-            </span>
-          ) : null}
-          {hasRepo && files.length > 0 ? (
-            <span className="shrink-0 text-[11px] tabular-nums">
-              {files.length} change{files.length === 1 ? "" : "s"}
-            </span>
-          ) : null}
-          {git.snapshot?.status?.truncated ? (
-            <span className="shrink-0 text-[11px]">truncated</span>
+        <div className="min-w-0 flex flex-col gap-0.5 text-xs text-muted-foreground">
+          <div className="flex min-w-0 items-center gap-2">
+            {branch ? (
+              <span className="truncate font-mono text-foreground">
+                {branch}
+              </span>
+            ) : (
+              <span>Git</span>
+            )}
+            {tracking ? (
+              <span className="shrink-0 font-mono text-[11px] tabular-nums">
+                {tracking}
+              </span>
+            ) : null}
+            {hasRepo && files.length > 0 ? (
+              <span className="shrink-0 text-[11px] tabular-nums">
+                {files.length} change{files.length === 1 ? "" : "s"}
+              </span>
+            ) : null}
+            {git.snapshot?.status?.truncated ? (
+              <span className="shrink-0 text-[11px]">truncated</span>
+            ) : null}
+          </div>
+          {git.snapshot?.status?.repoRoot || git.snapshot?.repo?.repoRoot ? (
+            <p
+              className="truncate font-mono text-[11px] text-muted-foreground"
+              title={
+                git.snapshot.status?.repoRoot ??
+                git.snapshot.repo?.repoRoot ??
+                undefined
+              }
+            >
+              {git.snapshot.status?.repoRoot ?? git.snapshot.repo?.repoRoot}
+            </p>
           ) : null}
         </div>
         <div className="flex shrink-0 items-center gap-0.5">

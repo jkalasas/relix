@@ -17,10 +17,16 @@ import {
   type PortForward,
   type PortForwardConfig,
 } from "@/features/forwards";
-import { GitPanel, type GitController } from "@/features/git";
+import {
+  GitPanel,
+  type GitController,
+  type GitWorktreesController,
+} from "@/features/git";
 import {
   WorkspaceRecents,
+  WorktreeSwitcher,
   parseWorkspaceId,
+  projectActiveRoot,
   type ProjectConfig,
   type WorkspaceId,
   type WorkspaceRef,
@@ -60,11 +66,13 @@ type WorkspaceChromeProps = {
   recents: WorkspaceRef[];
   hosts: Host[];
   projectsByHost: Record<string, ProjectConfig[]>;
+  gitWorktrees: GitWorktreesController | null;
   onConnect: (hostId: string) => void;
   onDisconnect: (host: Host) => void;
   onEditHost: (hostId: string) => void;
   onBack: () => void;
   onSaveProject?: () => void;
+  onSetProjectWorktree?: (worktreePath: string | null) => void;
   onOpenRecent: (ref: WorkspaceRef) => void;
   onReorderRecents: (orderedIds: string[]) => void;
   onSelectTab: (tabId: string) => void;
@@ -96,11 +104,13 @@ export function createWorkspaceSessionChrome({
   recents,
   hosts,
   projectsByHost,
+  gitWorktrees,
   onConnect,
   onDisconnect,
   onEditHost,
   onBack,
   onSaveProject,
+  onSetProjectWorktree,
   onOpenRecent,
   onReorderRecents,
   onSelectTab,
@@ -136,14 +146,27 @@ export function createWorkspaceSessionChrome({
     ) : null;
 
   const recentsControl = (
-    <WorkspaceRecents
-      recents={recents}
-      hosts={hosts}
-      projectsByHost={projectsByHost}
-      activeWorkspaceId={activeWorkspaceId}
-      onSelect={onOpenRecent}
-      onReorder={onReorderRecents}
-    />
+    <div className="flex min-w-0 items-center gap-0.5">
+      <WorkspaceRecents
+        recents={recents}
+        hosts={hosts}
+        projectsByHost={projectsByHost}
+        activeWorkspaceId={activeWorkspaceId}
+        onSelect={onOpenRecent}
+        onReorder={onReorderRecents}
+      />
+      {activeProject && gitWorktrees && onSetProjectWorktree ? (
+        <WorktreeSwitcher
+          project={activeProject}
+          worktrees={gitWorktrees}
+          connected={
+            selectedHost != null &&
+            (selectedIsLocal || selectedHost.status === "connected")
+          }
+          onSelect={onSetProjectWorktree}
+        />
+      ) : null}
+    </div>
   );
 
   const sessionHeader =
@@ -152,7 +175,7 @@ export function createWorkspaceSessionChrome({
         host={selectedHost}
         scopeLabel={activeScopeLabel}
         scopePath={
-          activeProject?.path ??
+          (activeProject ? projectActiveRoot(activeProject) : null) ??
           (canSaveAdhocProject ? activeShellCwd ?? filesPath : null)
         }
         connecting={connecting}

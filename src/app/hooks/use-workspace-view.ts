@@ -1,11 +1,13 @@
 import { useEffect, useMemo } from "react";
 import type { AppPage, ForwardFormMode } from "@/app/types";
 import type { useForwards } from "@/features/forwards";
-import { useGit } from "@/features/git";
+import { useGit, useGitWorktrees } from "@/features/git";
 import { isLocalHost, type Host } from "@/features/hosts";
 import { useFiles } from "@/features/files";
 import {
   parseWorkspaceId,
+  pathsMatch,
+  projectActiveRoot,
   scopeLabel,
   type useProjects,
   type WorkspaceId,
@@ -79,8 +81,8 @@ export function useWorkspaceView({
   }, [activeProject?.name, page]);
 
   const projectRootPath =
-    page.name === "workspace" && page.scope.kind === "project"
-      ? (activeProject?.path ?? null)
+    page.name === "workspace" && page.scope.kind === "project" && activeProject
+      ? projectActiveRoot(activeProject)
       : null;
 
   const selectedSessions = activeWorkspaceId
@@ -155,6 +157,37 @@ export function useWorkspaceView({
     enabled: gitChromeOpen,
     cwd: gitCwd,
   });
+
+  const worktreeListCwd = activeProject?.path ?? null;
+  const gitWorktrees = useGitWorktrees({
+    hostId: selectedHost?.id ?? "__none__",
+    connected:
+      selectedHost != null &&
+      (selectedIsLocal || selectedHost.status === "connected"),
+    enabled: inWorkspace && activeProject != null,
+    cwd: worktreeListCwd,
+  });
+
+  useEffect(() => {
+    if (!activeProject || gitWorktrees.loading || gitWorktrees.error) return;
+    if (gitWorktrees.worktrees.length === 0) return;
+    const override = activeProject.activeWorktreePath?.trim();
+    if (!override || pathsMatch(override, activeProject.path)) return;
+    const known = gitWorktrees.worktrees.some((entry) =>
+      pathsMatch(entry.path, override),
+    );
+    if (known) return;
+    void projects.saveProject({
+      ...activeProject,
+      activeWorktreePath: null,
+    });
+  }, [
+    activeProject,
+    gitWorktrees.error,
+    gitWorktrees.loading,
+    gitWorktrees.worktrees,
+    projects.saveProject,
+  ]);
 
   const showFileRail =
     isDesktop &&
@@ -261,6 +294,7 @@ export function useWorkspaceView({
     shellChromeOpen,
     files,
     git,
+    gitWorktrees,
     showFileRail,
     liveTerminals,
     shellActiveSessionId,

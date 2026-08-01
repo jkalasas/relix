@@ -383,6 +383,73 @@ async fn commit_files_detects_rename() {
 }
 
 #[tokio::test]
+async fn worktree_list_add_remove() {
+    let fx = Fixture::new();
+    let backend = GitBackend::Local;
+    let root = fx.root_str();
+
+    fx.write("seed.txt", "seed\n");
+    operations::stage(&backend, HOST, root, &["seed.txt".into()])
+        .await
+        .expect("stage seed");
+    operations::commit(&backend, HOST, root, "seed")
+        .await
+        .expect("commit seed");
+
+    let listed = operations::list_worktrees(&backend, HOST, root)
+        .await
+        .expect("list main");
+    assert_eq!(listed.worktrees.len(), 1);
+    assert!(listed.worktrees[0].is_main);
+    assert_eq!(listed.worktrees[0].branch.as_deref(), Some("main"));
+
+    let sibling = fx.root.parent().expect("parent").join("relix-wt-feature");
+    let sibling_str = sibling.to_str().expect("utf8");
+
+    let added = operations::add_worktree(
+        &backend,
+        HOST,
+        root,
+        sibling_str,
+        Some("feature"),
+        true,
+        None,
+    )
+    .await
+    .expect("add worktree");
+    assert!(!added.is_main);
+    assert_eq!(added.branch.as_deref(), Some("feature"));
+
+    let listed = operations::list_worktrees(&backend, HOST, root)
+        .await
+        .expect("list after add");
+    assert_eq!(listed.worktrees.len(), 2);
+    assert!(
+        listed
+            .worktrees
+            .iter()
+            .any(|w| w.branch.as_deref() == Some("feature")),
+        "feature worktree missing: {:?}",
+        listed.worktrees
+    );
+
+    operations::remove_worktree(&backend, HOST, root, sibling_str, false)
+        .await
+        .expect("remove worktree");
+
+    let listed = operations::list_worktrees(&backend, HOST, root)
+        .await
+        .expect("list after remove");
+    assert_eq!(listed.worktrees.len(), 1);
+    assert!(listed.worktrees[0].is_main);
+
+    let err = operations::remove_worktree(&backend, HOST, root, root, false)
+        .await
+        .expect_err("main remove should fail");
+    assert_eq!(err.code, GitErrorCode::CommandFailed);
+}
+
+#[tokio::test]
 async fn stage_literal_pathspec_with_glob_chars() {
     let fx = Fixture::new();
     let backend = GitBackend::Local;

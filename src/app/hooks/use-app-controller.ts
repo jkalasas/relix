@@ -11,7 +11,7 @@ import { useWorkspace } from "@/app/hooks/use-workspace";
 import { useWorkspaceActions } from "@/app/hooks/use-workspace-actions";
 import { useWorkspaceView } from "@/app/hooks/use-workspace-view";
 import { useForwards } from "@/features/forwards";
-import { useProjects } from "@/features/projects";
+import { projectActiveRoot, useProjects } from "@/features/projects";
 import { useSessionTabs } from "@/features/session-tabs";
 import { useIsMobileOs, useShells } from "@/features/shells";
 import { useMediaQuery } from "@/hooks/use-media-query";
@@ -224,8 +224,10 @@ export function useAppController() {
   );
 
   const getProjectPath = useCallback(
-    (hostId: string, projectId: string) =>
-      projects.getProject(hostId, projectId)?.path,
+    (hostId: string, projectId: string) => {
+      const project = projects.getProject(hostId, projectId);
+      return project ? projectActiveRoot(project) : undefined;
+    },
     [projects.getProject],
   );
 
@@ -252,6 +254,7 @@ export function useAppController() {
         recents: workspace.recents,
         hosts: hosts.hosts,
         projectsByHost: projects.projectsByHost,
+        gitWorktrees: view.activeProject ? view.gitWorktrees : null,
         onConnect: connectHost,
         onDisconnect: hostLife.requestDisconnect,
         onEditHost: workspace.openEditHost,
@@ -259,6 +262,16 @@ export function useAppController() {
         onSaveProject: view.canSaveAdhocProject
           ? actions.handleSaveAdhocAsProject
           : undefined,
+        onSetProjectWorktree:
+          view.activeProject && view.selectedHost
+            ? (worktreePath) => {
+                void actions.handleSetProjectWorktree(
+                  view.selectedHost!.id,
+                  view.activeProject!.id,
+                  worktreePath,
+                );
+              }
+            : undefined,
         onOpenRecent: workspace.openRecent,
         onReorderRecents: workspace.reorderRecents,
         onSelectTab: sessions.selectSessionTab,
@@ -272,6 +285,7 @@ export function useAppController() {
       }),
     [
       actions.handleSaveAdhocAsProject,
+      actions.handleSetProjectWorktree,
       connectHost,
       hostLife.requestDisconnect,
       hosts.connectingId,
@@ -293,6 +307,7 @@ export function useAppController() {
       view.activeWorkspaceId,
       view.canSaveAdhocProject,
       view.files.path,
+      view.gitWorktrees,
       view.inWorkspace,
       view.selectedFiles,
       view.selectedHost,

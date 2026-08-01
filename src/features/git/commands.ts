@@ -11,6 +11,8 @@ import type {
   GitPushResult,
   GitRepoInfo,
   GitStatusSnapshot,
+  GitWorktreeEntry,
+  GitWorktreeListResult,
 } from "@/features/git/types";
 
 export function gitResolveRepo(hostId: string, cwd: string) {
@@ -128,6 +130,44 @@ export function gitListBranches(hostId: string, repoRoot: string) {
   return invoke<GitBranchListResult>("git_list_branches", {
     hostId,
     repoRoot,
+  });
+}
+
+export function gitListWorktrees(hostId: string, cwd: string) {
+  return invoke<GitWorktreeListResult>("git_list_worktrees", { hostId, cwd });
+}
+
+export function gitAddWorktree(
+  hostId: string,
+  repoRoot: string,
+  path: string,
+  options?: {
+    branch?: string | null;
+    createBranch?: boolean;
+    startPoint?: string | null;
+  },
+) {
+  return invoke<GitWorktreeEntry>("git_add_worktree", {
+    hostId,
+    repoRoot,
+    path,
+    branch: options?.branch ?? null,
+    createBranch: options?.createBranch ?? false,
+    startPoint: options?.startPoint ?? null,
+  });
+}
+
+export function gitRemoveWorktree(
+  hostId: string,
+  repoRoot: string,
+  path: string,
+  force = false,
+) {
+  return invoke<void>("git_remove_worktree", {
+    hostId,
+    repoRoot,
+    path,
+    force,
   });
 }
 

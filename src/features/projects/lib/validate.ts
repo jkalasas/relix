@@ -1,3 +1,4 @@
+import { pathsMatch } from "@/features/projects/lib/project-root";
 import type { ProjectConfig } from "@/features/projects/types";
 
 export function validateProjectConfig(
@@ -11,9 +12,14 @@ export function validateProjectConfig(
 export function normalizeProjectConfig(
   form: ProjectConfig,
 ): ProjectConfig {
+  const path = form.path.trim();
+  const override = form.activeWorktreePath?.trim() || null;
+  const activeWorktreePath =
+    override && !pathsMatch(override, path) ? override : null;
   return {
     ...form,
     name: form.name.trim(),
-    path: form.path.trim(),
+    path,
+    activeWorktreePath,
   };
 }

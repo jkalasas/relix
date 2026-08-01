@@ -216,6 +216,51 @@ pub async fn git_list_branches(
 }
 
 #[tauri::command]
+pub async fn git_list_worktrees(
+    host_id: String,
+    cwd: String,
+    state: State<'_, SshManager>,
+) -> Result<GitWorktreeListResult, GitError> {
+    let backend = backend_for_host(&host_id, &state).await?;
+    operations::list_worktrees(&backend, &host_id, &cwd).await
+}
+
+#[tauri::command]
+pub async fn git_add_worktree(
+    host_id: String,
+    repo_root: String,
+    path: String,
+    branch: Option<String>,
+    create_branch: bool,
+    start_point: Option<String>,
+    state: State<'_, SshManager>,
+) -> Result<GitWorktreeEntry, GitError> {
+    let backend = backend_for_host(&host_id, &state).await?;
+    operations::add_worktree(
+        &backend,
+        &host_id,
+        &repo_root,
+        &path,
+        branch.as_deref(),
+        create_branch,
+        start_point.as_deref(),
+    )
+    .await
+}
+
+#[tauri::command]
+pub async fn git_remove_worktree(
+    host_id: String,
+    repo_root: String,
+    path: String,
+    force: bool,
+    state: State<'_, SshManager>,
+) -> Result<(), GitError> {
+    let backend = backend_for_host(&host_id, &state).await?;
+    operations::remove_worktree(&backend, &host_id, &repo_root, &path, force).await
+}
+
+#[tauri::command]
 pub async fn git_checkout_branch(
     host_id: String,
     repo_root: String,

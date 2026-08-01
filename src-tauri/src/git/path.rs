@@ -45,6 +45,23 @@ pub fn validate_branch_name(name: &str) -> Result<()> {
     Ok(())
 }
 
+pub fn validate_worktree_path(path: &str) -> Result<String> {
+    let trimmed = path.trim();
+    if trimmed.is_empty() || trimmed.contains('\0') {
+        return Err(GitError::new(
+            GitErrorCode::InvalidPath,
+            "invalid worktree path",
+        ));
+    }
+    if trimmed.starts_with('-') {
+        return Err(GitError::new(
+            GitErrorCode::InvalidPath,
+            "worktree path must not start with -",
+        ));
+    }
+    Ok(trimmed.replace('\\', "/"))
+}
+
 pub fn sha_is_safe(sha: &str) -> bool {
     !sha.is_empty() && sha.len() <= 64 && sha.chars().all(|c| c.is_ascii_hexdigit())
 }

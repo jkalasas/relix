@@ -164,7 +164,7 @@ Hosts page  →  Projects page  →  Workspace
 | **Workspace** | Session for one host + scope (Ad hoc or project). Tabs, shells, files, host-level ports, git status |
 
 **Ad hoc** — no saved project. Files and git follow the active shell cwd (OSC7 / tmux path).
-**Project** — saved name + directory on that host. Shells open in that path; files and git stay rooted there.
+**Project** — saved name + home directory on that host. Optional `activeWorktreePath` selects a git worktree; shells open at the effective root (worktree or home); files and git stay rooted there. Switch / add / remove worktrees from the workspace header.
 
 Open workspaces stay alive in the background. Jump via **Recents** (header / title bar). Back: workspace → projects → hosts.
 
@@ -223,7 +223,7 @@ Hosts                        Projects                     Workspace
 1. **SSH / Terminal** — session readiness and PTY. Disconnected/error states explain next step and offer Connect / Retry. On mobile, terminal is full-bleed; soft keyboard must not permanently bury the prompt (scroll + visual viewport). Mobile OS (Android/iOS) shows a bottom accessory key bar (Esc, Ctrl, Alt, Shift, Tab, arrows) with sticky modifiers for the next soft-keyboard key.
 2. **Port forwards** — **host-level** (shared across Ad hoc + projects). Desktop: multi-column mono row. Mobile: stacked row. L / R / D as before. Cyan on active only.
 3. **Files** — path in mono. **Ad hoc:** browser follows shell cwd. **Project:** rooted at project path. Desktop: file tree in left rail while workspace is connected; main pane is shell/editor/Files empty. Mobile: single-pane list + transfer sheet. Local host and remote hosts share the same Files surface.
-4. **Git** — workspace-scoped status panel (local + remote). Same cwd rules as Files. Branch + ahead/behind, changed files, stage / unstage / discard, commit, fetch / pull ff-only / push. Unified diff drill-in: per-file from a row, or the Staged / Changes section label for the full patch in that scope (Back returns to the list). Untracked files are omitted from working-tree patches until staged. No new status hues — mono paths and labels; diff `+`/`-` reuse connected/destructive.
+4. **Git** — workspace-scoped status panel (local + remote). Same cwd rules as Files. Branch + ahead/behind, worktree path, changed files, stage / unstage / discard, commit, fetch / pull ff-only / push. Unified diff drill-in: per-file from a row, or the Staged / Changes section label for the full patch in that scope (Back returns to the list). Untracked files are omitted from working-tree patches until staged. Project worktrees are managed from the workspace header (list / switch / add / remove), not inside the panel. No new status hues — mono paths and labels; diff `+`/`-` reuse connected/destructive.
 
 ### Empty states
 

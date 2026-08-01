@@ -9,6 +9,7 @@ import type {
 } from "@/features/projects";
 import {
   adhocWorkspaceId,
+  pathsMatch,
   projectWorkspaceId,
 } from "@/features/projects";
 import type { useSessionTabs } from "@/features/session-tabs";
@@ -118,6 +119,32 @@ export function useWorkspaceActions({
     workspace.openAddProject,
   ]);
 
+  const handleSetProjectWorktree = useCallback(
+    async (hostId: string, projectId: string, worktreePath: string | null) => {
+      const project = projects.getProject(hostId, projectId);
+      if (!project) return;
+      const nextPath = worktreePath?.trim() || null;
+      const activeWorktreePath =
+        nextPath && !pathsMatch(nextPath, project.path) ? nextPath : null;
+      const current = project.activeWorktreePath?.trim() || null;
+      const currentNormalized =
+        current && !pathsMatch(current, project.path) ? current : null;
+      if (
+        (activeWorktreePath == null && currentNormalized == null) ||
+        (activeWorktreePath != null &&
+          currentNormalized != null &&
+          pathsMatch(activeWorktreePath, currentNormalized))
+      ) {
+        return;
+      }
+      await projects.saveProject({
+        ...project,
+        activeWorktreePath,
+      });
+    },
+    [projects.getProject, projects.saveProject],
+  );
+
   const handleDeleteProject = useCallback(
     async (hostId: string, projectId: string) => {
       const workspaceId = projectWorkspaceId(hostId, projectId);
@@ -170,6 +197,7 @@ export function useWorkspaceActions({
     handleDeleteHost,
     handleSaveProject,
     handleSaveAdhocAsProject,
+    handleSetProjectWorktree,
     handleDeleteProject,
     handleSaveForward,
     handleDeleteForward,

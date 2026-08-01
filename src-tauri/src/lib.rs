@@ -2,10 +2,10 @@ mod ssh;
 pub mod git;
 
 use git::commands::{
-    git_checkout_branch, git_commit, git_commit_file_diff, git_commit_files, git_create_branch,
-    git_diff, git_diff_content, git_discard, git_fetch, git_list_branches, git_log,
-    git_panel_snapshot, git_pull_ff_only, git_push, git_remote_url, git_resolve_repo, git_show_commit,
-    git_stage, git_status, git_unstage,
+    git_add_worktree, git_checkout_branch, git_commit, git_commit_file_diff, git_commit_files,
+    git_create_branch, git_diff, git_diff_content, git_discard, git_fetch, git_list_branches,
+    git_list_worktrees, git_log, git_panel_snapshot, git_pull_ff_only, git_push, git_remote_url,
+    git_remove_worktree, git_resolve_repo, git_show_commit, git_stage, git_status, git_unstage,
 };
 use ssh::commands::{
     host_fs_list, host_fs_mkdir, host_fs_read, host_fs_remove, host_fs_rename, host_fs_write,
@@ -70,6 +70,9 @@ pub fn run() {
             git_commit_files,
             git_commit_file_diff,
             git_list_branches,
+            git_list_worktrees,
+            git_add_worktree,
+            git_remove_worktree,
             git_checkout_branch,
             git_create_branch,
             git_remote_url,

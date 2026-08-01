@@ -3,6 +3,7 @@ export type ProjectConfig = {
   hostId: string;
   name: string;
   path: string;
+  activeWorktreePath?: string | null;
 };
 
 export type WorkspaceScope =
