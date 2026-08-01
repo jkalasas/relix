@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import {
   Check,
   ChevronDown,
-  GitBranch,
+  FolderGit2,
   Plus,
   Trash2,
 } from "lucide-react";
@@ -510,10 +510,11 @@ export function WorktreeSwitcher({
   );
 
   const triggerClass = cn(
-    "h-7 gap-1 px-2 text-[12px] text-muted-foreground hover:text-foreground",
-    "max-md:min-h-9 max-md:px-2",
+    "text-muted-foreground hover:text-foreground",
+    "h-7 gap-1 px-2 text-[12px] max-md:size-9 max-md:px-0",
     className,
   );
+  const triggerAriaLabel = `Switch worktree · ${triggerLabel}`;
 
   const addDialog = isDesktop ? (
     <Dialog open={addOpen} onOpenChange={setAddOpen}>
@@ -583,13 +584,13 @@ export function WorktreeSwitcher({
                 type="button"
                 variant="ghost"
                 size="sm"
-                aria-label="Switch worktree"
+                aria-label={triggerAriaLabel}
                 className={triggerClass}
                 disabled={worktrees.loading && entries.length === 0}
               />
             }
           >
-            <GitBranch className="size-3.5" />
+            <FolderGit2 className="size-3.5" />
             <span className="max-w-[8rem] truncate font-mono">
               {triggerLabel}
             </span>
@@ -624,13 +625,12 @@ export function WorktreeSwitcher({
         type="button"
         variant="ghost"
         size="sm"
-        aria-label="Switch worktree"
+        aria-label={triggerAriaLabel}
         className={triggerClass}
         onClick={() => setDrawerOpen(true)}
         disabled={worktrees.loading && entries.length === 0}
       >
-        <GitBranch className="size-3.5" />
-        <span className="max-w-[6rem] truncate font-mono">{triggerLabel}</span>
+        <FolderGit2 className="size-3.5" />
       </Button>
       <Drawer
         open={drawerOpen}

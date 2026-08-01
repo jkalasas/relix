@@ -1,15 +1,25 @@
-import { ArrowLeft, FolderPlus } from "lucide-react";
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
+import { ArrowLeft, FolderPlus, MoreHorizontal } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import {
+  Drawer,
+  DrawerContent,
+  DrawerFooter,
+  DrawerHeader,
+  DrawerTitle,
+} from "@/components/ui/drawer";
 import { SessionChip } from "@/components/status/session-chip";
+import { StatusDot } from "@/components/status/status-dot";
 import { isLocalHost } from "@/features/hosts/lib/local-host";
 import type { Host } from "@/features/hosts/types";
+import { useMediaQuery } from "@/hooks/use-media-query";
 import { cn } from "@/lib/utils";
 
 type SessionHeaderProps = {
   host: Host;
   scopeLabel: string;
   scopePath?: string | null;
+  scopeHint?: string | null;
   connecting?: boolean;
   onConnect: () => void;
   onDisconnect: () => void;
@@ -17,14 +27,38 @@ type SessionHeaderProps = {
   onBack?: () => void;
   onSaveProject?: () => void;
   leadingExtra?: ReactNode;
+  trailingExtra?: ReactNode;
   variant?: "default" | "titlebar";
   className?: string;
 };
+
+function shortScopePath(path: string): string {
+  const trimmed = path.replace(/[/\\]+$/, "");
+  if (!trimmed) return path;
+  const sep = path.includes("\\") ? "\\" : "/";
+  const parts = trimmed.split(/[/\\]+/).filter(Boolean);
+  if (parts.length <= 2) return parts.join(sep);
+  return parts.slice(-2).join(sep);
+}
+
+function secondaryDisplay(
+  scopeHint: string | null | undefined,
+  scopePath: string | null | undefined,
+  target: string,
+  compact: boolean,
+): string {
+  const hint = scopeHint?.trim();
+  if (hint) return hint;
+  const path = scopePath?.trim();
+  if (path) return compact ? shortScopePath(path) : path;
+  return target;
+}
 
 export function SessionHeader({
   host,
   scopeLabel,
   scopePath,
+  scopeHint,
   connecting = false,
   onConnect,
   onDisconnect,
@@ -32,6 +66,7 @@ export function SessionHeader({
   onBack,
   onSaveProject,
   leadingExtra,
+  trailingExtra,
   variant = "default",
   className,
 }: SessionHeaderProps) {
@@ -41,21 +76,30 @@ export function SessionHeader({
     : `${host.user}@${host.hostname}:${host.port}`;
   const isConnected = host.status === "connected";
   const titlebar = variant === "titlebar";
-  const secondary = scopePath?.trim()
+  const isDesktop = useMediaQuery("(min-width: 768px)");
+  const [moreOpen, setMoreOpen] = useState(false);
+
+  const fullSecondary = scopePath?.trim()
     ? `${scopeLabel} · ${scopePath}`
     : scopeLabel;
+  const secondary = secondaryDisplay(
+    scopeHint,
+    scopePath,
+    target,
+    !isDesktop && !titlebar,
+  );
 
-  const actions = (
+  const hasRemoteActions = !local;
+  const hasMoreItems = Boolean(onSaveProject) || hasRemoteActions;
+
+  const inlineActions = (
     <div
       className={cn(
         "flex shrink-0 items-center",
         titlebar ? "gap-1.5" : "gap-1.5 sm:gap-2",
       )}
     >
-      <SessionChip
-        status={host.status}
-        className={titlebar ? undefined : "max-sm:hidden"}
-      />
+      <SessionChip status={host.status} />
       {onSaveProject ? (
         <Button
           type="button"
@@ -63,7 +107,9 @@ export function SessionHeader({
           size="sm"
           onClick={onSaveProject}
           className={cn(
-            titlebar ? "h-7 gap-1 px-2 text-[12px]" : "min-h-9 gap-1 px-3 md:min-h-7",
+            titlebar
+              ? "h-7 gap-1 px-2 text-[12px]"
+              : "min-h-9 gap-1 px-3 md:min-h-7",
           )}
         >
           <FolderPlus className="size-3.5" />
@@ -133,46 +179,158 @@ export function SessionHeader({
             <span className="text-muted-foreground/70"> · {scopeLabel}</span>
           </p>
         </div>
-        {actions}
+        {trailingExtra}
+        {inlineActions}
       </div>
     );
   }
 
   return (
-    <header className={cn("shrink-0 border-b border-border", className)}>
-      <div className="flex min-h-12 flex-wrap items-center justify-between gap-x-3 gap-y-2 px-2 py-2 sm:px-3 md:h-10 md:flex-nowrap md:px-3 md:py-0">
-        <div className="flex min-w-0 flex-1 items-center gap-1.5">
-          {onBack ? (
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon-sm"
-              onClick={onBack}
-              aria-label="Back to projects"
-              className="size-9 shrink-0"
-            >
-              <ArrowLeft />
-            </Button>
-          ) : null}
-          {leadingExtra}
-          <div className="min-w-0">
-            <p className="truncate text-sm font-medium text-foreground">
+    <header
+      className={cn(
+        "shrink-0 border-b border-border pt-[env(safe-area-inset-top)]",
+        className,
+      )}
+    >
+      <div className="flex h-12 items-center gap-1 px-2 sm:px-3 md:h-10 md:gap-1.5 md:px-3">
+        {onBack ? (
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            onClick={onBack}
+            aria-label="Back to projects"
+            className="size-9 shrink-0 md:size-8"
+          >
+            <ArrowLeft />
+          </Button>
+        ) : null}
+
+        {leadingExtra}
+
+        <div className="min-w-0 flex-1">
+          <p className="flex min-w-0 items-center gap-1.5 truncate text-sm font-medium text-foreground">
+            <StatusDot
+              status={host.status}
+              className="size-1.5 shrink-0 md:hidden"
+            />
+            <span className="truncate">
               {host.name}
               <span className="font-normal text-muted-foreground">
                 {" "}
                 · {scopeLabel}
               </span>
-            </p>
-            <p
-              className="truncate font-mono text-[11px] text-muted-foreground"
-              title={secondary}
-            >
-              {scopePath?.trim() ? scopePath : target}
-            </p>
-          </div>
+            </span>
+          </p>
+          <p
+            className="truncate font-mono text-[11px] text-muted-foreground"
+            title={fullSecondary}
+          >
+            {secondary}
+          </p>
         </div>
-        {actions}
+
+        {trailingExtra}
+
+        {isDesktop ? (
+          inlineActions
+        ) : hasMoreItems ? (
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            aria-label="Session actions"
+            className="size-9 shrink-0 text-muted-foreground hover:text-foreground"
+            onClick={() => setMoreOpen(true)}
+          >
+            <MoreHorizontal className="size-4" />
+          </Button>
+        ) : null}
       </div>
+
+      {!isDesktop && hasMoreItems ? (
+        <Drawer
+          open={moreOpen}
+          onOpenChange={setMoreOpen}
+          swipeDirection="down"
+          showSwipeHandle
+        >
+          <DrawerContent>
+            <DrawerHeader className="text-left">
+              <DrawerTitle className="truncate">
+                {host.name}
+                <span className="font-normal text-muted-foreground">
+                  {" "}
+                  · {scopeLabel}
+                </span>
+              </DrawerTitle>
+            </DrawerHeader>
+            <DrawerFooter className="gap-2 pb-[max(1rem,env(safe-area-inset-bottom))]">
+              <div className="flex justify-start pb-1">
+                <SessionChip status={host.status} />
+              </div>
+              {onSaveProject ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="min-h-11 w-full gap-2"
+                  onClick={() => {
+                    setMoreOpen(false);
+                    onSaveProject();
+                  }}
+                >
+                  <FolderPlus className="size-3.5" />
+                  Save project
+                </Button>
+              ) : null}
+              {local ? null : (
+                <>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="min-h-11 w-full"
+                    onClick={() => {
+                      setMoreOpen(false);
+                      onEdit();
+                    }}
+                  >
+                    Edit host
+                  </Button>
+                  {isConnected ? (
+                    <Button
+                      type="button"
+                      variant="destructive"
+                      size="sm"
+                      className="min-h-11 w-full"
+                      onClick={() => {
+                        setMoreOpen(false);
+                        onDisconnect();
+                      }}
+                    >
+                      Disconnect
+                    </Button>
+                  ) : (
+                    <Button
+                      type="button"
+                      size="sm"
+                      className="min-h-11 w-full"
+                      disabled={connecting}
+                      onClick={() => {
+                        setMoreOpen(false);
+                        onConnect();
+                      }}
+                    >
+                      {connecting ? "Connecting…" : "Connect"}
+                    </Button>
+                  )}
+                </>
+              )}
+            </DrawerFooter>
+          </DrawerContent>
+        </Drawer>
+      ) : null}
     </header>
   );
 }

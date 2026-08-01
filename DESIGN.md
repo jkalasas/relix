@@ -188,7 +188,7 @@ Workspace (connected):
 |---|---|---|
 | Title bar | 40px (`2.5rem`) | Frameless window. Tabs + session header + window controls when in workspace. Drag via `data-tauri-drag-region` |
 | File tree rail | ~240px default, drag-resizable (180–480px); collapsible | Only on **connected workspace**. Not a host catalog. Hosts link returns to hosts page |
-| Session header | 40px desktop / 48px mobile | Host · scope label; chip + connect; back to projects; recents switcher |
+| Session header | 40px desktop / 48px mobile | Host · scope label; chip + connect (desktop inline / mobile More drawer); back to projects; recents + worktree trailing on mobile |
 | Session tabs | title bar (desktop) / below header (mobile) | Document strip (shells, files, tools); elevated active pill |
 | Workspace body | flex-1 | Active tab panel (`SidebarInset`) |
 
@@ -199,11 +199,11 @@ Workspace (connected):
 ```
 Hosts                        Projects                     Workspace
 ┌──────────────────┐         ┌──────────────────┐         ┌──────────────────┐
-│ Relix       [+]  │         │ ← bastion-prod ● │         │ ← host · Ad hoc  │
-│ ● bastion-prod › │  ──▶    │ Ad hoc           │  ──▶    │ [shell][file]…   │
-│ ○ staging      › │         │ api  /srv/api    │         │ workspace body   │
-└──────────────────┘         │ + Project        │         └──────────────────┘
-                             └──────────────────┘
+│ Relix       [+]  │         │ ← bastion-prod ● │         │ ← host · project │
+│ ● bastion-prod › │  ──▶    │ Ad hoc           │  ──▶    │   branch   🕐 ⑂ ⋮│
+│ ○ staging      › │         │ api  /srv/api    │         │ [shell][file]…   │
+└──────────────────┘         │ + Project        │         │ workspace body   │
+                             └──────────────────┘         └──────────────────┘
 ```
 
 | Rule | Detail |
@@ -212,6 +212,7 @@ Hosts                        Projects                     Workspace
 | Open host | Pushes projects page |
 | Open Ad hoc / project | Pushes workspace full-screen |
 | Back | Workspace → projects → hosts; Esc / Android back same stack |
+| Workspace header | Single row: back · host · scope · trailing icons (recents, worktree, more). Title `flex-1` + truncate. Worktree is icon-only; Edit / Disconnect / Save project live in a More drawer. Secondary line is branch or short path — never a full absolute path mid-truncation |
 | Tabs | Scrollable document tabs; ≥44px tall |
 | Tools | Trailing Files / Ports / Git open or focus singleton tool tabs |
 | Primary actions | Thumb zone when possible |

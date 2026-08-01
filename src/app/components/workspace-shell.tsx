@@ -26,6 +26,7 @@ import {
   WorkspaceRecents,
   WorktreeSwitcher,
   parseWorkspaceId,
+  pathsMatch,
   projectActiveRoot,
   type ProjectConfig,
   type WorkspaceId,
@@ -145,8 +146,8 @@ export function createWorkspaceSessionChrome({
       />
     ) : null;
 
-  const recentsControl = (
-    <div className="flex min-w-0 items-center gap-0.5">
+  const sessionControls = (
+    <div className="flex shrink-0 items-center gap-0.5">
       <WorkspaceRecents
         recents={recents}
         hosts={hosts}
@@ -169,22 +170,38 @@ export function createWorkspaceSessionChrome({
     </div>
   );
 
+  const activeRoot = activeProject ? projectActiveRoot(activeProject) : null;
+  const currentWorktree =
+    activeRoot && gitWorktrees
+      ? (gitWorktrees.worktrees.find((entry) =>
+          pathsMatch(entry.path, activeRoot),
+        ) ?? null)
+      : null;
+  const scopeHint = currentWorktree
+    ? currentWorktree.branch ||
+      (currentWorktree.head
+        ? `detached · ${currentWorktree.head.slice(0, 7)}`
+        : null)
+    : null;
+  const scopePath =
+    activeRoot ??
+    (canSaveAdhocProject ? (activeShellCwd ?? filesPath) : null);
+
   const sessionHeader =
     inWorkspace && selectedHost ? (
       <SessionHeader
         host={selectedHost}
         scopeLabel={activeScopeLabel}
-        scopePath={
-          (activeProject ? projectActiveRoot(activeProject) : null) ??
-          (canSaveAdhocProject ? activeShellCwd ?? filesPath : null)
-        }
+        scopePath={scopePath}
+        scopeHint={scopeHint}
         connecting={connecting}
         onConnect={() => onConnect(selectedHost.id)}
         onDisconnect={() => onDisconnect(selectedHost)}
         onEdit={() => onEditHost(selectedHost.id)}
         onBack={onBack}
         onSaveProject={onSaveProject}
-        leadingExtra={recentsControl}
+        leadingExtra={useTitlebarSessionChrome ? sessionControls : undefined}
+        trailingExtra={useTitlebarSessionChrome ? undefined : sessionControls}
         variant={useTitlebarSessionChrome ? "titlebar" : "default"}
       />
     ) : null;
