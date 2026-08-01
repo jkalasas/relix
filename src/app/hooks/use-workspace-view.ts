@@ -1,6 +1,7 @@
 import { useEffect, useMemo } from "react";
 import type { AppPage, ForwardFormMode } from "@/app/types";
 import type { useForwards } from "@/features/forwards";
+import { useGit } from "@/features/git";
 import { isLocalHost, type Host } from "@/features/hosts";
 import { useFiles } from "@/features/files";
 import {
@@ -122,8 +123,15 @@ export function useWorkspaceView({
   const portsChromeOpen =
     inWorkspace && !selectedIsLocal && activeTab?.kind === "ports";
 
+  const gitChromeOpen = inWorkspace && activeTab?.kind === "git";
+
   const shellChromeOpen =
-    inWorkspace && !explorerChromeOpen && !portsChromeOpen;
+    inWorkspace &&
+    !explorerChromeOpen &&
+    !portsChromeOpen &&
+    !gitChromeOpen;
+
+  const gitCwd = projectRootPath ?? activeShellCwd;
 
   const files = useFiles({
     hostId: selectedHost?.id ?? "__none__",
@@ -139,6 +147,13 @@ export function useWorkspaceView({
       selectedIsLocal || !selectedHost || projectRootPath
         ? undefined
         : trackedSession?.tmuxWindowId,
+  });
+
+  const git = useGit({
+    hostId: selectedHost?.id ?? "__none__",
+    connected: selectedHost?.status === "connected",
+    enabled: gitChromeOpen,
+    cwd: gitCwd,
   });
 
   const showFileRail =
@@ -242,8 +257,10 @@ export function useWorkspaceView({
     inWorkspace,
     explorerChromeOpen,
     portsChromeOpen,
+    gitChromeOpen,
     shellChromeOpen,
     files,
+    git,
     showFileRail,
     liveTerminals,
     shellActiveSessionId,

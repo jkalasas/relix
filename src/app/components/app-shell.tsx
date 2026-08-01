@@ -118,9 +118,11 @@ export function AppShell({ app }: AppShellProps) {
               sessionHeader={sessionHeader}
               sessionTabBar={sessionTabBar}
               portsChromeOpen={view.portsChromeOpen}
+              gitChromeOpen={view.gitChromeOpen}
               explorerChromeOpen={view.explorerChromeOpen}
               selectedForwards={view.selectedForwards}
               files={view.files}
+              git={view.git}
               activeTab={view.activeTab}
               openFileTabs={view.openFileTabs}
               selectedFiles={view.selectedFiles}

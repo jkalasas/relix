@@ -40,11 +40,13 @@ export function useAppController() {
   const shortcutShellRef = useRef(() => {});
   const shortcutFilesRef = useRef(() => {});
   const shortcutPortsRef = useRef(() => {});
+  const shortcutGitRef = useRef(() => {});
 
   const workspace = useWorkspace({
     onShortcutShell: () => shortcutShellRef.current(),
     onShortcutFiles: () => shortcutFilesRef.current(),
     onShortcutPorts: () => shortcutPortsRef.current(),
+    onShortcutGit: () => shortcutGitRef.current(),
   });
 
   const view = useWorkspaceView({
@@ -81,6 +83,7 @@ export function useAppController() {
   shortcutShellRef.current = sessions.onShortcutShell;
   shortcutFilesRef.current = sessions.onShortcutFiles;
   shortcutPortsRef.current = sessions.onShortcutPorts;
+  shortcutGitRef.current = sessions.onShortcutGit;
 
   const actions = useWorkspaceActions({
     page: workspace.page,
@@ -151,6 +154,11 @@ export function useAppController() {
   const openPortsTab = useCallback(() => {
     if (!view.activeWorkspaceId) return;
     sessionTabs.openToolTab(view.activeWorkspaceId, "ports");
+  }, [sessionTabs.openToolTab, view.activeWorkspaceId]);
+
+  const openGitTab = useCallback(() => {
+    if (!view.activeWorkspaceId) return;
+    sessionTabs.openToolTab(view.activeWorkspaceId, "git");
   }, [sessionTabs.openToolTab, view.activeWorkspaceId]);
 
   const renameShell = useCallback(
@@ -260,6 +268,7 @@ export function useAppController() {
         onNewShell: sessions.handleOpenShell,
         onOpenFiles: openFilesTab,
         onOpenPorts: openPortsTab,
+        onOpenGit: openGitTab,
       }),
     [
       actions.handleSaveAdhocAsProject,
@@ -268,6 +277,7 @@ export function useAppController() {
       hosts.connectingId,
       hosts.hosts,
       openFilesTab,
+      openGitTab,
       openPortsTab,
       projects.projectsByHost,
       renameShell,
@@ -316,6 +326,7 @@ export function useAppController() {
     connectHost,
     openFilesTab,
     openPortsTab,
+    openGitTab,
     renameShell,
     reorderTabs,
     changeFileText,

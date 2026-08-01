@@ -301,6 +301,12 @@ export function useSessionBridge({
     sessionTabsRef.current.openToolTab(currentWorkspaceId, "ports");
   }, []);
 
+  const onShortcutGit = useCallback(() => {
+    const currentWorkspaceId = workspaceIdRef.current;
+    if (!currentWorkspaceId) return;
+    sessionTabsRef.current.openToolTab(currentWorkspaceId, "git");
+  }, []);
+
   return {
     openShell,
     selectShell,
@@ -314,5 +320,6 @@ export function useSessionBridge({
     onShortcutShell,
     onShortcutFiles,
     onShortcutPorts,
+    onShortcutGit,
   };
 }

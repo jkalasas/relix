@@ -12,6 +12,7 @@ type UseWorkspaceOptions = {
   onShortcutFiles?: () => void;
   onShortcutPorts?: () => void;
   onShortcutShell?: () => void;
+  onShortcutGit?: () => void;
 };
 
 function pageWorkspaceId(page: AppPage): WorkspaceId | null {
@@ -23,6 +24,7 @@ export function useWorkspace({
   onShortcutFiles,
   onShortcutPorts,
   onShortcutShell,
+  onShortcutGit,
 }: UseWorkspaceOptions) {
   const [page, setPage] = useState<AppPage>({ name: "hosts" });
   const [forwardFormMode, setForwardFormMode] = useState<ForwardFormMode>(null);
@@ -291,6 +293,10 @@ export function useWorkspace({
           onShortcutPorts?.();
           return;
         }
+        if (event.key === "4") {
+          onShortcutGit?.();
+          return;
+        }
       }
 
       if (event.key === "Escape") {
@@ -307,6 +313,7 @@ export function useWorkspace({
     onShortcutFiles,
     onShortcutPorts,
     onShortcutShell,
+    onShortcutGit,
     page.name,
   ]);
 

@@ -4,7 +4,8 @@ export type SessionTab =
   | { id: string; kind: "shell"; shellId: string }
   | { id: string; kind: "file"; path: string; name: string }
   | { id: string; kind: "files" }
-  | { id: string; kind: "ports" };
+  | { id: string; kind: "ports" }
+  | { id: string; kind: "git" };
 
 export type SessionTabKind = SessionTab["kind"];
 
@@ -30,6 +31,7 @@ export function fileTabId(path: string): string {
 
 export const FILES_TAB_ID = "files";
 export const PORTS_TAB_ID = "ports";
+export const GIT_TAB_ID = "git";
 
 export function isShellTab(
   tab: SessionTab,

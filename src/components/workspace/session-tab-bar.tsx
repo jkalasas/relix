@@ -12,6 +12,7 @@ import {
   Code2,
   FileText,
   Folder,
+  GitBranch,
   Network,
   Plus,
   Sparkles,
@@ -69,6 +70,7 @@ type SessionTabBarProps = {
   onNewShell: (launchId?: ShellLaunchId) => void;
   onOpenFiles: () => void;
   onOpenPorts: () => void;
+  onOpenGit: () => void;
   variant?: "default" | "titlebar";
 };
 
@@ -137,6 +139,8 @@ function tabIcon(tab: SessionTab): ComponentType<{ className?: string }> {
       return Folder;
     case "ports":
       return Network;
+    case "git":
+      return GitBranch;
   }
 }
 
@@ -158,6 +162,8 @@ function tabLabel(
       return "Files";
     case "ports":
       return "Ports";
+    case "git":
+      return "Git";
   }
 }
 
@@ -180,6 +186,7 @@ export function SessionTabBar({
   onNewShell,
   onOpenFiles,
   onOpenPorts,
+  onOpenGit,
   variant = "default",
 }: SessionTabBarProps) {
   const titlebar = variant === "titlebar";
@@ -599,6 +606,19 @@ export function SessionTabBar({
               <Network className="size-3.5" />
             </Button>
           ) : null}
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            aria-label="Git"
+            className={cn(
+              "text-muted-foreground hover:text-foreground",
+              titlebar ? "size-7" : "size-9 md:size-7",
+            )}
+            onClick={onOpenGit}
+          >
+            <GitBranch className="size-3.5" />
+          </Button>
         </div>
       </div>
 

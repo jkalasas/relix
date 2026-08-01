@@ -153,7 +153,7 @@ Do not “squeeze” a multi-pane desktop chrome below `md`. Switch density, not
 
 ```
 Hosts page  →  Projects page  →  Workspace
-   list            Ad hoc +          shells / files / ports
+   list            Ad hoc +          shells / files / ports / git
                    projects
 ```
 
@@ -161,10 +161,10 @@ Hosts page  →  Projects page  →  Workspace
 |---|---|
 | **Hosts** | Full-page host catalog (home). Status dots + mono targets. + Host |
 | **Projects** | Per-host: **Ad hoc** (default, no project) + saved project directories. Connect / edit host here |
-| **Workspace** | Session for one host + scope (Ad hoc or project). Tabs, shells, files, host-level ports |
+| **Workspace** | Session for one host + scope (Ad hoc or project). Tabs, shells, files, host-level ports, git status |
 
-**Ad hoc** — no saved project. Files follow the active shell cwd (OSC7 / tmux path).
-**Project** — saved name + directory on that host. Shells open in that path; files stay rooted there.
+**Ad hoc** — no saved project. Files and git follow the active shell cwd (OSC7 / tmux path).
+**Project** — saved name + directory on that host. Shells open in that path; files and git stay rooted there.
 
 Open workspaces stay alive in the background. Jump via **Recents** (header / title bar). Back: workspace → projects → hosts.
 
@@ -179,7 +179,7 @@ Workspace (connected):
 ┌─────────────────────────────────────────────────────────────┐
 │ titlebar: tabs · host/scope · recents · status · win ctrls  │
 ├────────────┬────────────────────────────────────────────────┤
-│ file tree  │ shell / editor / files / ports                 │
+│ file tree  │ shell / editor / files / ports / git           │
 │ (optional) │                                                │
 └────────────┴────────────────────────────────────────────────┘
 ```
@@ -213,7 +213,7 @@ Hosts                        Projects                     Workspace
 | Open Ad hoc / project | Pushes workspace full-screen |
 | Back | Workspace → projects → hosts; Esc / Android back same stack |
 | Tabs | Scrollable document tabs; ≥44px tall |
-| Tools | Trailing Files / Ports open or focus singleton tool tabs |
+| Tools | Trailing Files / Ports / Git open or focus singleton tool tabs |
 | Primary actions | Thumb zone when possible |
 | Safe areas | `env(safe-area-inset-*)` on notch/home-indicator devices |
 | Sheets / forms | Full-screen or bottom sheet — not tiny centered modals |
@@ -223,6 +223,7 @@ Hosts                        Projects                     Workspace
 1. **SSH / Terminal** — session readiness and PTY. Disconnected/error states explain next step and offer Connect / Retry. On mobile, terminal is full-bleed; soft keyboard must not permanently bury the prompt (scroll + visual viewport). Mobile OS (Android/iOS) shows a bottom accessory key bar (Esc, Ctrl, Alt, Shift, Tab, arrows) with sticky modifiers for the next soft-keyboard key.
 2. **Port forwards** — **host-level** (shared across Ad hoc + projects). Desktop: multi-column mono row. Mobile: stacked row. L / R / D as before. Cyan on active only.
 3. **Files** — path in mono. **Ad hoc:** browser follows shell cwd. **Project:** rooted at project path. Desktop: file tree in left rail while workspace is connected; main pane is shell/editor/Files empty. Mobile: single-pane list + transfer sheet. Local host and remote hosts share the same Files surface.
+4. **Git** — workspace-scoped status panel (local + remote). Same cwd rules as Files. Branch + ahead/behind, changed files, stage / unstage / discard, commit, fetch / pull ff-only / push. No new status hues — mono paths and labels.
 
 ### Empty states
 
@@ -247,13 +248,14 @@ Task-specific, one primary action, no fake metrics. Icon in a quiet bordered til
 | `WorkspaceRecents` | `features/projects/components/workspace-recents.tsx` | Jump between open workspaces |
 | `AppSidebar` | `features/hosts/components/app-sidebar.tsx` | Desktop file-tree rail (workspace only) |
 | `SessionHeader` | `features/hosts/components/session-header.tsx` | Host · scope + status + connect; back to projects |
-| `SessionTabBar` | `components/workspace/session-tab-bar.tsx` | Document tabs: shells · open files · Files · Ports |
+| `SessionTabBar` | `components/workspace/session-tab-bar.tsx` | Document tabs: shells · open files · Files · Ports · Git |
 | `TerminalPanel` | `features/shells/components/terminal-panel.tsx` | Shell workspace |
 | `FilesPanel` | `features/files/components/files-panel.tsx` | Mobile file list browser / transfer |
 | `FileTreeSidebar` | `features/files/components/file-tree-sidebar.tsx` | Desktop file tree content inside `AppSidebar` |
 | `FilesWorkspace` | `features/files/components/files-workspace.tsx` | Files empty pane + open file slot; mobile list host |
 | `FileWorkspace` | `features/files/components/file-workspace.tsx` | Open file editor / preview tab |
 | `ForwardsPanel` | `features/forwards/components/forwards-panel.tsx` | Tunnel list / empty (host-level) |
+| `GitPanel` | `features/git/components/git-panel.tsx` | Git status / stage / commit (workspace-scoped) |
 | `EmptyState` | `components/workspace/empty-state.tsx` | Shared empty pattern (icon tile · title · guidance · CTA) |
 | `Button` / `Input` / `Sidebar` | `components/ui/*` | shadcn CLI primitives — do not hand-edit; compose via variants / className / CSS tokens |
 
@@ -298,6 +300,7 @@ Task-specific, one primary action, no fake metrics. Icon in a quiet bordered til
 | `1` | Focus last shell tab (or open a shell) — workspace only |
 | `2` | Open / focus Files — workspace only |
 | `3` | Open / focus Ports — workspace only |
+| `4` | Open / focus Git — workspace only |
 | `Ctrl+Tab` / `Ctrl+Shift+Tab` | Next / previous session tab |
 | `Ctrl/Cmd` + `=` / `-` | Zoom terminal font in / out |
 | `Ctrl/Cmd` + `0` | Reset terminal font |
@@ -346,7 +349,7 @@ Shortcuts are desktop accelerators. Mobile relies on visible controls and pinch 
 |---|---|
 | Color + type tokens | `src/index.css` |
 | Domain types | `src/features/*/types.ts` |
-| Feature hooks + UI | `src/features/{hosts,forwards,shells,files,ssh,android-background}/` |
+| Feature hooks + UI | `src/features/{hosts,forwards,shells,files,git,ssh,android-background}/` |
 | App orchestration (incl. mobile pane) | `src/app/App.tsx` |
 | Dark default | `index.html` → `class="dark"` |
 | Desktop window chrome | `src-tauri/tauri.conf.json` |

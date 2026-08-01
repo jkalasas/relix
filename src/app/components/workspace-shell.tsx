@@ -17,6 +17,7 @@ import {
   type PortForward,
   type PortForwardConfig,
 } from "@/features/forwards";
+import { GitPanel, type GitController } from "@/features/git";
 import {
   WorkspaceRecents,
   parseWorkspaceId,
@@ -73,6 +74,7 @@ type WorkspaceChromeProps = {
   onNewShell: (launchId?: ShellLaunchId) => void;
   onOpenFiles: () => void;
   onOpenPorts: () => void;
+  onOpenGit: () => void;
 };
 
 export function createWorkspaceSessionChrome({
@@ -108,6 +110,7 @@ export function createWorkspaceSessionChrome({
   onNewShell,
   onOpenFiles,
   onOpenPorts,
+  onOpenGit,
 }: WorkspaceChromeProps): {
   sessionHeader: ReactNode;
   sessionTabBar: ReactNode;
@@ -127,6 +130,7 @@ export function createWorkspaceSessionChrome({
         onNewShell={onNewShell}
         onOpenFiles={onOpenFiles}
         onOpenPorts={onOpenPorts}
+        onOpenGit={onOpenGit}
         variant={useTitlebarSessionChrome ? "titlebar" : "default"}
       />
     ) : null;
@@ -215,9 +219,11 @@ type WorkspaceMainProps = {
   sessionHeader: ReactNode;
   sessionTabBar: ReactNode;
   portsChromeOpen: boolean;
+  gitChromeOpen: boolean;
   explorerChromeOpen: boolean;
   selectedForwards: PortForward[];
   files: FilesController;
+  git: GitController;
   activeTab: SessionTab | null;
   openFileTabs: Extract<SessionTab, { kind: "file" }>[];
   selectedFiles: Record<string, OpenFileState>;
@@ -245,9 +251,11 @@ export function WorkspaceMain({
   sessionHeader,
   sessionTabBar,
   portsChromeOpen,
+  gitChromeOpen,
   explorerChromeOpen,
   selectedForwards,
   files,
+  git,
   activeTab,
   openFileTabs,
   selectedFiles,
@@ -308,6 +316,14 @@ export function WorkspaceMain({
           onStopForward={(id) => onStopForward(selectedHost.id, id)}
           onEditForward={onEditForward}
           onDeleteForward={(id) => void onDeleteForward(id)}
+        />
+      ) : null}
+
+      {gitChromeOpen ? (
+        <GitPanel
+          host={selectedHost}
+          git={git}
+          onConnect={() => onConnect(selectedHost.id)}
         />
       ) : null}
 

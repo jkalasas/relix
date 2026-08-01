@@ -33,6 +33,7 @@
 | `src/features/forwards/` | Tunnel types, store, start/stop hooks, panel/form UI (host-scoped) |
 | `src/features/shells/` | Shell sessions (workspace-scoped), launch menu, xterm terminal panel |
 | `src/features/files/` | Host filesystem browser, open-file workspace, transfer (local + remote) |
+| `src/features/git/` | Host git status panel (workspace-scoped): stage/commit/fetch/pull/push |
 | `src/features/session-tabs/` | Unified session tabs (shells, files, tools) — workspace-scoped |
 | `src/features/android-background/` | Android background gate + session FGS keepalive |
 | `src/features/ssh/` | Tauri SSH bridge: commands, errors, events |
@@ -41,13 +42,14 @@
 | `src/components/workspace/` | Workspace chrome (session tab bar, empty states, form field) |
 | `src/lib/utils.ts` | `cn` helper |
 | `src-tauri/src/ssh/` | Rust SSH feature: manager, connection, shell, forward |
+| `src-tauri/src/git/` | Rust git feature: CLI local + remote exec, status/stage/commit/log |
 | `DESIGN.md` | Design system source of truth |
 
 ## Design context
 
 Load **DESIGN.md** for any UI work. Summary:
 
-- **Voice:** precise · infrastructural · quiet. Ops language only (host, project, ad hoc, tunnel, forward, session).
+- **Voice:** precise · infrastructural · quiet. Ops language only (host, project, ad hoc, tunnel, forward, session, repo, branch, stage, commit).
 - **Theme:** dark-first Relay Night — cool ink neutrals (hue 250) + signal amber accent (hue 75). OKLCH only.
 - **Status language:** mint = connected, cyan = tunnel, amber = transfer, rose = error. Status is never color-only.
 - **Navigation:** hosts page → projects page (Ad hoc + projects) → workspace. Recents for open workspaces.

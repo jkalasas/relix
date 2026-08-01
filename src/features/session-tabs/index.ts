@@ -5,6 +5,7 @@ export type {
 } from "@/features/session-tabs/types";
 export {
   FILES_TAB_ID,
+  GIT_TAB_ID,
   PORTS_TAB_ID,
   fileTabId,
   isFileTab,

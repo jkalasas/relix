@@ -9,6 +9,7 @@ import type { FsEntry } from "@/features/ssh";
 import { parseSshError } from "@/features/ssh";
 import {
   FILES_TAB_ID,
+  GIT_TAB_ID,
   PORTS_TAB_ID,
   fileTabId,
   shellTabId,
@@ -143,8 +144,13 @@ export function useSessionTabs() {
   );
 
   const openToolTab = useCallback(
-    (workspaceId: string, kind: "files" | "ports") => {
-      const id = kind === "files" ? FILES_TAB_ID : PORTS_TAB_ID;
+    (workspaceId: string, kind: "files" | "ports" | "git") => {
+      const id =
+        kind === "files"
+          ? FILES_TAB_ID
+          : kind === "ports"
+            ? PORTS_TAB_ID
+            : GIT_TAB_ID;
       setTabsByWorkspace((current) => {
         const existing = current[workspaceId] ?? [];
         if (existing.some((tab) => tab.id === id)) return current;
