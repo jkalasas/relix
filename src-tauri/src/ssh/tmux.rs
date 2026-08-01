@@ -1,8 +1,6 @@
-use std::sync::Arc;
-
 use russh::ChannelMsg;
 
-use super::connection::{handle_is_closed, SharedHandle};
+use super::connection::SharedHandle;
 use super::error::{SshError, SshErrorCode};
 use super::manager::SshManager;
 
@@ -266,24 +264,6 @@ async fn exec_capture(handle: &SharedHandle, command: &str) -> Result<String, Ss
 }
 
 impl SshManager {
-    async fn live_handle(&self, host_id: &str) -> Result<SharedHandle, SshError> {
-        let mut inner = self.inner.lock().await;
-        match inner.connections.get(host_id) {
-            Some(conn) if !handle_is_closed(&conn.handle) => Ok(Arc::clone(&conn.handle)),
-            Some(_) => {
-                inner.connections.remove(host_id);
-                Err(SshError::new(
-                    SshErrorCode::NotConnected,
-                    "Host is not connected",
-                ))
-            }
-            None => Err(SshError::new(
-                SshErrorCode::NotConnected,
-                "Host is not connected",
-            )),
-        }
-    }
-
     pub async fn tmux_bootstrap(
         &self,
         host_id: String,

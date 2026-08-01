@@ -149,6 +149,24 @@ impl SshManager {
         Ok(())
     }
 
+    pub(crate) async fn live_handle(&self, host_id: &str) -> Result<SharedHandle, SshError> {
+        let mut inner = self.inner.lock().await;
+        match inner.connections.get(host_id) {
+            Some(conn) if !handle_is_closed(&conn.handle) => Ok(Arc::clone(&conn.handle)),
+            Some(_) => {
+                inner.connections.remove(host_id);
+                Err(SshError::new(
+                    SshErrorCode::NotConnected,
+                    "Host is not connected",
+                ))
+            }
+            None => Err(SshError::new(
+                SshErrorCode::NotConnected,
+                "Host is not connected",
+            )),
+        }
+    }
+
     pub(crate) async fn take_live_handle(
         &self,
         host_id: &str,
