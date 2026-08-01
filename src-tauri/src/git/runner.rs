@@ -33,9 +33,14 @@ fn availability_map() -> &'static Mutex<HashMap<String, AvailabilityCache>> {
     GIT_AVAILABILITY.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
+/// Opaque remote connection handle so SSH types stay crate-private.
+pub struct RemoteBackend {
+    handle: SharedHandle,
+}
+
 pub enum GitBackend {
     Local,
-    Remote { handle: SharedHandle },
+    Remote(RemoteBackend),
 }
 
 impl GitBackend {
@@ -56,7 +61,9 @@ impl GitBackend {
                 .await
                 .map_err(|e| GitError::new(GitErrorCode::Internal, e.to_string()))?
             }
-            GitBackend::Remote { handle } => run_remote(handle, cwd, args, timeout_secs).await,
+            GitBackend::Remote(remote) => {
+                run_remote(&remote.handle, cwd, args, timeout_secs).await
+            }
         }
     }
 }
@@ -81,7 +88,7 @@ pub async fn backend_for_host(
             GitError::new(GitErrorCode::Internal, e.message)
         }
     })?;
-    Ok(GitBackend::Remote { handle })
+    Ok(GitBackend::Remote(RemoteBackend { handle }))
 }
 
 pub async fn ensure_git_available(backend: &GitBackend, host_id: &str) -> Result<()> {

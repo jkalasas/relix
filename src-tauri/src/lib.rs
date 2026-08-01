@@ -1,5 +1,5 @@
 mod ssh;
-mod git;
+pub mod git;
 
 use ssh::commands::{
     host_fs_list, host_fs_mkdir, host_fs_read, host_fs_remove, host_fs_rename, host_fs_write,

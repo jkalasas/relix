@@ -14,6 +14,9 @@ edition = "2021"
 name = "relix_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
+[dev-dependencies]
+tempfile = "3"
+
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
