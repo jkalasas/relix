@@ -301,16 +301,95 @@ fn run_local(cwd: &str, args: &[&str], timeout_secs: u64) -> Result<GitOutput> {
     })
 }
 
+fn sh_single_quote(value: &str) -> String {
+    format!("'{}'", value.replace('\'', "'\"'\"'"))
+}
+
+fn build_remote_git_command(cwd: &str, args: &[&str]) -> String {
+    let mut parts = Vec::with_capacity(args.len() + 4);
+    parts.push("git".to_string());
+    parts.push("-C".to_string());
+    parts.push(sh_single_quote(cwd));
+    parts.push("--no-pager".to_string());
+    for a in args {
+        parts.push(sh_single_quote(a));
+    }
+    parts.join(" ")
+}
+
 async fn run_remote(
-    _handle: &SharedHandle,
-    _cwd: &str,
-    _args: &[&str],
-    _timeout_secs: u64,
+    handle: &SharedHandle,
+    cwd: &str,
+    args: &[&str],
+    timeout_secs: u64,
 ) -> Result<GitOutput> {
-    Err(GitError::new(
-        GitErrorCode::Internal,
-        "remote git runner not implemented",
-    ))
+    use russh::ChannelMsg;
+    use tokio::time::timeout;
+
+    let cwd = if cwd.is_empty() { "." } else { cwd };
+    let command = build_remote_git_command(cwd, args);
+    let fut = async {
+        let mut channel = {
+            let guard = handle.lock().await;
+            guard.channel_open_session().await.map_err(|e| {
+                GitError::new(GitErrorCode::Internal, e.to_string())
+            })?
+        };
+        channel.exec(true, command.as_str()).await.map_err(|e| {
+            GitError::new(GitErrorCode::Internal, e.to_string())
+        })?;
+
+        let mut stdout = Vec::new();
+        let mut stderr = Vec::new();
+        let mut exit_status: Option<u32> = None;
+        let mut truncated = false;
+
+        loop {
+            match channel.wait().await {
+                Some(ChannelMsg::Data { ref data }) => {
+                    if stdout.len() < MAX_OUTPUT_BYTES {
+                        let take = data.len().min(MAX_OUTPUT_BYTES - stdout.len());
+                        stdout.extend_from_slice(&data[..take]);
+                        if take < data.len() {
+                            truncated = true;
+                        }
+                    } else {
+                        truncated = true;
+                    }
+                }
+                Some(ChannelMsg::ExtendedData { ref data, .. }) => {
+                    if stderr.len() < MAX_OUTPUT_BYTES {
+                        let take = data.len().min(MAX_OUTPUT_BYTES - stderr.len());
+                        stderr.extend_from_slice(&data[..take]);
+                    }
+                }
+                Some(ChannelMsg::ExitStatus { exit_status: code }) => {
+                    exit_status = Some(code);
+                }
+                Some(ChannelMsg::Eof) | Some(ChannelMsg::Close) | None => break,
+                _ => {}
+            }
+        }
+
+        Ok(GitOutput {
+            stdout,
+            stderr,
+            exit_code: exit_status.map(|c| c as i32),
+            timed_out: false,
+            truncated,
+        })
+    };
+
+    match timeout(Duration::from_secs(timeout_secs.max(1)), fut).await {
+        Ok(result) => result,
+        Err(_) => Ok(GitOutput {
+            stdout: Vec::new(),
+            stderr: b"timed out".to_vec(),
+            exit_code: None,
+            timed_out: true,
+            truncated: false,
+        }),
+    }
 }
 
 pub fn ensure_success(output: &GitOutput, context: &'static str) -> Result<()> {
@@ -427,7 +506,8 @@ fn drain<R: Read>(reader: &mut R) -> (Vec<u8>, bool) {
 #[cfg(test)]
 mod tests {
     use super::{
-        classify_probe_output, parse_git_version, version_meets_minimum, Availability,
+        build_remote_git_command, classify_probe_output, parse_git_version, sh_single_quote,
+        version_meets_minimum, Availability,
     };
     use crate::git::error::GitErrorCode;
     use crate::git::types::GitOutput;
@@ -485,5 +565,18 @@ mod tests {
 
         let failed = classify_probe_output(&probe_output("", Some(1), false)).unwrap_err();
         assert!(matches!(failed.code, GitErrorCode::CommandFailed));
+    }
+
+    #[test]
+    fn shell_quote_simple() {
+        assert_eq!(sh_single_quote("foo"), "'foo'");
+        assert_eq!(sh_single_quote("a'b"), "'a'\"'\"'b'");
+    }
+
+    #[test]
+    fn builds_remote_command() {
+        let cmd = build_remote_git_command("/home/u/repo", &["status", "--porcelain=v2"]);
+        assert!(cmd.starts_with("git -C '/home/u/repo' --no-pager 'status'"));
+        assert!(cmd.contains("'--porcelain=v2'"));
     }
 }
