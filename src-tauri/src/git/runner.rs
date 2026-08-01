@@ -307,18 +307,19 @@ fn sh_single_quote(value: &str) -> String {
 
 fn build_remote_git_command(cwd: &str, args: &[&str]) -> String {
     // env VAR=value ... git -C 'cwd' --no-pager 'args...'
-    let mut parts = Vec::new();
-    parts.push("env".to_string());
-    parts.push("GIT_TERMINAL_PROMPT=0".to_string());
-    parts.push("GIT_ASKPASS=".to_string());
-    parts.push("SSH_ASKPASS=".to_string());
-    parts.push("GIT_OPTIONAL_LOCKS=0".to_string());
-    parts.push("GCM_INTERACTIVE=never".to_string());
-    parts.push("LC_ALL=C".to_string());
-    parts.push("git".to_string());
-    parts.push("-C".to_string());
-    parts.push(sh_single_quote(cwd));
-    parts.push("--no-pager".to_string());
+    let mut parts = vec![
+        "env".to_string(),
+        "GIT_TERMINAL_PROMPT=0".to_string(),
+        "GIT_ASKPASS=".to_string(),
+        "SSH_ASKPASS=".to_string(),
+        "GIT_OPTIONAL_LOCKS=0".to_string(),
+        "GCM_INTERACTIVE=never".to_string(),
+        "LC_ALL=C".to_string(),
+        "git".to_string(),
+        "-C".to_string(),
+        sh_single_quote(cwd),
+        "--no-pager".to_string(),
+    ];
     for a in args {
         parts.push(sh_single_quote(a));
     }
