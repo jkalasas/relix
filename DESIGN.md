@@ -223,7 +223,7 @@ Hosts                        Projects                     Workspace
 1. **SSH / Terminal** — session readiness and PTY. Disconnected/error states explain next step and offer Connect / Retry. On mobile, terminal is full-bleed; soft keyboard must not permanently bury the prompt (scroll + visual viewport). Mobile OS (Android/iOS) shows a bottom accessory key bar (Esc, Ctrl, Alt, Shift, Tab, arrows) with sticky modifiers for the next soft-keyboard key.
 2. **Port forwards** — **host-level** (shared across Ad hoc + projects). Desktop: multi-column mono row. Mobile: stacked row. L / R / D as before. Cyan on active only.
 3. **Files** — path in mono. **Ad hoc:** browser follows shell cwd. **Project:** rooted at project path. Desktop: file tree in left rail while workspace is connected; main pane is shell/editor/Files empty. Mobile: single-pane list + transfer sheet. Local host and remote hosts share the same Files surface.
-4. **Git** — workspace-scoped status panel (local + remote). Same cwd rules as Files. Branch + ahead/behind, changed files, stage / unstage / discard, commit, fetch / pull ff-only / push. No new status hues — mono paths and labels.
+4. **Git** — workspace-scoped status panel (local + remote). Same cwd rules as Files. Branch + ahead/behind, changed files, stage / unstage / discard, commit, fetch / pull ff-only / push. Unified diff drill-in: per-file from a row, or the Staged / Changes section label for the full patch in that scope (Back returns to the list). Untracked files are omitted from working-tree patches until staged. No new status hues — mono paths and labels; diff `+`/`-` reuse connected/destructive.
 
 ### Empty states
 
@@ -256,6 +256,7 @@ Task-specific, one primary action, no fake metrics. Icon in a quiet bordered til
 | `FileWorkspace` | `features/files/components/file-workspace.tsx` | Open file editor / preview tab |
 | `ForwardsPanel` | `features/forwards/components/forwards-panel.tsx` | Tunnel list / empty (host-level) |
 | `GitPanel` | `features/git/components/git-panel.tsx` | Git status / stage / commit (workspace-scoped) |
+| `GitDiffView` | `features/git/components/git-diff-view.tsx` | Unified patch drill-in for a changed file |
 | `EmptyState` | `components/workspace/empty-state.tsx` | Shared empty pattern (icon tile · title · guidance · CTA) |
 | `Button` / `Input` / `Sidebar` | `components/ui/*` | shadcn CLI primitives — do not hand-edit; compose via variants / className / CSS tokens |
 

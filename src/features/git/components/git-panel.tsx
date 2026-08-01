@@ -14,6 +14,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { EmptyState } from "@/components/workspace/empty-state";
+import { GitDiffView } from "@/features/git/components/git-diff-view";
 import { GitDiscardDialog } from "@/features/git/components/git-discard-dialog";
 import { GitFileRow } from "@/features/git/components/git-file-row";
 import type { GitController } from "@/features/git/hooks/use-git";
@@ -67,22 +68,39 @@ function SectionHeader({
   count,
   actionLabel,
   onAction,
+  onOpenDiff,
   disabled,
 }: {
   label: string;
   count: number;
   actionLabel?: string;
   onAction?: () => void;
+  onOpenDiff?: () => void;
   disabled?: boolean;
 }) {
   return (
     <div className="flex h-8 items-center justify-between gap-2 border-b border-border bg-surface/60 px-3 sm:px-4">
-      <p className="text-[11px] font-medium tracking-wide text-muted-foreground uppercase">
-        {label}
-        <span className="ml-1.5 font-mono normal-case tabular-nums">
-          {count}
-        </span>
-      </p>
+      {onOpenDiff ? (
+        <button
+          type="button"
+          onClick={onOpenDiff}
+          disabled={disabled}
+          className="min-h-7 rounded-sm text-left text-[11px] font-medium tracking-wide text-muted-foreground uppercase outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50"
+          aria-label={`View all ${label.toLowerCase()} changes`}
+        >
+          {label}
+          <span className="ml-1.5 font-mono normal-case tabular-nums">
+            {count}
+          </span>
+        </button>
+      ) : (
+        <p className="text-[11px] font-medium tracking-wide text-muted-foreground uppercase">
+          {label}
+          <span className="ml-1.5 font-mono normal-case tabular-nums">
+            {count}
+          </span>
+        </p>
+      )}
       {actionLabel && onAction ? (
         <button
           type="button"
@@ -204,6 +222,24 @@ export function GitPanel({ host, git, onConnect }: GitPanelProps) {
     return null;
   })();
 
+  if (git.selectedDiff) {
+    return (
+      <div
+        role="tabpanel"
+        id="session-panel-git"
+        className="flex min-h-0 flex-1 flex-col"
+      >
+        <GitDiffView
+          selection={git.selectedDiff}
+          loading={git.diffLoading}
+          error={git.diffError}
+          result={git.diffResult}
+          onBack={git.closeDiff}
+        />
+      </div>
+    );
+  }
+
   return (
     <div
       role="tabpanel"
@@ -306,6 +342,7 @@ export function GitPanel({ host, git, onConnect }: GitPanelProps) {
                 count={staged.length}
                 actionLabel="Unstage all"
                 onAction={() => git.unstage(staged.map((file) => file.path))}
+                onOpenDiff={() => git.openDiffAll("staged")}
                 disabled={git.busy}
               />
               <ul>
@@ -315,6 +352,7 @@ export function GitPanel({ host, git, onConnect }: GitPanelProps) {
                     file={file}
                     mode="staged"
                     busy={git.busy}
+                    onOpen={() => git.openDiff(file, "staged")}
                     onStage={() => git.stage([file.path])}
                     onUnstage={() => git.unstage([file.path])}
                     onDiscard={() => {}}
@@ -331,6 +369,7 @@ export function GitPanel({ host, git, onConnect }: GitPanelProps) {
                 count={changes.length}
                 actionLabel="Stage all"
                 onAction={() => git.stage(changes.map((file) => file.path))}
+                onOpenDiff={() => git.openDiffAll("changes")}
                 disabled={git.busy}
               />
               <ul>
@@ -340,6 +379,7 @@ export function GitPanel({ host, git, onConnect }: GitPanelProps) {
                     file={file}
                     mode="changes"
                     busy={git.busy}
+                    onOpen={() => git.openDiff(file, "changes")}
                     onStage={() => git.stage([file.path])}
                     onUnstage={() => git.unstage([file.path])}
                     onDiscard={() =>

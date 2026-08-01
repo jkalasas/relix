@@ -9,6 +9,7 @@ type GitFileRowProps = {
   file: GitChangedFile;
   mode: GitFileRowMode;
   busy: boolean;
+  onOpen: () => void;
   onStage: () => void;
   onUnstage: () => void;
   onDiscard: () => void;
@@ -28,6 +29,7 @@ export function GitFileRow({
   file,
   mode,
   busy,
+  onOpen,
   onStage,
   onUnstage,
   onDiscard,
@@ -38,23 +40,34 @@ export function GitFileRow({
   const code = statusCode(file, mode);
 
   return (
-    <li className="flex min-h-11 items-center gap-2 border-b border-border/60 px-3 py-1 sm:px-4 md:min-h-9">
-      <span
+    <li className="flex min-h-11 items-center gap-1 border-b border-border/60 px-2 py-1 sm:px-3 md:min-h-9">
+      <button
+        type="button"
+        onClick={onOpen}
         className={cn(
-          "w-4 shrink-0 text-center font-mono text-[11px] font-medium tabular-nums",
-          code === "?" || code === "A"
-            ? "text-foreground"
-            : code === "D"
-              ? "text-destructive"
-              : "text-muted-foreground",
+          "flex min-h-9 min-w-0 flex-1 items-center gap-2 rounded-md px-1 text-left",
+          "outline-none focus-visible:ring-2 focus-visible:ring-ring/50",
+          "hover:bg-elevated/60",
         )}
-        title={file.statusLabel}
+        aria-label={`View diff for ${file.path}`}
       >
-        {code}
-      </span>
-      <span className="min-w-0 flex-1 truncate font-mono text-[12.5px] text-foreground md:text-xs">
-        {pathLabel}
-      </span>
+        <span
+          className={cn(
+            "w-4 shrink-0 text-center font-mono text-[11px] font-medium tabular-nums",
+            code === "?" || code === "A"
+              ? "text-foreground"
+              : code === "D"
+                ? "text-destructive"
+                : "text-muted-foreground",
+          )}
+          title={file.statusLabel}
+        >
+          {code}
+        </span>
+        <span className="min-w-0 flex-1 truncate font-mono text-[12.5px] text-foreground md:text-xs">
+          {pathLabel}
+        </span>
+      </button>
       <div className="flex shrink-0 items-center gap-0.5">
         {mode === "changes" ? (
           <Button
