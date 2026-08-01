@@ -326,6 +326,63 @@ async fn commit_files_reports_status_and_numstat() {
 }
 
 #[tokio::test]
+async fn commit_files_root_commit_returns_seed_files() {
+    let fx = Fixture::new();
+    let backend = GitBackend::Local;
+    let root = fx.root_str();
+
+    fx.write("seed.txt", "hello root\n");
+    operations::stage(&backend, HOST, root, &["seed.txt".into()])
+        .await
+        .expect("stage seed");
+    let commit = operations::commit(&backend, HOST, root, "root")
+        .await
+        .expect("commit root");
+
+    let files = operations::commit_files(&backend, HOST, root, &commit.commit_sha)
+        .await
+        .expect("commit_files root");
+    assert_eq!(files.len(), 1, "expected seed file in root commit: {files:?}");
+    let f = &files[0];
+    assert_eq!(f.path, "seed.txt");
+    assert_eq!(f.status, "A");
+    assert_eq!(f.status_label, "Added");
+    assert!(f.added > 0, "expected non-zero added for root commit file: {f:?}");
+    assert_eq!(f.removed, 0);
+    assert!(!f.is_binary);
+}
+
+#[tokio::test]
+async fn commit_files_detects_rename() {
+    let fx = Fixture::new();
+    let backend = GitBackend::Local;
+    let root = fx.root_str();
+
+    fx.write("old_name.txt", "same content for rename detection\n");
+    operations::stage(&backend, HOST, root, &["old_name.txt".into()])
+        .await
+        .expect("stage old");
+    operations::commit(&backend, HOST, root, "base")
+        .await
+        .expect("commit base");
+
+    run_git(&fx.root, &["mv", "old_name.txt", "new_name.txt"]);
+    let commit = operations::commit(&backend, HOST, root, "rename")
+        .await
+        .expect("commit rename");
+
+    let files = operations::commit_files(&backend, HOST, root, &commit.commit_sha)
+        .await
+        .expect("commit_files rename");
+    assert_eq!(files.len(), 1, "expected single rename entry: {files:?}");
+    let f = &files[0];
+    assert_eq!(f.path, "new_name.txt");
+    assert_eq!(f.status, "R");
+    assert_eq!(f.status_label, "Renamed");
+    assert_eq!(f.original_path.as_deref(), Some("old_name.txt"));
+}
+
+#[tokio::test]
 async fn stage_literal_pathspec_with_glob_chars() {
     let fx = Fixture::new();
     let backend = GitBackend::Local;

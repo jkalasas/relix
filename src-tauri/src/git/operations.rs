@@ -964,7 +964,9 @@ pub async fn commit_files(
             &[
                 "diff-tree",
                 "--no-commit-id",
+                "--root",
                 "-r",
+                "-M",
                 "-z",
                 "--name-status",
                 sha,
@@ -980,7 +982,9 @@ pub async fn commit_files(
             &[
                 "diff-tree",
                 "--no-commit-id",
+                "--root",
                 "-r",
+                "-M",
                 "-z",
                 "--numstat",
                 sha,
