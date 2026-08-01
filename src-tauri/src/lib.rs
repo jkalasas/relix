@@ -1,6 +1,12 @@
 mod ssh;
 pub mod git;
 
+use git::commands::{
+    git_checkout_branch, git_commit, git_commit_file_diff, git_commit_files, git_create_branch,
+    git_diff, git_diff_content, git_discard, git_fetch, git_list_branches, git_log,
+    git_panel_snapshot, git_pull_ff_only, git_push, git_remote_url, git_resolve_repo, git_show_commit,
+    git_stage, git_status, git_unstage,
+};
 use ssh::commands::{
     host_fs_list, host_fs_mkdir, host_fs_read, host_fs_remove, host_fs_rename, host_fs_write,
     local_shell_available, ssh_cancel_connect, ssh_close_shell, ssh_connect, ssh_disconnect,
@@ -47,6 +53,26 @@ pub fn run() {
             ssh_tmux_kill_window,
             ssh_tmux_kill_session,
             ssh_tmux_window_path,
+            git_resolve_repo,
+            git_panel_snapshot,
+            git_status,
+            git_diff,
+            git_diff_content,
+            git_stage,
+            git_unstage,
+            git_discard,
+            git_commit,
+            git_fetch,
+            git_pull_ff_only,
+            git_push,
+            git_log,
+            git_show_commit,
+            git_commit_files,
+            git_commit_file_diff,
+            git_list_branches,
+            git_checkout_branch,
+            git_create_branch,
+            git_remote_url,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
