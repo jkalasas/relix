@@ -9,10 +9,13 @@ import {
 import { createPortal } from "react-dom";
 import {
   Bot,
+  Check,
+  ChevronDown,
   Code2,
   FileText,
   Folder,
   GitBranch,
+  GripVertical,
   Network,
   Plus,
   Sparkles,
@@ -129,6 +132,28 @@ function indexFromPoint(
   return orderedIds.length - 1;
 }
 
+function indexFromY(
+  container: HTMLElement,
+  clientY: number,
+  orderedIds: string[],
+): number {
+  const nodes = [
+    ...container.querySelectorAll<HTMLElement>("[data-session-tab-id]"),
+  ];
+  if (nodes.length === 0) return 0;
+
+  for (let i = 0; i < nodes.length; i += 1) {
+    const rect = nodes[i].getBoundingClientRect();
+    const mid = rect.top + rect.height / 2;
+    if (clientY < mid) {
+      const id = nodes[i].dataset.sessionTabId;
+      const index = id ? orderedIds.indexOf(id) : i;
+      return index < 0 ? i : index;
+    }
+  }
+  return orderedIds.length - 1;
+}
+
 function tabIcon(tab: SessionTab): ComponentType<{ className?: string }> {
   switch (tab.kind) {
     case "shell":
@@ -192,6 +217,7 @@ export function SessionTabBar({
   const titlebar = variant === "titlebar";
   const isDesktop = useMediaQuery("(min-width: 768px)");
   const tabListRef = useRef<HTMLDivElement>(null);
+  const drawerListRef = useRef<HTMLDivElement>(null);
   const tabsRef = useRef(tabs);
   tabsRef.current = tabs;
   const shellsRef = useRef(shells);
@@ -202,6 +228,7 @@ export function SessionTabBar({
   const [editValue, setEditValue] = useState("");
   const [desktopMenu, setDesktopMenu] = useState<DesktopMenuState | null>(null);
   const [drawerTabId, setDrawerTabId] = useState<string | null>(null);
+  const [tabsDrawerOpen, setTabsDrawerOpen] = useState(false);
   const [draggingId, setDraggingId] = useState<string | null>(null);
 
   const pointerRef = useRef<{
@@ -210,6 +237,12 @@ export function SessionTabBar({
     startX: number;
     startY: number;
     dragging: boolean;
+  } | null>(null);
+  const drawerDragRef = useRef<{
+    id: string;
+    pointerId: number;
+    startY: number;
+    moved: boolean;
   } | null>(null);
   const longPressTimerRef = useRef<number | null>(null);
   const suppressClickRef = useRef(false);
@@ -261,6 +294,7 @@ export function SessionTabBar({
     (tabId: string, point?: { x: number; y: number }) => {
       suppressClickRef.current = true;
       onSelect(tabId);
+      setTabsDrawerOpen(false);
       if (isDesktop && point) {
         setDrawerTabId(null);
         setDesktopMenu({ tabId, x: point.x, y: point.y });
@@ -320,7 +354,7 @@ export function SessionTabBar({
   );
 
   const onTabPointerDown = useCallback(
-    (tabId: string, event: ReactPointerEvent<HTMLDivElement>) => {
+    (tabId: string, event: ReactPointerEvent<HTMLElement>) => {
       if (event.button !== 0) return;
       if (editingId === tabId) return;
 
@@ -346,13 +380,18 @@ export function SessionTabBar({
   );
 
   const onTabPointerMove = useCallback(
-    (event: ReactPointerEvent<HTMLDivElement>) => {
+    (event: ReactPointerEvent<HTMLElement>) => {
       const pointer = pointerRef.current;
       if (!pointer || pointer.pointerId !== event.pointerId) return;
 
       const dx = event.clientX - pointer.startX;
       const dy = event.clientY - pointer.startY;
       const distance = Math.hypot(dx, dy);
+
+      if (!isDesktop) {
+        if (distance >= MOVE_THRESHOLD_PX) clearLongPress();
+        return;
+      }
 
       if (!pointer.dragging) {
         if (distance < MOVE_THRESHOLD_PX) return;
@@ -373,11 +412,11 @@ export function SessionTabBar({
       );
       setOrderedIds((current) => reorderIds(current, pointer.tabId, toIndex));
     },
-    [clearLongPress],
+    [clearLongPress, isDesktop],
   );
 
   const onTabPointerUp = useCallback(
-    (event: ReactPointerEvent<HTMLDivElement>) => {
+    (event: ReactPointerEvent<HTMLElement>) => {
       const pointer = pointerRef.current;
       if (!pointer || pointer.pointerId !== event.pointerId) return;
       if (pointer.dragging) {
@@ -393,7 +432,7 @@ export function SessionTabBar({
   );
 
   const onTabPointerCancel = useCallback(
-    (event: ReactPointerEvent<HTMLDivElement>) => {
+    (event: ReactPointerEvent<HTMLElement>) => {
       const pointer = pointerRef.current;
       if (!pointer || pointer.pointerId !== event.pointerId) return;
       endDrag(false);
@@ -412,6 +451,59 @@ export function SessionTabBar({
       onSelect(tabId);
     },
     [editingId, onSelect],
+  );
+
+  const onDrawerGripPointerDown = useCallback(
+    (id: string, event: ReactPointerEvent<HTMLButtonElement>) => {
+      if (event.button !== 0) return;
+      event.preventDefault();
+      event.stopPropagation();
+      event.currentTarget.setPointerCapture(event.pointerId);
+      drawerDragRef.current = {
+        id,
+        pointerId: event.pointerId,
+        startY: event.clientY,
+        moved: false,
+      };
+    },
+    [],
+  );
+
+  const onDrawerGripPointerMove = useCallback(
+    (event: ReactPointerEvent<HTMLButtonElement>) => {
+      const drag = drawerDragRef.current;
+      if (!drag || drag.pointerId !== event.pointerId) return;
+      if (!drag.moved && Math.abs(event.clientY - drag.startY) < 4) return;
+      drag.moved = true;
+      setDraggingId(drag.id);
+      const container = drawerListRef.current;
+      if (!container) return;
+      const toIndex = indexFromY(
+        container,
+        event.clientY,
+        orderedIdsRef.current,
+      );
+      setOrderedIds((current) => reorderIds(current, drag.id, toIndex));
+    },
+    [],
+  );
+
+  const onDrawerGripPointerEnd = useCallback(
+    (event: ReactPointerEvent<HTMLButtonElement>) => {
+      const drag = drawerDragRef.current;
+      if (!drag || drag.pointerId !== event.pointerId) return;
+      try {
+        event.currentTarget.releasePointerCapture(event.pointerId);
+      } catch {
+        // ignore
+      }
+      if (drag.moved) {
+        onReorder(orderedIdsRef.current);
+      }
+      drawerDragRef.current = null;
+      setDraggingId(null);
+    },
+    [onReorder],
   );
 
   const onTabContextMenu = useCallback(
@@ -440,6 +532,16 @@ export function SessionTabBar({
     : "";
   const actionsIsShell = actionsTab?.kind === "shell";
 
+  const activeTab =
+    (activeId ? orderedTabs.find((tab) => tab.id === activeId) : null) ??
+    orderedTabs[0] ??
+    null;
+  const activeLabel = activeTab
+    ? tabLabel(activeTab, shells, files)
+    : "Sessions";
+  const activeDirty = activeTab ? tabDirty(activeTab, files) : false;
+  const ActiveIcon = activeTab ? tabIcon(activeTab) : TerminalSquare;
+
   return (
     <>
       <div
@@ -450,104 +552,167 @@ export function SessionTabBar({
             : "min-h-11 border-b border-border bg-background px-1.5 md:min-h-9 md:px-2",
         )}
       >
-        <div
-          ref={tabListRef}
-          role="tablist"
-          aria-label="Session tabs"
-          className="flex min-w-0 flex-1 items-center gap-0.5 overflow-x-auto md:gap-1"
-        >
-          {orderedTabs.map((tab) => {
-            const active = tab.id === activeId;
-            const label = tabLabel(tab, shells, files);
-            const dirty = tabDirty(tab, files);
-            const dragging = draggingId === tab.id;
-            const editing = editingId === tab.id;
-            const Icon = tabIcon(tab);
-
-            return (
-              <div
-                key={tab.id}
-                data-session-tab-id={tab.id}
-                role="tab"
-                id={`session-tab-${tab.id}`}
-                aria-selected={active}
-                aria-controls={`session-panel-${tab.kind === "shell" ? tab.shellId : tab.id}`}
-                tabIndex={active ? 0 : -1}
-                onPointerDown={(event) => onTabPointerDown(tab.id, event)}
+        {!isDesktop ? (
+          <div className="flex h-9 min-w-0 flex-1 items-center gap-1.5 font-mono text-[12px] text-foreground select-none">
+            <ActiveIcon className="size-3.5 shrink-0 opacity-70" aria-hidden />
+            {editingId && activeTab && editingId === activeTab.id ? (
+              <input
+                autoFocus
+                value={editValue}
+                aria-label={`Rename ${activeLabel}`}
+                onChange={(event) => setEditValue(event.target.value)}
+                onBlur={commitRename}
+                onFocus={(event) => event.currentTarget.select()}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    event.preventDefault();
+                    commitRename();
+                  }
+                  if (event.key === "Escape") {
+                    event.preventDefault();
+                    cancelRename();
+                  }
+                }}
+                className="min-w-0 flex-1 rounded-sm bg-background px-1 py-0.5 text-[12px] text-foreground outline-none ring-1 ring-ring"
+              />
+            ) : (
+              <button
+                type="button"
+                aria-haspopup="dialog"
+                aria-expanded={tabsDrawerOpen}
+                aria-label={`Sessions · ${activeLabel}`}
+                onClick={() => {
+                  if (suppressClickRef.current) {
+                    suppressClickRef.current = false;
+                    return;
+                  }
+                  setTabsDrawerOpen(true);
+                }}
+                onPointerDown={(event) => {
+                  if (!activeTab) return;
+                  onTabPointerDown(activeTab.id, event);
+                }}
                 onPointerMove={onTabPointerMove}
                 onPointerUp={onTabPointerUp}
                 onPointerCancel={onTabPointerCancel}
-                onContextMenu={(event) => onTabContextMenu(tab.id, event)}
-                className={cn(
-                  "group flex shrink-0 items-center gap-1.5 font-mono text-[12px] select-none",
-                  titlebar
-                    ? "h-7 rounded-md px-2"
-                    : "h-9 rounded-lg px-2.5 md:h-7 md:rounded-md md:px-2",
-                  active
-                    ? "bg-elevated text-foreground ring-1 ring-border/70"
-                    : "text-muted-foreground hover:bg-muted/50 hover:text-foreground",
-                  dragging && "opacity-60",
-                  draggingId && "touch-none",
-                )}
+                onContextMenu={(event) => {
+                  if (!activeTab) return;
+                  onTabContextMenu(activeTab.id, event);
+                }}
+                className="flex min-w-0 flex-1 items-center gap-1.5 text-left"
               >
-                <Icon className="size-3.5 shrink-0 opacity-70" aria-hidden />
-                {editing ? (
-                  <input
-                    autoFocus
-                    value={editValue}
-                    aria-label={`Rename ${label}`}
-                    onChange={(event) => setEditValue(event.target.value)}
-                    onBlur={commitRename}
-                    onFocus={(event) => event.currentTarget.select()}
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter") {
-                        event.preventDefault();
-                        commitRename();
-                      }
-                      if (event.key === "Escape") {
-                        event.preventDefault();
-                        cancelRename();
-                      }
-                    }}
-                    onPointerDown={(event) => event.stopPropagation()}
-                    className="max-w-[9rem] min-w-[4rem] rounded-sm bg-background px-1 py-0.5 text-[12px] text-foreground outline-none ring-1 ring-ring"
+                <span className="min-w-0 flex-1 truncate">{activeLabel}</span>
+                {activeDirty ? (
+                  <span
+                    className="size-1.5 shrink-0 rounded-full bg-primary"
+                    aria-label="Unsaved changes"
                   />
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => onTabClick(tab.id)}
-                    className="flex max-w-[9rem] items-center gap-1 truncate"
-                    title={label}
-                  >
-                    <span className="truncate">{label}</span>
-                    {dirty ? (
-                      <span
-                        className="size-1.5 shrink-0 rounded-full bg-primary"
-                        aria-label="Unsaved changes"
-                      />
-                    ) : null}
-                  </button>
-                )}
-                <button
-                  type="button"
-                  aria-label={`Close ${label}`}
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    onClose(tab.id);
-                  }}
-                  onPointerDown={(event) => event.stopPropagation()}
+                ) : null}
+                <ChevronDown
+                  className="size-3.5 shrink-0 text-muted-foreground"
+                  aria-hidden
+                />
+              </button>
+            )}
+          </div>
+        ) : (
+          <div
+            ref={tabListRef}
+            role="tablist"
+            aria-label="Session tabs"
+            className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto"
+          >
+            {orderedTabs.map((tab) => {
+              const active = tab.id === activeId;
+              const label = tabLabel(tab, shells, files);
+              const dirty = tabDirty(tab, files);
+              const dragging = draggingId === tab.id;
+              const editing = editingId === tab.id;
+              const Icon = tabIcon(tab);
+
+              return (
+                <div
+                  key={tab.id}
+                  data-session-tab-id={tab.id}
+                  role="tab"
+                  id={`session-tab-${tab.id}`}
+                  aria-selected={active}
+                  aria-controls={`session-panel-${tab.kind === "shell" ? tab.shellId : tab.id}`}
+                  tabIndex={active ? 0 : -1}
+                  onPointerDown={(event) => onTabPointerDown(tab.id, event)}
+                  onPointerMove={onTabPointerMove}
+                  onPointerUp={onTabPointerUp}
+                  onPointerCancel={onTabPointerCancel}
+                  onContextMenu={(event) => onTabContextMenu(tab.id, event)}
                   className={cn(
-                    "flex size-6 items-center justify-center rounded-sm text-muted-foreground hover:bg-background hover:text-foreground md:size-5",
-                    "md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100",
-                    "md:pointer-events-none md:group-hover:pointer-events-auto md:group-focus-within:pointer-events-auto",
+                    "group flex shrink-0 items-center gap-1.5 font-mono text-[12px] select-none",
+                    titlebar ? "h-7 rounded-md px-2" : "h-7 rounded-md px-2",
+                    active
+                      ? "bg-elevated text-foreground ring-1 ring-border/70"
+                      : "text-muted-foreground hover:bg-muted/50 hover:text-foreground",
+                    dragging && "opacity-60",
+                    draggingId && "touch-none",
                   )}
                 >
-                  <X className="size-3" />
-                </button>
-              </div>
-            );
-          })}
-        </div>
+                  <Icon className="size-3.5 shrink-0 opacity-70" aria-hidden />
+                  {editing ? (
+                    <input
+                      autoFocus
+                      value={editValue}
+                      aria-label={`Rename ${label}`}
+                      onChange={(event) => setEditValue(event.target.value)}
+                      onBlur={commitRename}
+                      onFocus={(event) => event.currentTarget.select()}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter") {
+                          event.preventDefault();
+                          commitRename();
+                        }
+                        if (event.key === "Escape") {
+                          event.preventDefault();
+                          cancelRename();
+                        }
+                      }}
+                      onPointerDown={(event) => event.stopPropagation()}
+                      className="max-w-[9rem] min-w-[4rem] rounded-sm bg-background px-1 py-0.5 text-[12px] text-foreground outline-none ring-1 ring-ring"
+                    />
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => onTabClick(tab.id)}
+                      className="flex max-w-[9rem] items-center gap-1 truncate"
+                      title={label}
+                    >
+                      <span className="truncate">{label}</span>
+                      {dirty ? (
+                        <span
+                          className="size-1.5 shrink-0 rounded-full bg-primary"
+                          aria-label="Unsaved changes"
+                        />
+                      ) : null}
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    aria-label={`Close ${label}`}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      onClose(tab.id);
+                    }}
+                    onPointerDown={(event) => event.stopPropagation()}
+                    className={cn(
+                      "flex size-5 items-center justify-center rounded-sm text-muted-foreground hover:bg-background hover:text-foreground",
+                      "opacity-0 group-hover:opacity-100 group-focus-within:opacity-100",
+                      "pointer-events-none group-hover:pointer-events-auto group-focus-within:pointer-events-auto",
+                    )}
+                  >
+                    <X className="size-3" />
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        )}
 
         <div className="flex shrink-0 items-center gap-0.5 pl-0.5">
           <DropdownMenu>
@@ -658,6 +823,106 @@ export function SessionTabBar({
             document.body,
           )
         : null}
+
+      <Drawer
+        open={tabsDrawerOpen}
+        onOpenChange={setTabsDrawerOpen}
+        swipeDirection="down"
+        showSwipeHandle
+      >
+        <DrawerContent>
+          <DrawerHeader className="text-left">
+            <DrawerTitle>Sessions</DrawerTitle>
+          </DrawerHeader>
+          <div className="max-h-[min(60dvh,24rem)] overflow-y-auto px-2 pb-[max(1rem,env(safe-area-inset-bottom))]">
+            {orderedTabs.length === 0 ? (
+              <p className="px-2 py-3 text-[13px] text-muted-foreground">
+                No open sessions.
+              </p>
+            ) : (
+              <div ref={drawerListRef} className="flex flex-col gap-0.5">
+                {orderedTabs.map((tab) => {
+                  const active = tab.id === activeId;
+                  const label = tabLabel(tab, shells, files);
+                  const dirty = tabDirty(tab, files);
+                  const Icon = tabIcon(tab);
+                  return (
+                    <div
+                      key={tab.id}
+                      data-session-tab-id={tab.id}
+                      className={cn(
+                        "flex min-h-11 items-stretch gap-0.5 rounded-md",
+                        active && "bg-elevated",
+                        draggingId === tab.id && "opacity-60",
+                      )}
+                    >
+                      <button
+                        type="button"
+                        aria-label={`Reorder ${label}`}
+                        className="flex shrink-0 cursor-grab items-center px-1.5 text-muted-foreground touch-none active:cursor-grabbing"
+                        onPointerDown={(event) =>
+                          onDrawerGripPointerDown(tab.id, event)
+                        }
+                        onPointerMove={onDrawerGripPointerMove}
+                        onPointerUp={onDrawerGripPointerEnd}
+                        onPointerCancel={onDrawerGripPointerEnd}
+                      >
+                        <GripVertical className="size-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          onSelect(tab.id);
+                          setTabsDrawerOpen(false);
+                        }}
+                        onContextMenu={(event) => {
+                          event.preventDefault();
+                          event.stopPropagation();
+                          setTabsDrawerOpen(false);
+                          openActions(tab.id);
+                        }}
+                        className={cn(
+                          "flex min-h-11 min-w-0 flex-1 items-center gap-2 rounded-md px-1.5 py-2 text-left outline-none transition-colors",
+                          "hover:bg-elevated focus-visible:ring-2 focus-visible:ring-ring/50",
+                        )}
+                      >
+                        <span className="flex size-4 shrink-0 items-center justify-center">
+                          {active ? (
+                            <Check className="size-3.5 text-foreground" />
+                          ) : null}
+                        </span>
+                        <Icon
+                          className="size-3.5 shrink-0 text-muted-foreground"
+                          aria-hidden
+                        />
+                        <span className="min-w-0 flex-1 truncate font-mono text-[13px] text-foreground">
+                          {label}
+                        </span>
+                        {dirty ? (
+                          <span
+                            className="size-1.5 shrink-0 rounded-full bg-primary"
+                            aria-label="Unsaved changes"
+                          />
+                        ) : null}
+                      </button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon-sm"
+                        aria-label={`Close ${label}`}
+                        onClick={() => onClose(tab.id)}
+                        className="mr-1 size-9 shrink-0 self-center text-muted-foreground hover:text-foreground"
+                      >
+                        <X className="size-3.5" />
+                      </Button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </DrawerContent>
+      </Drawer>
 
       <Drawer
         open={drawerTabId != null}
