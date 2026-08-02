@@ -132,6 +132,24 @@ export function useSessionBridge({
   );
 
   useEffect(() => {
+    if (!workspaceId || !selectedHost) return;
+    if (selectedHost.shellMode !== "tmux") return;
+    if (selectedHost.status !== "connected") return;
+    void shells
+      .bootstrapTmux(workspaceId, selectedHost.id, selectedHost.tmuxSession)
+      .catch(() => {
+        // workspace can still open shells later
+      });
+  }, [
+    selectedHost?.id,
+    selectedHost?.shellMode,
+    selectedHost?.status,
+    selectedHost?.tmuxSession,
+    shells.bootstrapTmux,
+    workspaceId,
+  ]);
+
+  useEffect(() => {
     if (!workspaceId) return;
     const tabs = sessionTabs.tabsByWorkspace[workspaceId] ?? [];
     if (tabs.length === 0) return;

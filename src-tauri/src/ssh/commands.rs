@@ -258,3 +258,25 @@ pub async fn ssh_tmux_kill_session(
 ) -> Result<(), SshError> {
     state.tmux_kill_session(host_id, session).await
 }
+
+#[tauri::command]
+pub async fn ssh_tmux_kill_base_tree(
+    state: State<'_, SshManager>,
+    host_id: String,
+    session: Option<String>,
+) -> Result<(), SshError> {
+    state.tmux_kill_base_tree(host_id, session).await
+}
+
+#[tauri::command]
+pub async fn ssh_tmux_move_window(
+    state: State<'_, SshManager>,
+    host_id: String,
+    from_session: Option<String>,
+    window_id: String,
+    to_session: Option<String>,
+) -> Result<(), SshError> {
+    state
+        .tmux_move_window(host_id, from_session, window_id, to_session)
+        .await
+}

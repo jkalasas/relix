@@ -121,6 +121,63 @@ exit 0"
     format!("bash -lc {}", sh_single_quote(&script))
 }
 
+fn list_sessions_command() -> String {
+    "tmux list-sessions -F '#{session_name}'".to_string()
+}
+
+fn is_client_session_name(name: &str) -> bool {
+    let Some(idx) = name.rfind("_w") else {
+        return false;
+    };
+    let suffix = &name[idx + 2..];
+    !suffix.is_empty() && suffix.chars().all(|c| c.is_ascii_digit())
+}
+
+fn is_primary_for_base(base: &str, name: &str) -> bool {
+    if name.is_empty() || is_client_session_name(name) {
+        return false;
+    }
+    if name == base {
+        return true;
+    }
+    name.starts_with(&format!("{base}_p_"))
+}
+
+fn parse_session_names(stdout: &str) -> Vec<String> {
+    stdout
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .map(str::to_string)
+        .collect()
+}
+
+fn primary_sessions_for_base(base: &str, names: &[String]) -> Vec<String> {
+    let mut primaries: Vec<String> = names
+        .iter()
+        .filter(|name| is_primary_for_base(base, name))
+        .cloned()
+        .collect();
+    primaries.sort_by_key(|name| std::cmp::Reverse(name.len()));
+    primaries
+}
+
+fn move_window_command(from_session: &str, window_id: &str, to_session: &str) -> String {
+    let window_id = window_id.trim();
+    let from_q = sh_single_quote(from_session);
+    let to_q = sh_single_quote(to_session);
+    let client = client_session_name(from_session, window_id);
+    let client_q = sh_single_quote(&client);
+    let script = format!(
+        "tmux has-session -t {to_q} 2>/dev/null || tmux new-session -d -s {to_q}; \
+tmux set-option -t {to_q} status off; \
+tmux set-option -t {to_q} set-titles off; \
+tmux move-window -s {from_q}:{window_id} -t {to_q}:; \
+tmux kill-session -t {client_q} 2>/dev/null || true"
+    );
+    format!("bash -lc {}", sh_single_quote(&script))
+}
+
 fn list_windows_command(session: &str) -> String {
     format!(
         "tmux list-windows -t {} -F '#{{window_id}}\t#{{window_index}}\t#{{window_name}}\t#{{window_active}}'",
@@ -502,14 +559,74 @@ impl SshManager {
             Err(error) => Err(error),
         }
     }
+
+    pub async fn tmux_kill_base_tree(
+        &self,
+        host_id: String,
+        session: Option<String>,
+    ) -> Result<(), SshError> {
+        let base = resolve_session(session)?;
+        let stdout = match self.tmux_exec(&host_id, &list_sessions_command()).await {
+            Ok(value) => value,
+            Err(error) if is_missing_session_error(&error.message) => return Ok(()),
+            Err(error) => return Err(error),
+        };
+        let names = parse_session_names(&stdout);
+        let primaries = primary_sessions_for_base(&base, &names);
+        for primary in primaries {
+            match self
+                .tmux_exec(&host_id, &kill_session_command(&primary))
+                .await
+            {
+                Ok(_) => {}
+                Err(error) if is_missing_session_error(&error.message) => {}
+                Err(error) => return Err(error),
+            }
+        }
+        Ok(())
+    }
+
+    pub async fn tmux_move_window(
+        &self,
+        host_id: String,
+        from_session: Option<String>,
+        window_id: String,
+        to_session: Option<String>,
+    ) -> Result<(), SshError> {
+        let from_session = resolve_session(from_session)?;
+        let to_session = resolve_session(to_session)?;
+        let window_id = window_id.trim().to_string();
+        if window_id.is_empty() {
+            return Err(SshError::new(
+                SshErrorCode::Internal,
+                "Missing tmux window id",
+            ));
+        }
+        if from_session == to_session {
+            return Ok(());
+        }
+        match self
+            .tmux_exec(
+                &host_id,
+                &move_window_command(&from_session, &window_id, &to_session),
+            )
+            .await
+        {
+            Ok(_) => Ok(()),
+            Err(error) if is_missing_session_error(&error.message) => Ok(()),
+            Err(error) => Err(error),
+        }
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::{
-        attach_command, configure_session_command, ensure_session_command, kill_session_command,
-        kill_window_command, list_windows_command, new_window_command, pane_path_command,
-        parse_window_line, parse_windows, parse_windows_stdout, resolve_session, sh_single_quote,
+        attach_command, configure_session_command, ensure_session_command, is_client_session_name,
+        is_primary_for_base, kill_session_command, kill_window_command, list_windows_command,
+        move_window_command, new_window_command, pane_path_command, parse_session_names,
+        parse_window_line, parse_windows, parse_windows_stdout, primary_sessions_for_base,
+        resolve_session, sh_single_quote,
     };
 
     #[test]
@@ -582,5 +699,60 @@ mod tests {
         assert!(!windows[1].active);
         assert!(parse_window_line("").is_none());
         assert!(parse_windows_stdout("").is_empty());
+    }
+
+    #[test]
+    fn classifies_primary_and_client_sessions() {
+        assert!(is_client_session_name("relix_w3"));
+        assert!(is_client_session_name(
+            "relix_p_aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee_w12"
+        ));
+        assert!(!is_client_session_name("relix"));
+        assert!(!is_client_session_name(
+            "relix_p_aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+        ));
+
+        assert!(is_primary_for_base("relix", "relix"));
+        assert!(is_primary_for_base(
+            "relix",
+            "relix_p_aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+        ));
+        assert!(!is_primary_for_base("relix", "relix_w3"));
+        assert!(!is_primary_for_base(
+            "relix",
+            "relix_p_aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee_w12"
+        ));
+        assert!(!is_primary_for_base("relix", "other"));
+    }
+
+    #[test]
+    fn selects_primary_sessions_for_base() {
+        let names = parse_session_names(
+            "relix\nrelix_w3\nrelix_p_aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee\nrelix_p_aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee_w1\nother\n",
+        );
+        let primaries = primary_sessions_for_base("relix", &names);
+        assert_eq!(
+            primaries,
+            vec![
+                "relix_p_aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee".to_string(),
+                "relix".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn builds_move_window_command() {
+        let command = move_window_command(
+            "relix",
+            "@3",
+            "relix_p_aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+        );
+        assert!(command.starts_with("bash -lc "));
+        assert!(command.contains("move-window -s"));
+        assert!(command.contains("relix"));
+        assert!(command.contains(":@3"));
+        assert!(command.contains("relix_p_aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"));
+        assert!(command.contains("kill-session -t"));
+        assert!(command.contains("relix_w3"));
     }
 }

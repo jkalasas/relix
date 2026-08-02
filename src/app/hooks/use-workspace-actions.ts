@@ -85,7 +85,9 @@ export function useWorkspaceActions({
       if (migrateFromAdhoc) {
         const fromId = adhocWorkspaceId(config.hostId);
         const toId = projectWorkspaceId(config.hostId, config.id);
-        shells.moveWorkspaceShells(fromId, toId);
+        await shells.moveWorkspaceShells(fromId, toId, {
+          tmuxSession: selectedHost?.tmuxSession,
+        });
         sessionTabs.moveWorkspace(fromId, toId);
       }
 
@@ -94,6 +96,7 @@ export function useWorkspaceActions({
     [
       page,
       projects.saveProject,
+      selectedHost?.tmuxSession,
       sessionTabs.moveWorkspace,
       shells.moveWorkspaceShells,
       workspace.afterSaveProject,

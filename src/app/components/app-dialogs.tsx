@@ -106,15 +106,16 @@ export function AppDialogs({
         title="Quit Relix?"
         description={
           <>
-            Leave local tmux session{" "}
+            Leave local Relix tmux sessions under base{" "}
             <span className="font-mono text-foreground">
               {quitPrompt?.sessionName ?? DEFAULT_TMUX_SESSION}
             </span>{" "}
-            running, or kill it and destroy every window.
+            running (ad hoc and project sessions), or kill them and destroy every
+            window.
           </>
         }
         leaveLabel="Quit"
-        killLabel="Kill session"
+        killLabel="Kill sessions"
         onOpenChange={(open) => {
           if (!open && !quitBusy) onClearQuit();
         }}

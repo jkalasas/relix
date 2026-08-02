@@ -8,7 +8,7 @@ import {
   type HostConfig,
   useHosts,
 } from "@/features/hosts";
-import type { useProjects } from "@/features/projects";
+import { adhocWorkspaceId, type useProjects } from "@/features/projects";
 import type { useSessionTabs } from "@/features/session-tabs";
 import { DEFAULT_TMUX_SESSION, type useShells } from "@/features/shells";
 import { appQuit, listenAppQuitRequested } from "@/features/ssh";
@@ -48,7 +48,11 @@ export function useHostLifecycle({
       }
       await forwards.autoStartForwards(host.id);
       if (host.shellMode === "tmux") {
-        await shells.bootstrapTmux(host.id, host.tmuxSession);
+        await shells.bootstrapTmux(
+          adhocWorkspaceId(host.id),
+          host.id,
+          host.tmuxSession,
+        );
       }
     },
     [
@@ -97,7 +101,10 @@ export function useHostLifecycle({
   });
 
   const bootstrapLocalTmux = useCallback(async () => {
-    await shells.bootstrapTmux(LOCAL_HOST_ID);
+    await shells.bootstrapTmux(
+      adhocWorkspaceId(LOCAL_HOST_ID),
+      LOCAL_HOST_ID,
+    );
   }, [shells.bootstrapTmux]);
 
   const connectedCount = useMemo(

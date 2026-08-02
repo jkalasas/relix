@@ -88,16 +88,17 @@ export function DisconnectDialog({
   title = "Disconnect host?",
   description,
   leaveLabel = "Disconnect",
-  killLabel = "Kill session",
+  killLabel = "Kill sessions",
   onOpenChange,
   onConfirm,
 }: DisconnectDialogProps) {
   const isDesktop = useMediaQuery("(min-width: 768px)");
   const resolvedDescription = description ?? (
     <>
-      Leave remote tmux session{" "}
-      <span className="font-mono text-foreground">{sessionName}</span> running,
-      or kill it and destroy every window.
+      Leave Relix tmux sessions under base{" "}
+      <span className="font-mono text-foreground">{sessionName}</span>{" "}
+      running (ad hoc and project sessions), or kill them and destroy every
+      window.
     </>
   );
 

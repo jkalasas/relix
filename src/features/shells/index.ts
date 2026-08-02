@@ -10,6 +10,10 @@ export {
 } from "@/features/shells/lib/launch";
 export {
   DEFAULT_TMUX_SESSION,
+  resolveTmuxBase,
+  tmuxSessionForWorkspace,
+} from "@/features/shells/lib/tmux-session";
+export {
   useActiveShellFallback,
   useShells,
   type ShellHostOptions,

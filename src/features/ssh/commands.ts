@@ -231,6 +231,32 @@ export async function sshTmuxKillSession(
   });
 }
 
+export async function sshTmuxKillBaseTree(
+  hostId: string,
+  session?: string,
+): Promise<void> {
+  await invoke("ssh_tmux_kill_base_tree", {
+    hostId,
+    session,
+  });
+}
+
+export async function sshTmuxMoveWindow(
+  hostId: string,
+  options: {
+    fromSession?: string;
+    windowId: string;
+    toSession?: string;
+  },
+): Promise<void> {
+  await invoke("ssh_tmux_move_window", {
+    hostId,
+    fromSession: options.fromSession,
+    windowId: options.windowId,
+    toSession: options.toSession,
+  });
+}
+
 export async function sshTmuxWindowPath(
   hostId: string,
   session: string | undefined,
