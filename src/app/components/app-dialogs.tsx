@@ -10,7 +10,7 @@ import {
   type AuthCheckPrompt,
   type DisconnectChoice,
 } from "@/features/hosts";
-import { DEFAULT_TMUX_SESSION } from "@/features/shells";
+import { DEFAULT_TMUX_SESSION, ShellCloseDialog } from "@/features/shells";
 import type { SshCommandError } from "@/features/ssh";
 
 type AppDialogsProps = {
@@ -28,6 +28,9 @@ type AppDialogsProps = {
   discardTarget: { fileName: string } | null;
   onClearDiscard: () => void;
   onConfirmDiscard: () => void;
+  shellCloseTarget: { title: string } | null;
+  onClearShellClose: () => void;
+  onConfirmShellClose: () => void;
   backgroundSetupOpen: boolean;
   backgroundReadiness: BackgroundReadiness;
   backgroundBusy: boolean;
@@ -50,6 +53,9 @@ export function AppDialogs({
   discardTarget,
   onClearDiscard,
   onConfirmDiscard,
+  shellCloseTarget,
+  onClearShellClose,
+  onConfirmShellClose,
   backgroundSetupOpen,
   backgroundReadiness,
   backgroundBusy,
@@ -92,6 +98,15 @@ export function AppDialogs({
           if (!open) onClearDiscard();
         }}
         onDiscard={onConfirmDiscard}
+      />
+
+      <ShellCloseDialog
+        open={shellCloseTarget != null}
+        title={shellCloseTarget?.title ?? ""}
+        onOpenChange={(open) => {
+          if (!open) onClearShellClose();
+        }}
+        onConfirm={onConfirmShellClose}
       />
 
       <BackgroundSetupDialog

@@ -10,6 +10,7 @@ import {
   type useSessionTabs,
 } from "@/features/session-tabs";
 import {
+  sessionDisplayTitle,
   useActiveShellFallback,
   type useShells,
 } from "@/features/shells";
@@ -46,6 +47,12 @@ export function useSessionBridge({
     hostId: string;
     tabId: string;
     fileName: string;
+  } | null>(null);
+  const [shellCloseTarget, setShellCloseTarget] = useState<{
+    workspaceId: string;
+    hostId: string;
+    shellId: string;
+    title: string;
   } | null>(null);
 
   const sessionTabsRef = useRef(sessionTabs);
@@ -201,7 +208,15 @@ export function useSessionBridge({
       if (!tab) return;
 
       if (tab.kind === "shell") {
-        void shells.closeShell(workspaceId, selectedHost.id, tab.shellId);
+        const session = (
+          shells.sessionsByWorkspace[workspaceId] ?? []
+        ).find((item) => item.id === tab.shellId);
+        setShellCloseTarget({
+          workspaceId,
+          hostId: selectedHost.id,
+          shellId: tab.shellId,
+          title: session ? sessionDisplayTitle(session) : "shell",
+        });
         return;
       }
 
@@ -227,6 +242,21 @@ export function useSessionBridge({
 
   const clearDiscardTarget = useCallback(() => {
     setDiscardTarget(null);
+  }, []);
+
+  const confirmCloseShell = useCallback(() => {
+    if (!shellCloseTarget) return;
+    const {
+      workspaceId: targetWorkspaceId,
+      hostId: targetHostId,
+      shellId,
+    } = shellCloseTarget;
+    void shells.closeShell(targetWorkspaceId, targetHostId, shellId);
+    setShellCloseTarget(null);
+  }, [shellCloseTarget, shells]);
+
+  const clearShellCloseTarget = useCallback(() => {
+    setShellCloseTarget(null);
   }, []);
 
   const handleOpenFile = useCallback(
@@ -257,11 +287,18 @@ export function useSessionBridge({
     ? (sessionTabs.activeTabByWorkspace[workspaceId] ?? null)
     : null;
 
+  const onCloseActiveTab = useCallback(() => {
+    if (!activeTabId) return;
+    closeSessionTab(activeTabId);
+  }, [activeTabId, closeSessionTab]);
+
   useSessionTabShortcuts({
     enabled: inWorkspace,
     tabs: selectedTabs,
     activeId: activeTabId,
     onSelect: selectSessionTab,
+    onNewShell: handleOpenShell,
+    onCloseActive: onCloseActiveTab,
   });
 
   const onShortcutShell = useCallback(() => {
@@ -318,6 +355,9 @@ export function useSessionBridge({
     discardTarget,
     confirmDiscardTab,
     clearDiscardTarget,
+    shellCloseTarget,
+    confirmCloseShell,
+    clearShellCloseTarget,
     handleOpenFile,
     handleOpenShell,
     onShortcutShell,

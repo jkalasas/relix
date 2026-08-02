@@ -19,4 +19,5 @@ export {
   TerminalHost,
   type LiveTerminal,
 } from "@/features/shells/components/terminal-host";
+export { ShellCloseDialog } from "@/features/shells/components/shell-close-dialog";
 export { isMobileOs, useIsMobileOs } from "@/features/shells/lib/mobile-os";

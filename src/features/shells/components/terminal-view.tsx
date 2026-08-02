@@ -19,6 +19,10 @@ import {
 } from "@/features/shells/lib/terminal-keys";
 import { isMobileOs } from "@/features/shells/lib/mobile-os";
 import { sshResize, sshWrite } from "@/features/ssh";
+import {
+  isCloseTabShortcut,
+  isNewShellShortcut,
+} from "@/lib/shortcut-chords";
 import { cn } from "@/lib/utils";
 
 export type TerminalSessionApi = {
@@ -462,6 +466,7 @@ export function TerminalView({
     term.attachCustomKeyEventHandler((event) => {
       if (event.type !== "keydown") return true;
       if (event.key === "Tab" && event.ctrlKey) return false;
+      if (isNewShellShortcut(event) || isCloseTabShortcut(event)) return false;
       if (isFontZoomKey(event)) return false;
 
       const copyPasteChord =

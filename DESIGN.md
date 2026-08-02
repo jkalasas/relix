@@ -308,11 +308,13 @@ Sparse, error-oriented feedback for failures the user may not be staring at (e.g
 | `3` | Open / focus Ports — workspace only |
 | `4` | Open / focus Git — workspace only |
 | `Ctrl+Tab` / `Ctrl+Shift+Tab` | Next / previous session tab |
+| `Cmd+T` (macOS) / `Ctrl+Shift+T` (Linux/Win) | New shell — workspace only |
+| `Cmd+W` (macOS) / `Ctrl+Shift+W` (Linux/Win) | Close active session tab — workspace only; shells always confirm |
 | `Ctrl/Cmd` + `=` / `-` | Zoom terminal font in / out |
 | `Ctrl/Cmd` + `0` | Reset terminal font |
 | Pinch / Ctrl+scroll | Zoom terminal font |
 
-Shortcuts are desktop accelerators. Mobile relies on visible controls and pinch zoom — never shortcut-only.
+Shortcuts are desktop accelerators. Mobile relies on visible controls and pinch zoom — never shortcut-only. On Linux/Windows, plain `Ctrl+T` / `Ctrl+W` stay with the shell (readline); app tab chords use Shift. On macOS, `Cmd` chords do not conflict with shell control sequences.
 
 ### Targets & input
 

@@ -172,6 +172,9 @@ export function AppShell({ app }: AppShellProps) {
           discardTarget={sessions.discardTarget}
           onClearDiscard={sessions.clearDiscardTarget}
           onConfirmDiscard={sessions.confirmDiscardTab}
+          shellCloseTarget={sessions.shellCloseTarget}
+          onClearShellClose={sessions.clearShellCloseTarget}
+          onConfirmShellClose={sessions.confirmCloseShell}
           backgroundSetupOpen={androidBackground.setupOpen}
           backgroundReadiness={androidBackground.readiness}
           backgroundBusy={androidBackground.setupBusy}

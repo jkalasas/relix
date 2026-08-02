@@ -108,6 +108,10 @@ export function useAppController() {
       sessions.clearDiscardTarget();
       return true;
     }
+    if (sessions.shellCloseTarget) {
+      sessions.clearShellCloseTarget();
+      return true;
+    }
     return workspace.handleBack();
   }, [
     androidBackground.setupOpen,
@@ -116,6 +120,8 @@ export function useAppController() {
     hostLife.clearDisconnectPrompt,
     sessions.discardTarget,
     sessions.clearDiscardTarget,
+    sessions.shellCloseTarget,
+    sessions.clearShellCloseTarget,
     workspace.handleBack,
   ]);
 
