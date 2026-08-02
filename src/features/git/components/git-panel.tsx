@@ -207,14 +207,26 @@ export function GitPanel({ host, git, onConnect }: GitPanelProps) {
           />
         );
       }
+      if (!hasRepo) {
+        return (
+          <EmptyState
+            icon={GitBranch}
+            title="Git failed"
+            description={git.error.message}
+          />
+        );
+      }
     }
 
     if (!hasRepo && !git.loading) {
+      const pathHint = git.path
+        ? `No repo found at ${git.path}. Open a project or shell inside a worktree.`
+        : "No repo found at this path. Open a project or shell inside a worktree.";
       return (
         <EmptyState
           icon={GitBranch}
           title="Not a git repository"
-          description="No repo found at this path. Open a project or shell inside a worktree."
+          description={pathHint}
         />
       );
     }

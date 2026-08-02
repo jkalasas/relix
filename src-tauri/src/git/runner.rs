@@ -134,6 +134,22 @@ async fn probe_git_availability(backend: &GitBackend) -> Result<Availability> {
     classify_probe_output(&output)
 }
 
+fn looks_like_missing_git(output: &GitOutput) -> bool {
+    if matches!(output.exit_code, Some(127)) {
+        return true;
+    }
+    let stderr = String::from_utf8_lossy(&output.stderr).to_ascii_lowercase();
+    stderr.contains("command not found")
+        || (stderr.contains("not found") && stderr.contains("git"))
+}
+
+fn looks_like_bad_cwd(stderr: &str) -> bool {
+    let lower = stderr.to_ascii_lowercase();
+    lower.contains("cannot change to")
+        || lower.contains("not a directory")
+        || (lower.contains("no such file or directory") && lower.contains("fatal:"))
+}
+
 fn classify_probe_output(output: &GitOutput) -> Result<Availability> {
     if output.timed_out {
         return Err(GitError::new(
@@ -142,6 +158,9 @@ fn classify_probe_output(output: &GitOutput) -> Result<Availability> {
         ));
     }
     if output.exit_code != Some(0) {
+        if looks_like_missing_git(output) {
+            return Ok(Availability::NotInstalled);
+        }
         let detail = String::from_utf8_lossy(&output.stderr).trim().to_string();
         return Err(GitError::new(
             GitErrorCode::CommandFailed,
@@ -306,7 +325,8 @@ fn sh_single_quote(value: &str) -> String {
 }
 
 fn build_remote_git_command(cwd: &str, args: &[&str]) -> String {
-    // env VAR=value ... git -C 'cwd' --no-pager 'args...'
+    // OpenSSH runs exec as `$SHELL -c <command>` (may be fish/zsh). Match shell/tmux:
+    // wrap portable work in bash -lc so login PATH and POSIX syntax apply.
     let mut parts = vec![
         "env".to_string(),
         "GIT_TERMINAL_PROMPT=0".to_string(),
@@ -323,7 +343,8 @@ fn build_remote_git_command(cwd: &str, args: &[&str]) -> String {
     for a in args {
         parts.push(sh_single_quote(a));
     }
-    parts.join(" ")
+    let script = parts.join(" ");
+    format!("bash -lc {}", sh_single_quote(&script))
 }
 
 async fn run_remote(
@@ -353,6 +374,7 @@ async fn run_remote(
         let mut exit_status: Option<u32> = None;
         let mut truncated = false;
 
+        // Do not break on Eof — ExitStatus can arrive after EOF on some servers.
         loop {
             match channel.wait().await {
                 Some(ChannelMsg::Data { ref data }) => {
@@ -380,7 +402,8 @@ async fn run_remote(
                 Some(ChannelMsg::ExitStatus { exit_status: code }) => {
                     exit_status = Some(code);
                 }
-                Some(ChannelMsg::Eof) | Some(ChannelMsg::Close) | None => break,
+                Some(ChannelMsg::Eof) => {}
+                Some(ChannelMsg::Close) | None => break,
                 _ => {}
             }
         }
@@ -459,7 +482,19 @@ pub async fn git_stdout_line_opt(
             "git command timed out",
         ));
     }
-    if output.exit_code != Some(0) {
+    let succeeded = output.exit_code == Some(0)
+        || (output.exit_code.is_none() && !output.stdout.is_empty());
+    if !succeeded {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        if looks_like_bad_cwd(&stderr) {
+            let detail = stderr
+                .lines()
+                .next()
+                .unwrap_or("path is not a directory")
+                .trim()
+                .to_string();
+            return Err(GitError::new(GitErrorCode::NotADirectory, detail));
+        }
         return Ok(None);
     }
     let stdout = std::str::from_utf8(&output.stdout).unwrap_or("");
@@ -581,6 +616,42 @@ mod tests {
         assert!(matches!(failed.code, GitErrorCode::CommandFailed));
     }
 
+    fn probe_output_with_stderr(
+        stdout: &str,
+        stderr: &str,
+        exit_code: Option<i32>,
+        timed_out: bool,
+    ) -> GitOutput {
+        GitOutput {
+            stdout: stdout.as_bytes().to_vec(),
+            stderr: stderr.as_bytes().to_vec(),
+            exit_code,
+            timed_out,
+            truncated: false,
+        }
+    }
+
+    #[test]
+    fn classify_probe_missing_git_is_not_installed() {
+        let missing = classify_probe_output(&probe_output_with_stderr(
+            "",
+            "bash: git: command not found",
+            Some(127),
+            false,
+        ))
+        .expect("missing");
+        assert!(matches!(missing, Availability::NotInstalled));
+
+        let missing_msg = classify_probe_output(&probe_output_with_stderr(
+            "",
+            "env: git: No such file or directory",
+            Some(127),
+            false,
+        ))
+        .expect("missing env");
+        assert!(matches!(missing_msg, Availability::NotInstalled));
+    }
+
     #[test]
     fn shell_quote_simple() {
         assert_eq!(sh_single_quote("foo"), "'foo'");
@@ -590,9 +661,31 @@ mod tests {
     #[test]
     fn builds_remote_command() {
         let cmd = build_remote_git_command("/home/u/repo", &["status", "--porcelain=v2"]);
+        assert!(cmd.starts_with("bash -lc "));
         assert!(cmd.contains("GIT_TERMINAL_PROMPT=0"));
-        assert!(cmd.contains("git -C '/home/u/repo' --no-pager 'status'"));
-        assert!(cmd.contains("'--porcelain=v2'"));
-        assert!(cmd.starts_with("env "));
+        assert!(cmd.contains("git -C "));
+        assert!(cmd.contains("/home/u/repo"));
+        assert!(cmd.contains("--no-pager"));
+        assert!(cmd.contains("status"));
+        assert!(cmd.contains("--porcelain=v2"));
+    }
+
+    #[test]
+    fn remote_command_survives_fish_c() {
+        let cmd = build_remote_git_command(".", &["--version"]);
+        let output = std::process::Command::new("fish")
+            .args(["-c", &cmd])
+            .output()
+            .expect("fish");
+        assert!(
+            output.status.success(),
+            "stderr={}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        assert!(
+            stdout.contains("git version"),
+            "stdout={stdout}"
+        );
     }
 }
