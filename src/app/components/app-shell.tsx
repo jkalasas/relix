@@ -169,6 +169,10 @@ export function AppShell({ app }: AppShellProps) {
           disconnectBusy={hostLife.disconnectBusy}
           onClearDisconnect={hostLife.clearDisconnectPrompt}
           onConfirmDisconnect={hostLife.confirmDisconnect}
+          quitPrompt={hostLife.quitPrompt}
+          quitBusy={hostLife.quitBusy}
+          onClearQuit={hostLife.clearQuitPrompt}
+          onConfirmQuit={hostLife.confirmQuit}
           discardTarget={sessions.discardTarget}
           onClearDiscard={sessions.clearDiscardTarget}
           onConfirmDiscard={sessions.confirmDiscardTab}

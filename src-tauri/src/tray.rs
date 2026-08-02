@@ -1,8 +1,10 @@
 use tauri::{
     menu::{Menu, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
-    App, AppHandle, Manager, Runtime,
+    App, AppHandle, Emitter, Manager, Runtime,
 };
+
+pub const QUIT_REQUESTED_EVENT: &str = "app://quit-requested";
 
 pub fn show_main_window<R: Runtime>(app: &AppHandle<R>) {
     let Some(window) = app.get_webview_window("main") else {
@@ -29,7 +31,10 @@ pub fn setup_tray(app: &App) -> tauri::Result<()> {
         .tooltip("Relix")
         .on_menu_event(|app, event| match event.id.as_ref() {
             "show" => show_main_window(app),
-            "quit" => app.exit(0),
+            "quit" => {
+                show_main_window(app);
+                let _ = app.emit(QUIT_REQUESTED_EVENT, ());
+            }
             _ => {}
         })
         .on_tray_icon_event(|tray, event| {

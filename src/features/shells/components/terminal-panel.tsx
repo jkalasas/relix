@@ -176,13 +176,15 @@ export function TerminalPanel({
   }
 
   if (sessions.length === 0) {
-    const tmux = !local && host.shellMode === "tmux";
+    const tmux = host.shellMode === "tmux";
     return (
       <EmptyTerminal
         title={tmux ? "No tmux windows" : "No open shells"}
         description={
           tmux
-            ? `Connection to ${host.name} is up. Open a window to attach a tmux session.`
+            ? local
+              ? "Open a window to attach the local tmux session."
+              : `Connection to ${host.name} is up. Open a window to attach a tmux session.`
             : local
               ? "Open a shell to start a local PTY session."
               : `Connection to ${host.name} is up. Open a shell to start a PTY session.`

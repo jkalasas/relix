@@ -78,15 +78,14 @@ export function useSessionBridge({
       cwd?: string,
     ) => {
       const host = hosts.find((item) => item.id === targetHostId);
-      const local = host ? isLocalHost(host) : false;
       try {
         const sessionId = await shells.openShell(
           targetWorkspaceId,
           targetHostId,
           launchId,
           {
-            shellMode: local ? "plain" : host?.shellMode,
-            tmuxSession: local ? undefined : host?.tmuxSession,
+            shellMode: host?.shellMode,
+            tmuxSession: host?.tmuxSession,
             cwd,
           },
         );

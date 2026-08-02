@@ -100,6 +100,10 @@ export function useAppController() {
 
   const handleBack = useCallback(() => {
     if (androidBackground.setupOpen) return true;
+    if (hostLife.quitPrompt && !hostLife.quitBusy) {
+      hostLife.clearQuitPrompt();
+      return true;
+    }
     if (hostLife.disconnectPrompt && !hostLife.disconnectBusy) {
       hostLife.clearDisconnectPrompt();
       return true;
@@ -115,6 +119,9 @@ export function useAppController() {
     return workspace.handleBack();
   }, [
     androidBackground.setupOpen,
+    hostLife.quitPrompt,
+    hostLife.quitBusy,
+    hostLife.clearQuitPrompt,
     hostLife.disconnectPrompt,
     hostLife.disconnectBusy,
     hostLife.clearDisconnectPrompt,
@@ -132,6 +139,7 @@ export function useAppController() {
     loadForwards: forwards.loadForwards,
     loadProjects: projects.loadProjects,
     syncHostProjects: projects.syncHostProjects,
+    bootstrapLocalTmux: hostLife.bootstrapLocalTmux,
     setBooting: hosts.setBooting,
   });
 

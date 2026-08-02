@@ -67,3 +67,9 @@ export async function listenSshAuthBanner(
     handler(e.payload),
   );
 }
+
+export async function listenAppQuitRequested(
+  handler: () => void,
+): Promise<UnlistenFn> {
+  return listen("app://quit-requested", () => handler());
+}

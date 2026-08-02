@@ -132,8 +132,8 @@ export function FilesPanel({
     connected,
     enabled: !filesProp,
     shellCwd: filesProp ? undefined : shellCwd,
-    tmuxSession: filesProp || local ? undefined : tmuxSession,
-    tmuxWindowId: filesProp || local ? undefined : tmuxWindowId,
+    tmuxSession: filesProp ? undefined : tmuxSession,
+    tmuxWindowId: filesProp ? undefined : tmuxWindowId,
   });
   const files = filesProp ?? ownedFiles;
   const upPath = parentPath(files.path);

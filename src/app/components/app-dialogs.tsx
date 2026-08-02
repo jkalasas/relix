@@ -25,6 +25,10 @@ type AppDialogsProps = {
   disconnectBusy: boolean;
   onClearDisconnect: () => void;
   onConfirmDisconnect: (choice: DisconnectChoice) => void;
+  quitPrompt: { sessionName: string } | null;
+  quitBusy: boolean;
+  onClearQuit: () => void;
+  onConfirmQuit: (choice: DisconnectChoice) => void;
   discardTarget: { fileName: string } | null;
   onClearDiscard: () => void;
   onConfirmDiscard: () => void;
@@ -50,6 +54,10 @@ export function AppDialogs({
   disconnectBusy,
   onClearDisconnect,
   onConfirmDisconnect,
+  quitPrompt,
+  quitBusy,
+  onClearQuit,
+  onConfirmQuit,
   discardTarget,
   onClearDiscard,
   onConfirmDiscard,
@@ -89,6 +97,28 @@ export function AppDialogs({
           if (!open && !disconnectBusy) onClearDisconnect();
         }}
         onConfirm={(choice) => void onConfirmDisconnect(choice)}
+      />
+
+      <DisconnectDialog
+        open={quitPrompt != null}
+        sessionName={quitPrompt?.sessionName ?? DEFAULT_TMUX_SESSION}
+        busy={quitBusy}
+        title="Quit Relix?"
+        description={
+          <>
+            Leave local tmux session{" "}
+            <span className="font-mono text-foreground">
+              {quitPrompt?.sessionName ?? DEFAULT_TMUX_SESSION}
+            </span>{" "}
+            running, or kill it and destroy every window.
+          </>
+        }
+        leaveLabel="Quit"
+        killLabel="Kill session"
+        onOpenChange={(open) => {
+          if (!open && !quitBusy) onClearQuit();
+        }}
+        onConfirm={(choice) => void onConfirmQuit(choice)}
       />
 
       <FileDiscardDialog

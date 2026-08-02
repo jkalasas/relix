@@ -2,6 +2,7 @@ use russh::ChannelMsg;
 
 use super::connection::SharedHandle;
 use super::error::{SshError, SshErrorCode};
+use super::local_shell::is_local_host_id;
 use super::manager::SshManager;
 
 const DEFAULT_SESSION: &str = "relix";
@@ -209,6 +210,37 @@ fn is_missing_session_error(message: &str) -> bool {
         || lower.contains("session not found")
 }
 
+fn map_exec_failure(
+    exit_status: Option<u32>,
+    stderr_text: &str,
+    local: bool,
+) -> SshError {
+    let message = if stderr_text.is_empty() {
+        format!(
+            "{} command failed (exit {})",
+            if local { "Local" } else { "Remote" },
+            exit_status.unwrap_or(1)
+        )
+    } else {
+        stderr_text.to_string()
+    };
+    let lower = message.to_lowercase();
+    if lower.contains("tmux: command not found")
+        || lower.contains("command not found")
+        || lower.contains("no such file")
+    {
+        return SshError::new(
+            SshErrorCode::Internal,
+            if local {
+                "tmux is not installed on this machine"
+            } else {
+                "tmux is not installed on the remote host"
+            },
+        );
+    }
+    SshError::new(SshErrorCode::Internal, message)
+}
+
 async fn exec_capture(handle: &SharedHandle, command: &str) -> Result<String, SshError> {
     let mut channel = {
         let guard = handle.lock().await;
@@ -242,48 +274,101 @@ async fn exec_capture(handle: &SharedHandle, command: &str) -> Result<String, Ss
     let stdout_text = String::from_utf8_lossy(&stdout).to_string();
     let stderr_text = String::from_utf8_lossy(&stderr).trim().to_string();
     if exit_status.unwrap_or(0) != 0 {
-        let message = if stderr_text.is_empty() {
-            format!("Remote command failed (exit {})", exit_status.unwrap_or(1))
-        } else {
-            stderr_text
-        };
-        let lower = message.to_lowercase();
-        if lower.contains("tmux: command not found")
-            || lower.contains("command not found")
-            || lower.contains("no such file")
-        {
-            return Err(SshError::new(
-                SshErrorCode::Internal,
-                "tmux is not installed on the remote host",
-            ));
-        }
-        return Err(SshError::new(SshErrorCode::Internal, message));
+        return Err(map_exec_failure(exit_status, &stderr_text, false));
     }
 
     Ok(stdout_text)
 }
 
+async fn local_exec_capture(command: &str) -> Result<String, SshError> {
+    if cfg!(any(target_os = "android", target_os = "ios")) {
+        return Err(SshError::new(
+            SshErrorCode::Internal,
+            "Local tmux is only available on desktop",
+        ));
+    }
+
+    #[cfg(windows)]
+    {
+        let _ = command;
+        return Err(SshError::new(
+            SshErrorCode::Internal,
+            "Local tmux requires a Unix-like environment",
+        ));
+    }
+
+    #[cfg(not(windows))]
+    {
+        let command = command.to_string();
+        let output = tokio::task::spawn_blocking(move || {
+            let shell = std::env::var("SHELL")
+                .ok()
+                .filter(|value| !value.is_empty())
+                .unwrap_or_else(|| {
+                    if std::path::Path::new("/bin/bash").exists() {
+                        "/bin/bash".into()
+                    } else {
+                        "/bin/sh".into()
+                    }
+                });
+            std::process::Command::new(&shell)
+                .arg("-lc")
+                .arg(&command)
+                .output()
+        })
+        .await
+        .map_err(|e| SshError::new(SshErrorCode::Internal, e.to_string()))?
+        .map_err(|e| SshError::new(SshErrorCode::Internal, e.to_string()))?;
+
+        let stdout_text = String::from_utf8_lossy(&output.stdout).to_string();
+        let stderr_text = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        if !output.status.success() {
+            return Err(map_exec_failure(
+                output.status.code().map(|code| code as u32),
+                &stderr_text,
+                true,
+            ));
+        }
+        Ok(stdout_text)
+    }
+}
+
 impl SshManager {
+    async fn tmux_exec(&self, host_id: &str, command: &str) -> Result<String, SshError> {
+        if is_local_host_id(host_id) {
+            local_exec_capture(command).await
+        } else {
+            let handle = self.live_handle(host_id).await?;
+            exec_capture(&handle, command).await
+        }
+    }
+
     pub async fn tmux_bootstrap(
         &self,
         host_id: String,
         session: Option<String>,
     ) -> Result<TmuxBootstrapResult, SshError> {
         let session = resolve_session(session)?;
-        let handle = self.live_handle(&host_id).await?;
-        exec_capture(&handle, &ensure_session_command(&session)).await?;
-        let _ = exec_capture(&handle, &configure_session_command(&session)).await;
-        let stdout = exec_capture(&handle, &list_windows_command(&session)).await?;
+        self.tmux_exec(&host_id, &ensure_session_command(&session))
+            .await?;
+        let _ = self
+            .tmux_exec(&host_id, &configure_session_command(&session))
+            .await;
+        let stdout = self
+            .tmux_exec(&host_id, &list_windows_command(&session))
+            .await?;
         let windows = parse_windows(&stdout)?;
         Ok(TmuxBootstrapResult { session, windows })
     }
 
     async fn tmux_pane_path(
-        handle: &SharedHandle,
+        &self,
+        host_id: &str,
         session: &str,
         window_id: &str,
     ) -> Option<String> {
-        let stdout = exec_capture(handle, &pane_path_command(session, window_id))
+        let stdout = self
+            .tmux_exec(host_id, &pane_path_command(session, window_id))
             .await
             .ok()?;
         let path = stdout.lines().next().unwrap_or("").trim();
@@ -307,8 +392,7 @@ impl SshManager {
                 "Missing tmux window id",
             ));
         }
-        let handle = self.live_handle(&host_id).await?;
-        Ok(Self::tmux_pane_path(&handle, &session, &window_id).await)
+        Ok(self.tmux_pane_path(&host_id, &session, &window_id).await)
     }
 
     pub async fn tmux_new_window(
@@ -321,9 +405,11 @@ impl SshManager {
         source_window_id: Option<String>,
     ) -> Result<TmuxWindow, SshError> {
         let session = resolve_session(session)?;
-        let handle = self.live_handle(&host_id).await?;
-        exec_capture(&handle, &ensure_session_command(&session)).await?;
-        let _ = exec_capture(&handle, &configure_session_command(&session)).await;
+        self.tmux_exec(&host_id, &ensure_session_command(&session))
+            .await?;
+        let _ = self
+            .tmux_exec(&host_id, &configure_session_command(&session))
+            .await;
 
         // Prefer live pane path from the source window — OSC7 often does not
         // pass through tmux, so frontend cwd is frequently missing.
@@ -333,21 +419,22 @@ impl SshManager {
             .map(str::trim)
             .filter(|value| !value.is_empty())
         {
-            if let Some(path) = Self::tmux_pane_path(&handle, &session, window_id).await {
+            if let Some(path) = self.tmux_pane_path(&host_id, &session, window_id).await {
                 resolved_cwd = Some(path);
             }
         }
 
-        let stdout = exec_capture(
-            &handle,
-            &new_window_command(
-                &session,
-                name.as_deref(),
-                command.as_deref(),
-                resolved_cwd.as_deref(),
-            ),
-        )
-        .await?;
+        let stdout = self
+            .tmux_exec(
+                &host_id,
+                &new_window_command(
+                    &session,
+                    name.as_deref(),
+                    command.as_deref(),
+                    resolved_cwd.as_deref(),
+                ),
+            )
+            .await?;
         parse_windows(&stdout)?
             .into_iter()
             .next()
@@ -360,8 +447,10 @@ impl SshManager {
         session: Option<String>,
     ) -> Result<TmuxBootstrapResult, SshError> {
         let session = resolve_session(session)?;
-        let handle = self.live_handle(&host_id).await?;
-        match exec_capture(&handle, &list_windows_command(&session)).await {
+        match self
+            .tmux_exec(&host_id, &list_windows_command(&session))
+            .await
+        {
             Ok(stdout) => Ok(TmuxBootstrapResult {
                 session,
                 windows: parse_windows_stdout(&stdout),
@@ -388,8 +477,10 @@ impl SshManager {
                 "Missing tmux window id",
             ));
         }
-        let handle = self.live_handle(&host_id).await?;
-        match exec_capture(&handle, &kill_window_command(&session, &window_id)).await {
+        match self
+            .tmux_exec(&host_id, &kill_window_command(&session, &window_id))
+            .await
+        {
             Ok(_) => Ok(()),
             Err(error) if is_missing_session_error(&error.message) => Ok(()),
             Err(error) => Err(error),
@@ -402,8 +493,10 @@ impl SshManager {
         session: Option<String>,
     ) -> Result<(), SshError> {
         let session = resolve_session(session)?;
-        let handle = self.live_handle(&host_id).await?;
-        match exec_capture(&handle, &kill_session_command(&session)).await {
+        match self
+            .tmux_exec(&host_id, &kill_session_command(&session))
+            .await
+        {
             Ok(_) => Ok(()),
             Err(error) if is_missing_session_error(&error.message) => Ok(()),
             Err(error) => Err(error),

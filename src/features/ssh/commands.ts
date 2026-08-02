@@ -33,6 +33,10 @@ export async function localShellAvailable(): Promise<boolean> {
   }
 }
 
+export async function appQuit(): Promise<void> {
+  await invoke("app_quit");
+}
+
 export async function sshConnect(host: HostConfig): Promise<void> {
   await invoke("ssh_connect", { config: hostToConnectPayload(host) });
 }

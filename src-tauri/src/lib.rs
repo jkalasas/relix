@@ -19,6 +19,12 @@ use ssh::commands::{
     ssh_trust_host_key, ssh_write,
 };
 use ssh::manager::SshManager;
+use tauri::AppHandle;
+
+#[tauri::command]
+fn app_quit(app: AppHandle) {
+    app.exit(0);
+}
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -43,6 +49,7 @@ pub fn run() {
             }
         })
         .invoke_handler(tauri::generate_handler![
+            app_quit,
             local_shell_available,
             ssh_connect,
             ssh_disconnect,

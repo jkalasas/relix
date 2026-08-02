@@ -13,6 +13,7 @@ type UseBootOptions = {
   loadForwards: (hostIds: string[]) => Promise<unknown>;
   loadProjects: () => Promise<unknown>;
   syncHostProjects: (hostId: string) => Promise<unknown>;
+  bootstrapLocalTmux?: () => Promise<unknown>;
   setBooting: (booting: boolean) => void;
 };
 
@@ -21,6 +22,7 @@ export function useBoot({
   loadForwards,
   loadProjects,
   syncHostProjects,
+  bootstrapLocalTmux,
   setBooting,
 }: UseBootOptions) {
   useEffect(() => {
@@ -46,6 +48,12 @@ export function useBoot({
           } catch {
             // keep client cache until a later successful sync
           }
+          if (cancelled) return;
+          try {
+            await bootstrapLocalTmux?.();
+          } catch {
+            // shells stay empty until the user opens one
+          }
         }
       } finally {
         if (!cancelled) setBooting(false);
@@ -55,5 +63,12 @@ export function useBoot({
     return () => {
       cancelled = true;
     };
-  }, [loadForwards, loadProjects, setBooting, setHosts, syncHostProjects]);
+  }, [
+    bootstrapLocalTmux,
+    loadForwards,
+    loadProjects,
+    setBooting,
+    setHosts,
+    syncHostProjects,
+  ]);
 }

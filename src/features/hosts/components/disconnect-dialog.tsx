@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -23,16 +24,24 @@ type DisconnectDialogProps = {
   open: boolean;
   sessionName: string;
   busy?: boolean;
+  title?: string;
+  description?: ReactNode;
+  leaveLabel?: string;
+  killLabel?: string;
   onOpenChange: (open: boolean) => void;
   onConfirm: (choice: DisconnectChoice) => void;
 };
 
 function DisconnectActions({
   busy,
+  leaveLabel,
+  killLabel,
   onCancel,
   onConfirm,
 }: {
   busy?: boolean;
+  leaveLabel: string;
+  killLabel: string;
   onCancel: () => void;
   onConfirm: (choice: DisconnectChoice) => void;
 }) {
@@ -56,7 +65,7 @@ function DisconnectActions({
         disabled={busy}
         className="min-h-11 w-full md:min-h-7 md:w-auto"
       >
-        Disconnect
+        {leaveLabel}
       </Button>
       <Button
         type="button"
@@ -66,7 +75,7 @@ function DisconnectActions({
         disabled={busy}
         className="min-h-11 w-full md:min-h-7 md:w-auto"
       >
-        Kill session
+        {killLabel}
       </Button>
     </>
   );
@@ -76,12 +85,15 @@ export function DisconnectDialog({
   open,
   sessionName,
   busy = false,
+  title = "Disconnect host?",
+  description,
+  leaveLabel = "Disconnect",
+  killLabel = "Kill session",
   onOpenChange,
   onConfirm,
 }: DisconnectDialogProps) {
   const isDesktop = useMediaQuery("(min-width: 768px)");
-  const title = "Disconnect host?";
-  const description = (
+  const resolvedDescription = description ?? (
     <>
       Leave remote tmux session{" "}
       <span className="font-mono text-foreground">{sessionName}</span> running,
@@ -95,11 +107,13 @@ export function DisconnectDialog({
         <DialogContent showCloseButton={!busy} className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>{title}</DialogTitle>
-            <DialogDescription>{description}</DialogDescription>
+            <DialogDescription>{resolvedDescription}</DialogDescription>
           </DialogHeader>
           <DialogFooter className="gap-2 sm:gap-2">
             <DisconnectActions
               busy={busy}
+              leaveLabel={leaveLabel}
+              killLabel={killLabel}
               onCancel={() => onOpenChange(false)}
               onConfirm={onConfirm}
             />
@@ -119,11 +133,13 @@ export function DisconnectDialog({
       <DrawerContent>
         <DrawerHeader className="text-left">
           <DrawerTitle>{title}</DrawerTitle>
-          <DrawerDescription>{description}</DrawerDescription>
+          <DrawerDescription>{resolvedDescription}</DrawerDescription>
         </DrawerHeader>
         <DrawerFooter className="pb-[max(1rem,env(safe-area-inset-bottom))]">
           <DisconnectActions
             busy={busy}
+            leaveLabel={leaveLabel}
+            killLabel={killLabel}
             onCancel={() => onOpenChange(false)}
             onConfirm={onConfirm}
           />

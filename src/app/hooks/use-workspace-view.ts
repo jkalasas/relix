@@ -142,11 +142,11 @@ export function useWorkspaceView({
     shellCwd: projectRootPath ? null : activeShellCwd,
     rootPath: projectRootPath,
     tmuxSession:
-      selectedIsLocal || !selectedHost || projectRootPath
+      !selectedHost || projectRootPath
         ? undefined
         : (trackedSession?.tmuxSession ?? selectedHost.tmuxSession),
     tmuxWindowId:
-      selectedIsLocal || !selectedHost || projectRootPath
+      !selectedHost || projectRootPath
         ? undefined
         : trackedSession?.tmuxWindowId,
   });

@@ -18,7 +18,7 @@ export function createLocalHost(): Host {
     hostname: "localhost",
     port: 22,
     authMethod: "password",
-    shellMode: "plain",
+    shellMode: "tmux",
     status: "connected",
   };
 }

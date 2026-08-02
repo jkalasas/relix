@@ -262,19 +262,21 @@ export function TerminalHost({
           ) : (
             <EmptyTerminal
               title={
-                !isLocalHost(emptyHost) && emptyHost.shellMode === "tmux"
+                emptyHost.shellMode === "tmux"
                   ? "No tmux windows"
                   : "No open shells"
               }
               description={
-                !isLocalHost(emptyHost) && emptyHost.shellMode === "tmux"
-                  ? `Connection to ${emptyHost.name} is up. Open a window to attach a tmux session.`
+                emptyHost.shellMode === "tmux"
+                  ? isLocalHost(emptyHost)
+                    ? "Open a window to attach the local tmux session."
+                    : `Connection to ${emptyHost.name} is up. Open a window to attach a tmux session.`
                   : isLocalHost(emptyHost)
                     ? "Open a shell to start a local PTY session."
                     : `Connection to ${emptyHost.name} is up. Open a shell to start a PTY session.`
               }
               actionLabel={
-                !isLocalHost(emptyHost) && emptyHost.shellMode === "tmux"
+                emptyHost.shellMode === "tmux"
                   ? "Open a window"
                   : "Open a shell"
               }

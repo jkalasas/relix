@@ -1,7 +1,8 @@
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAndroidBackground } from "@/features/android-background";
 import type { useForwards } from "@/features/forwards";
 import {
+  LOCAL_HOST_ID,
   type DisconnectChoice,
   type Host,
   type HostConfig,
@@ -10,6 +11,7 @@ import {
 import type { useProjects } from "@/features/projects";
 import type { useSessionTabs } from "@/features/session-tabs";
 import { DEFAULT_TMUX_SESSION, type useShells } from "@/features/shells";
+import { appQuit, listenAppQuitRequested } from "@/features/ssh";
 
 type UseHostLifecycleOptions = {
   forwards: ReturnType<typeof useForwards>;
@@ -29,6 +31,10 @@ export function useHostLifecycle({
     sessionName: string;
   } | null>(null);
   const [disconnectBusy, setDisconnectBusy] = useState(false);
+  const [quitPrompt, setQuitPrompt] = useState<{
+    sessionName: string;
+  } | null>(null);
+  const [quitBusy, setQuitBusy] = useState(false);
 
   const sessionTabsRef = useRef(sessionTabs);
   sessionTabsRef.current = sessionTabs;
@@ -90,6 +96,10 @@ export function useHostLifecycle({
     ensureBackgroundReady,
   });
 
+  const bootstrapLocalTmux = useCallback(async () => {
+    await shells.bootstrapTmux(LOCAL_HOST_ID);
+  }, [shells.bootstrapTmux]);
+
   const connectedCount = useMemo(
     () => hosts.hosts.filter((host) => host.status === "connected").length,
     [hosts.hosts],
@@ -149,6 +159,67 @@ export function useHostLifecycle({
     setDisconnectPrompt(null);
   }, []);
 
+  const exitApp = useCallback(async () => {
+    try {
+      await appQuit();
+    } catch {
+      // desktop-only command; ignore when unavailable
+    }
+  }, []);
+
+  const confirmQuit = useCallback(
+    async (choice: DisconnectChoice) => {
+      if (!quitPrompt) return;
+      const { sessionName } = quitPrompt;
+      setQuitBusy(true);
+      try {
+        if (choice === "kill") {
+          try {
+            await shells.killTmuxSession(LOCAL_HOST_ID, sessionName);
+          } catch {
+            // still quit
+          }
+        }
+        setQuitPrompt(null);
+        await exitApp();
+      } finally {
+        setQuitBusy(false);
+      }
+    },
+    [exitApp, quitPrompt, shells.killTmuxSession],
+  );
+
+  const clearQuitPrompt = useCallback(() => {
+    if (quitBusy) return;
+    setQuitPrompt(null);
+  }, [quitBusy]);
+
+  useEffect(() => {
+    let cancelled = false;
+    let unlisten: (() => void) | undefined;
+
+    void listenAppQuitRequested(() => {
+      if (cancelled) return;
+      const localAvailable = hosts.hosts.some((host) => host.id === LOCAL_HOST_ID);
+      if (!localAvailable) {
+        void exitApp();
+        return;
+      }
+      setQuitPrompt({ sessionName: DEFAULT_TMUX_SESSION });
+    }).then((fn) => {
+      if (cancelled) {
+        fn();
+        return;
+      }
+      unlisten = fn;
+    });
+
+    return () => {
+      cancelled = true;
+      unlisten?.();
+    };
+  }, [exitApp, hosts.hosts]);
+
   return {
     hosts,
     androidBackground,
@@ -157,5 +228,10 @@ export function useHostLifecycle({
     requestDisconnect,
     confirmDisconnect,
     clearDisconnectPrompt,
+    bootstrapLocalTmux,
+    quitPrompt,
+    quitBusy,
+    confirmQuit,
+    clearQuitPrompt,
   };
 }
