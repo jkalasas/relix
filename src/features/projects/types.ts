@@ -1,9 +1,12 @@
-export type ProjectConfig = {
+export type HostProjectEntry = {
   id: string;
-  hostId: string;
   name: string;
   path: string;
   activeWorktreePath?: string | null;
+};
+
+export type ProjectConfig = HostProjectEntry & {
+  hostId: string;
 };
 
 export type WorkspaceScope =

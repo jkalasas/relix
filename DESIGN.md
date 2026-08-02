@@ -164,7 +164,7 @@ Hosts page  →  Projects page  →  Workspace
 | **Workspace** | Session for one host + scope (Ad hoc or project). Tabs, shells, files, host-level ports, git status |
 
 **Ad hoc** — no saved project. Files and git follow the active shell cwd (OSC7 / tmux path).
-**Project** — saved name + home directory on that host. Optional `activeWorktreePath` selects a git worktree; shells open at the effective root (worktree or home); files and git stay rooted there. Switch / add / remove worktrees from the workspace header.
+**Project** — saved name + home directory on that host. Optional `activeWorktreePath` selects a git worktree; shells open at the effective root (worktree or home); files and git stay rooted there. Switch / add / remove worktrees from the workspace header. Project registry is **host-side** (`~/.config/relix/projects.json`); clients cache the list for offline browsing and refresh on connect.
 
 Open workspaces stay alive in the background. Jump via **Recents** (header / title bar). Back: workspace → projects → hosts.
 

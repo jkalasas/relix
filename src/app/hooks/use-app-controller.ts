@@ -131,6 +131,7 @@ export function useAppController() {
     setHosts: hosts.setHosts,
     loadForwards: forwards.loadForwards,
     loadProjects: projects.loadProjects,
+    syncHostProjects: projects.syncHostProjects,
     setBooting: hosts.setBooting,
   });
 

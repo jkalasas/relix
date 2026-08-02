@@ -1,4 +1,5 @@
 export type {
+  HostProjectEntry,
   ProjectConfig,
   WorkspaceId,
   WorkspaceRef,

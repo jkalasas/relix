@@ -33,6 +33,7 @@ function isProjectConfig(value: unknown): value is ProjectConfig {
   return true;
 }
 
+/** Client-side cache only. Host `~/.config/relix/projects.json` is authoritative. */
 export async function loadProjectsByHost(): Promise<
   Record<string, ProjectConfig[]>
 > {
@@ -52,6 +53,7 @@ export async function loadProjectsByHost(): Promise<
   }
 }
 
+/** Persist the offline project cache. Does not write the host registry. */
 export async function saveProjectsByHost(
   projects: Record<string, ProjectConfig[]>,
 ): Promise<void> {

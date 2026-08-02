@@ -35,12 +35,21 @@ export function useHostLifecycle({
 
   const onConnected = useCallback(
     async (host: HostConfig) => {
+      try {
+        await projects.syncHostProjects(host.id);
+      } catch {
+        // cache remains until a later successful sync
+      }
       await forwards.autoStartForwards(host.id);
       if (host.shellMode === "tmux") {
         await shells.bootstrapTmux(host.id, host.tmuxSession);
       }
     },
-    [forwards.autoStartForwards, shells.bootstrapTmux],
+    [
+      forwards.autoStartForwards,
+      projects.syncHostProjects,
+      shells.bootstrapTmux,
+    ],
   );
 
   const onDisconnecting = useCallback(

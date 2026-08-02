@@ -112,6 +112,10 @@ export function ProjectForm({
 
   function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
+    if (!connected) {
+      setError("Connect to save projects on this host");
+      return;
+    }
     const path = (form.path || files.path || "").trim();
     const next: ProjectConfig = { ...form, hostId: host.id, path };
     if (initial && !pathsMatch(path, initial.path)) {
@@ -281,7 +285,7 @@ export function ProjectForm({
           ) : null}
 
           <div className="flex shrink-0 flex-wrap items-center gap-2 pb-[max(0.5rem,env(safe-area-inset-bottom))]">
-            <Button type="submit" size="sm" disabled={!connected && !form.path}>
+            <Button type="submit" size="sm" disabled={!connected}>
               {isEdit ? "Save project" : "Create project"}
             </Button>
             <Button type="button" variant="ghost" size="sm" onClick={onCancel}>
@@ -294,6 +298,7 @@ export function ProjectForm({
                   variant="destructive"
                   size="sm"
                   className="ml-auto"
+                  disabled={!connected}
                   onClick={() => onDelete(form.id)}
                 >
                   Confirm delete
@@ -304,6 +309,7 @@ export function ProjectForm({
                   variant="ghost"
                   size="sm"
                   className="ml-auto text-destructive hover:text-destructive"
+                  disabled={!connected}
                   onClick={() => setConfirmDelete(true)}
                 >
                   Delete
