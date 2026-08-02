@@ -123,6 +123,9 @@ export function useSessionBridge({
     [shells.selectShell],
   );
 
+  const selectShellRef = useRef(selectShell);
+  selectShellRef.current = selectShell;
+
   useActiveShellFallback(
     workspaceId,
     selectedHost?.id ?? null,
@@ -135,8 +138,22 @@ export function useSessionBridge({
     if (!workspaceId || !selectedHost) return;
     if (selectedHost.shellMode !== "tmux") return;
     if (selectedHost.status !== "connected") return;
+    const targetWorkspaceId = workspaceId;
+    const targetHostId = selectedHost.id;
     void shells
-      .bootstrapTmux(workspaceId, selectedHost.id, selectedHost.tmuxSession)
+      .bootstrapTmux(
+        targetWorkspaceId,
+        targetHostId,
+        selectedHost.tmuxSession,
+      )
+      .then((activeShellId) => {
+        if (!activeShellId) return;
+        sessionTabsRef.current.activateShellTab(
+          targetWorkspaceId,
+          activeShellId,
+        );
+        selectShellRef.current(targetWorkspaceId, targetHostId, activeShellId);
+      })
       .catch(() => {
         // workspace can still open shells later
       });

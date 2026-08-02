@@ -47,19 +47,8 @@ export function useHostLifecycle({
         // cache remains until a later successful sync
       }
       await forwards.autoStartForwards(host.id);
-      if (host.shellMode === "tmux") {
-        await shells.bootstrapTmux(
-          adhocWorkspaceId(host.id),
-          host.id,
-          host.tmuxSession,
-        );
-      }
     },
-    [
-      forwards.autoStartForwards,
-      projects.syncHostProjects,
-      shells.bootstrapTmux,
-    ],
+    [forwards.autoStartForwards, projects.syncHostProjects],
   );
 
   const onDisconnecting = useCallback(

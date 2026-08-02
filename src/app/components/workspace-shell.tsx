@@ -414,6 +414,7 @@ type WorkspaceTerminalProps = {
   liveTerminals: LiveTerminal[];
   activeWorkspaceId: WorkspaceId | null;
   shellActiveSessionId: string | null;
+  selectedSessions: ShellSession[];
   shellChromeOpen: boolean;
   selectedHost: Host | null;
   projectRootPath: string | null;
@@ -432,6 +433,7 @@ export function WorkspaceTerminal({
   liveTerminals,
   activeWorkspaceId,
   shellActiveSessionId,
+  selectedSessions,
   shellChromeOpen,
   selectedHost,
   projectRootPath,
@@ -445,6 +447,7 @@ export function WorkspaceTerminal({
       terminals={liveTerminals}
       activeWorkspaceId={activeWorkspaceId}
       activeSessionId={shellActiveSessionId}
+      workspaceSessions={selectedSessions}
       surfaceOpen={shellChromeOpen}
       emptyHost={selectedHost}
       emptyWorkspaceId={activeWorkspaceId}

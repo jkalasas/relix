@@ -122,6 +122,11 @@ export function useShells(options: UseShellsOptions = {}) {
   >({});
   const sessionsByWorkspaceRef = useRef(sessionsByWorkspace);
   sessionsByWorkspaceRef.current = sessionsByWorkspace;
+  const activeSessionByWorkspaceRef = useRef(activeSessionByWorkspace);
+  activeSessionByWorkspaceRef.current = activeSessionByWorkspace;
+  const bootstrapInflightRef = useRef(
+    new Map<string, Promise<string | null>>(),
+  );
 
   const attachTmuxWindow = useCallback(
     async (
@@ -134,6 +139,14 @@ export function useShells(options: UseShellsOptions = {}) {
       const { sessionId: channelId } = await sshOpenShell(hostId, {
         command: tmuxAttachCommand(tmuxSession, tmuxWindowId),
       });
+      const nextList = (sessionsByWorkspaceRef.current[workspaceId] ?? []).map(
+        (session) =>
+          session.id === sessionId ? { ...session, channelId } : session,
+      );
+      sessionsByWorkspaceRef.current = {
+        ...sessionsByWorkspaceRef.current,
+        [workspaceId]: nextList,
+      };
       setSessionsByWorkspace((current) => {
         const list = current[workspaceId] ?? [];
         return {
@@ -188,64 +201,92 @@ export function useShells(options: UseShellsOptions = {}) {
   );
 
   const bootstrapTmux = useCallback(
-    async (workspaceId: string, hostId: string, tmuxSession?: string) => {
-      const sessionName = tmuxSessionForWorkspace(
-        resolveTmuxBase(tmuxSession),
-        workspaceId,
-      );
-      try {
-        const result = await sshTmuxBootstrap(hostId, sessionName);
-        const existing = sessionsByWorkspaceRef.current[workspaceId] ?? [];
-        const { sessions, deadChannels } = mergeTmuxSessions(
-          hostId,
+    async (
+      workspaceId: string,
+      hostId: string,
+      tmuxSession?: string,
+    ): Promise<string | null> => {
+      const inflight = bootstrapInflightRef.current.get(workspaceId);
+      if (inflight) return inflight;
+
+      const run = (async (): Promise<string | null> => {
+        const sessionName = tmuxSessionForWorkspace(
+          resolveTmuxBase(tmuxSession),
           workspaceId,
-          result.session,
-          existing,
-          result.windows,
         );
-        for (const channelId of deadChannels) {
-          void closeChannel(channelId);
-        }
-
-        sessionsByWorkspaceRef.current = {
-          ...sessionsByWorkspaceRef.current,
-          [workspaceId]: sessions,
-        };
-        setSessionsByWorkspace((current) => ({
-          ...current,
-          [workspaceId]: sessions,
-        }));
-
-        let nextActiveId: string | null = null;
-        setActiveSessionByWorkspace((current) => {
-          const activeId = current[workspaceId];
-          if (activeId && sessions.some((session) => session.id === activeId)) {
-            nextActiveId = activeId;
-            return current;
-          }
-          const activeWindow =
-            result.windows.find((window) => window.active) ?? result.windows[0];
-          const preferred =
-            sessions.find(
-              (session) => session.tmuxWindowId === activeWindow?.id,
-            ) ?? sessions[0];
-          nextActiveId = preferred?.id ?? null;
-          return { ...current, [workspaceId]: nextActiveId };
-        });
-
-        const toAttach = sessions.find((session) => session.id === nextActiveId);
-        if (toAttach?.tmuxWindowId && !toAttach.channelId) {
-          await attachTmuxWindow(
+        try {
+          const result = await sshTmuxBootstrap(hostId, sessionName);
+          const existing = sessionsByWorkspaceRef.current[workspaceId] ?? [];
+          const { sessions, deadChannels } = mergeTmuxSessions(
             hostId,
             workspaceId,
-            toAttach.id,
             result.session,
-            toAttach.tmuxWindowId,
+            existing,
+            result.windows,
           );
+          for (const channelId of deadChannels) {
+            void closeChannel(channelId);
+          }
+
+          const priorActive = activeSessionByWorkspaceRef.current[workspaceId];
+          const activeWindow =
+            result.windows.find((window) => window.active) ?? result.windows[0];
+          const preferredId =
+            (priorActive &&
+            sessions.some((session) => session.id === priorActive)
+              ? priorActive
+              : null) ??
+            sessions.find((session) => session.channelId)?.id ??
+            sessions.find(
+              (session) => session.tmuxWindowId === activeWindow?.id,
+            )?.id ??
+            sessions[0]?.id ??
+            null;
+
+          sessionsByWorkspaceRef.current = {
+            ...sessionsByWorkspaceRef.current,
+            [workspaceId]: sessions,
+          };
+          setSessionsByWorkspace((current) => ({
+            ...current,
+            [workspaceId]: sessions,
+          }));
+
+          activeSessionByWorkspaceRef.current = {
+            ...activeSessionByWorkspaceRef.current,
+            [workspaceId]: preferredId,
+          };
+          setActiveSessionByWorkspace((current) => ({
+            ...current,
+            [workspaceId]: preferredId,
+          }));
+
+          const toAttach = sessions.find(
+            (session) => session.id === preferredId,
+          );
+          if (toAttach?.tmuxWindowId && !toAttach.channelId) {
+            await attachTmuxWindow(
+              hostId,
+              workspaceId,
+              toAttach.id,
+              result.session,
+              toAttach.tmuxWindowId,
+            );
+          }
+          return preferredId;
+        } catch (error) {
+          onOpenFailed?.(hostId);
+          throw error;
         }
-      } catch (error) {
-        onOpenFailed?.(hostId);
-        throw error;
+      })();
+
+      bootstrapInflightRef.current.set(workspaceId, run);
+      try {
+        return await run;
+      } finally {
+        if (bootstrapInflightRef.current.get(workspaceId) === run) {
+          bootstrapInflightRef.current.delete(workspaceId);
+        }
       }
     },
     [attachTmuxWindow, onOpenFailed],

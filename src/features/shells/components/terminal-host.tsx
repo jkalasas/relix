@@ -31,6 +31,8 @@ type TerminalHostProps = {
   activeWorkspaceId: string | null;
   /** Active shell session id for the active workspace. */
   activeSessionId: string | null;
+  /** Shell sessions for the active workspace (including not-yet-attached). */
+  workspaceSessions?: ShellSession[];
   /** Shell chrome is the visible surface (not files/ports/other page). */
   surfaceOpen: boolean;
   onConnect: (hostId: string) => void;
@@ -64,6 +66,7 @@ export function TerminalHost({
   terminals,
   activeWorkspaceId,
   activeSessionId,
+  workspaceSessions = [],
   surfaceOpen,
   onConnect,
   onOpenShell,
@@ -190,10 +193,21 @@ export function TerminalHost({
     return terminals.filter((item) => item.workspaceId === activeWorkspaceId);
   }, [activeWorkspaceId, terminals]);
 
+  const pendingSession = useMemo(() => {
+    if (!surfaceOpen || workspaceSessions.length === 0) return null;
+    const active =
+      (activeSessionId
+        ? workspaceSessions.find((session) => session.id === activeSessionId)
+        : null) ?? workspaceSessions[0];
+    if (!active || active.channelId) return null;
+    return active;
+  }, [activeSessionId, surfaceOpen, workspaceSessions]);
+
   const showEmpty =
     surfaceOpen &&
     activeWorkspaceId != null &&
     emptyHost != null &&
+    workspaceSessions.length === 0 &&
     workspaceTerminals.length === 0;
 
   const showKeyBar =
@@ -241,58 +255,58 @@ export function TerminalHost({
         })}
 
         {showEmpty && emptyHost ? (
-          emptyHost.status !== "connected" && !isLocalHost(emptyHost) ? (
-            <EmptyTerminal
-              title={
-                emptyHost.status === "error"
-                  ? "Last connection failed"
-                  : "Terminal is idle"
-              }
-              description={
-                emptyHost.status === "error"
-                  ? (emptyHost.lastError ??
-                    `Could not reach ${emptyHost.user}@${emptyHost.hostname}. Check the host, port, or credentials, then try again.`)
-                  : `Connect to ${emptyHost.name} to open a shell session.`
-              }
-              actionLabel={
-                emptyHost.status === "error" ? "Retry connect" : "Connect"
-              }
-              onAction={() => onConnect(emptyHost.id)}
-            />
-          ) : (
-            <EmptyTerminal
-              title={
-                emptyHost.shellMode === "tmux"
-                  ? "No tmux windows"
-                  : "No open shells"
-              }
-              description={
-                emptyHost.shellMode === "tmux"
-                  ? isLocalHost(emptyHost)
-                    ? "Open a window to attach the local tmux session."
-                    : `Connection to ${emptyHost.name} is up. Open a window to attach a tmux session.`
-                  : isLocalHost(emptyHost)
-                    ? "Open a shell to start a local PTY session."
-                    : `Connection to ${emptyHost.name} is up. Open a shell to start a PTY session.`
-              }
-              actionLabel={
-                emptyHost.shellMode === "tmux"
-                  ? "Open a window"
-                  : "Open a shell"
-              }
-              onAction={() => {
-                if (!emptyWorkspaceId) return;
-                onOpenShell(emptyWorkspaceId, emptyHost.id);
-              }}
-            />
-          )
+          <div className="relative z-10 flex min-h-0 flex-1 flex-col">
+            {emptyHost.status !== "connected" && !isLocalHost(emptyHost) ? (
+              <EmptyTerminal
+                title={
+                  emptyHost.status === "error"
+                    ? "Last connection failed"
+                    : "Terminal is idle"
+                }
+                description={
+                  emptyHost.status === "error"
+                    ? (emptyHost.lastError ??
+                      `Could not reach ${emptyHost.user}@${emptyHost.hostname}. Check the host, port, or credentials, then try again.`)
+                    : `Connect to ${emptyHost.name} to open a shell session.`
+                }
+                actionLabel={
+                  emptyHost.status === "error" ? "Retry connect" : "Connect"
+                }
+                onAction={() => onConnect(emptyHost.id)}
+              />
+            ) : (
+              <EmptyTerminal
+                title={
+                  emptyHost.shellMode === "tmux"
+                    ? "No tmux windows"
+                    : "No open shells"
+                }
+                description={
+                  emptyHost.shellMode === "tmux"
+                    ? isLocalHost(emptyHost)
+                      ? "Open a window to attach the local tmux session."
+                      : `Connection to ${emptyHost.name} is up. Open a window to attach a tmux session.`
+                    : isLocalHost(emptyHost)
+                      ? "Open a shell to start a local PTY session."
+                      : `Connection to ${emptyHost.name} is up. Open a shell to start a PTY session.`
+                }
+                actionLabel={
+                  emptyHost.shellMode === "tmux"
+                    ? "Open a window"
+                    : "Open a shell"
+                }
+                onAction={() => {
+                  if (!emptyWorkspaceId) return;
+                  onOpenShell(emptyWorkspaceId, emptyHost.id);
+                }}
+              />
+            )}
+          </div>
         ) : null}
 
-        {surfaceOpen &&
-        activeLive &&
-        !activeLive.session.channelId ? (
-          <div className="flex flex-1 items-center justify-center px-4 text-sm text-muted-foreground">
-            Attaching {sessionDisplayTitle(activeLive.session)}…
+        {surfaceOpen && pendingSession ? (
+          <div className="relative z-10 flex flex-1 items-center justify-center px-4 text-sm text-muted-foreground">
+            Attaching {sessionDisplayTitle(pendingSession)}…
           </div>
         ) : null}
       </div>

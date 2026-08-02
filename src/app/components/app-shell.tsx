@@ -146,6 +146,7 @@ export function AppShell({ app }: AppShellProps) {
               liveTerminals={view.liveTerminals}
               activeWorkspaceId={view.activeWorkspaceId}
               shellActiveSessionId={view.shellActiveSessionId}
+              selectedSessions={view.selectedSessions}
               shellChromeOpen={view.shellChromeOpen}
               selectedHost={view.selectedHost}
               projectRootPath={view.projectRootPath}

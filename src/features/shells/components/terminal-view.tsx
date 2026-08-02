@@ -686,7 +686,7 @@ export function TerminalView({
         "relative min-h-0 min-w-0 overflow-hidden",
         active
           ? "flex-1"
-          : "pointer-events-none absolute inset-0 opacity-0",
+          : "pointer-events-none absolute inset-0 opacity-0 [&_*]:pointer-events-none",
       )}
       aria-hidden={!active}
     />
