@@ -9,6 +9,7 @@ import {
 } from "@/app/components/workspace-shell";
 import { DesktopTitleBar } from "@/components/workspace/desktop-title-bar";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
+import { Toaster } from "@/components/ui/toast";
 import { TooltipProvider } from "@/components/ui/tooltip";
 
 type AppShellProps = {
@@ -179,6 +180,7 @@ export function AppShell({ app }: AppShellProps) {
             void androidBackground.openBatterySettings()
           }
         />
+        <Toaster />
       </SidebarProvider>
     </TooltipProvider>
   );

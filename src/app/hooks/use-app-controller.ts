@@ -68,7 +68,6 @@ export function useAppController() {
 
   const sessions = useSessionBridge({
     hosts: hosts.hosts,
-    setHostStatus: hosts.setHostStatus,
     shells,
     sessionTabs,
     projects,

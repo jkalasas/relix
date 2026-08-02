@@ -5,6 +5,7 @@ import {
   listenSshForwardError,
   listenSshShellClosed,
 } from "@/features/ssh";
+import { toastError } from "@/lib/toast";
 
 type UseSshLifecycleOptions = {
   setHostStatus: (
@@ -48,6 +49,7 @@ export function useSshLifecycle({
         clearSessionsForHost(event.hostId);
         clearTabsForHost?.(event.hostId);
         markHostForwardsIdle(event.hostId);
+        toastError("SSH connection closed");
       });
       if (disposed) {
         connectionClosed();

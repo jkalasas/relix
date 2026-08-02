@@ -13,15 +13,11 @@ import {
   useActiveShellFallback,
   type useShells,
 } from "@/features/shells";
-import type { FsEntry } from "@/features/ssh";
+import { parseSshError, type FsEntry } from "@/features/ssh";
+import { toastError } from "@/lib/toast";
 
 type UseSessionBridgeOptions = {
   hosts: Host[];
-  setHostStatus: (
-    id: string,
-    status: "connected" | "idle" | "error",
-    lastError?: string,
-  ) => void;
   shells: ReturnType<typeof useShells>;
   sessionTabs: ReturnType<typeof useSessionTabs>;
   projects: ReturnType<typeof useProjects>;
@@ -35,7 +31,6 @@ type UseSessionBridgeOptions = {
 
 export function useSessionBridge({
   hosts,
-  setHostStatus,
   shells,
   sessionTabs,
   projects,
@@ -94,24 +89,32 @@ export function useSessionBridge({
             sessionId,
           );
         }
-      } catch {
-        if (!local) {
-          setHostStatus(targetHostId, "error", "Failed to open shell");
-        }
+      } catch (error) {
+        const message = parseSshError(error).message;
+        toastError(
+          "Failed to open shell",
+          message && message !== "Failed to open shell" ? message : undefined,
+        );
       }
     },
-    [hosts, setHostStatus, shells.openShell],
+    [hosts, shells.openShell],
   );
 
   const selectShell = useCallback(
     (targetWorkspaceId: string, targetHostId: string, sessionId: string) => {
       void shells
         .selectShell(targetWorkspaceId, targetHostId, sessionId)
-        .catch(() => {
-          setHostStatus(targetHostId, "error", "Failed to attach shell");
+        .catch((error) => {
+          const message = parseSshError(error).message;
+          toastError(
+            "Failed to attach shell",
+            message && message !== "Failed to attach shell"
+              ? message
+              : undefined,
+          );
         });
     },
-    [setHostStatus, shells.selectShell],
+    [shells.selectShell],
   );
 
   useActiveShellFallback(

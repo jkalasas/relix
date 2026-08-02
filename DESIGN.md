@@ -261,6 +261,10 @@ Task-specific, one primary action, no fake metrics. Icon in a quiet bordered til
 | `EmptyState` | `components/workspace/empty-state.tsx` | Shared empty pattern (icon tile · title · guidance · CTA) |
 | `Button` / `Input` / `Sidebar` | `components/ui/*` | shadcn CLI primitives — do not hand-edit; compose via variants / className / CSS tokens |
 
+### Toasts
+
+Sparse, error-oriented feedback for failures the user may not be staring at (e.g. unexpected SSH disconnect, shell open/attach). Prefer durable status (host/forward rows), panel banners, and dialogs when the surface is already on-screen. Never success-spam. Ops copy only. Implementation: shadcn Base UI `toast` + `src/lib/toast.ts`.
+
 ### Status mapping
 
 | `HostStatus` | Dot / chip |
@@ -394,3 +398,4 @@ When adding UI:
 | 2026-03-28 | Desktop SFTP: file tree in host rail + editor empty pane |
 | 2026-03-29 | Desktop shadcn Sidebar shell (collapsible icon); mobile keeps list → session |
 | 2026-03-29 | Desktop frameless title bar: tabs + window controls span full window chrome |
+| 2026-08-02 | Sparse toasts: Base UI toast for disconnect + shell open/attach failures |
