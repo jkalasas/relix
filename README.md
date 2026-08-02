@@ -21,6 +21,11 @@ Frontend-only:
 bun run dev
 ```
 
+### Desktop notes
+
+- Closing the window (title-bar X or Alt+F4) **hides to the system tray**; SSH sessions and tunnels keep running.
+- Restore via tray **Show Relix** (or left-click on Windows/macOS). **Quit** from the tray menu exits fully.
+
 ## Android
 
 Same Tauri CLI as desktop — mobile is a subcommand:

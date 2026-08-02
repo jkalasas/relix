@@ -1,6 +1,9 @@
 mod ssh;
 pub mod git;
 
+#[cfg(desktop)]
+mod tray;
+
 use git::commands::{
     git_add_worktree, git_checkout_branch, git_commit, git_commit_file_diff, git_commit_files,
     git_create_branch, git_diff, git_diff_content, git_discard, git_fetch, git_list_branches,
@@ -27,6 +30,18 @@ pub fn run() {
         .plugin(tauri_plugin_android_battery_optimization::init())
         .plugin(tauri_plugin_relix_keepalive::init())
         .manage(SshManager::new())
+        .setup(|app| {
+            #[cfg(desktop)]
+            tray::setup_tray(app)?;
+            Ok(())
+        })
+        .on_window_event(|window, event| {
+            #[cfg(desktop)]
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                let _ = window.hide();
+                api.prevent_close();
+            }
+        })
         .invoke_handler(tauri::generate_handler![
             local_shell_available,
             ssh_connect,
@@ -80,3 +95,4 @@ pub fn run() {
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
+
