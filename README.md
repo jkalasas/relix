@@ -72,12 +72,41 @@ See [Tauri Android prerequisites](https://v2.tauri.app/start/prerequisites/#andr
 bun tauri build
 ```
 
+## Testing
+
+Unit / component (Vitest + Testing Library):
+
+```bash
+bun run test
+bun run test:watch
+```
+
+Frontend E2E (Playwright against Vite, mocked Tauri IPC — not full desktop):
+
+```bash
+bunx playwright install chromium   # once per machine
+bun run test:e2e
+bun run test:e2e:ui
+```
+
+Port **1420** must be free (`strictPort`). Stop other `bun run dev` / `tauri dev` sessions first.
+
+Rust:
+
+```bash
+cd src-tauri && cargo test
+```
+
+PR CI (`.github/workflows/test.yml`) runs `lint`, `bun run test`, and `cargo test` on pull requests and pushes to `master`. Playwright is local-only for now.
+
 ## CI / releases
 
 GitHub Actions (`.github/workflows/build.yml`) builds Linux, Windows, macOS (arm64), and Android on:
 
 - manual **workflow_dispatch**
 - version tags matching `v*` (creates a **draft** release with installers + APKs)
+
+PR checks live in `.github/workflows/test.yml` (lint + unit + Rust). Release builds stay in `build.yml`.
 
 Optional Android signing secrets (unsigned APK if omitted):
 
