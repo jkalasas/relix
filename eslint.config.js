@@ -26,6 +26,10 @@ export default tseslint.config(
       "node_modules/**",
       "src-tauri/**",
       "public/**",
+      "e2e/**",
+      "playwright-report/**",
+      "test-results/**",
+      "blob-report/**",
     ],
   },
   {
