@@ -99,6 +99,8 @@ cd src-tauri && cargo test
 
 PR CI (`.github/workflows/test.yml`) runs `lint`, `bun run test`, and `cargo test` on pull requests and pushes to `master`. Playwright is local-only for now.
 
+Pre-commit (`.githooks/pre-commit`, enabled by `bun install` via `prepare`) runs `bun run lint`. Bypass with `git commit --no-verify`.
+
 ## CI / releases
 
 GitHub Actions (`.github/workflows/build.yml`) builds Linux, Windows, macOS (arm64), and Android on:
