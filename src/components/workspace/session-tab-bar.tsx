@@ -291,8 +291,14 @@ export function SessionTabBar({
   }, []);
 
   const openActions = useCallback(
-    (tabId: string, point?: { x: number; y: number }) => {
-      suppressClickRef.current = true;
+    (
+      tabId: string,
+      point?: { x: number; y: number },
+      options?: { suppressClick?: boolean },
+    ) => {
+      if (options?.suppressClick ?? true) {
+        suppressClickRef.current = true;
+      }
       onSelect(tabId);
       setTabsDrawerOpen(false);
       if (isDesktop && point) {
@@ -358,6 +364,7 @@ export function SessionTabBar({
       if (event.button !== 0) return;
       if (editingId === tabId) return;
 
+      suppressClickRef.current = false;
       clearLongPress();
       pointerRef.current = {
         tabId,
@@ -511,7 +518,11 @@ export function SessionTabBar({
       event.preventDefault();
       event.stopPropagation();
       if (editingId === tabId) return;
-      openActions(tabId, { x: event.clientX, y: event.clientY });
+      openActions(
+        tabId,
+        { x: event.clientX, y: event.clientY },
+        { suppressClick: false },
+      );
     },
     [editingId, openActions],
   );
@@ -879,7 +890,9 @@ export function SessionTabBar({
                           event.preventDefault();
                           event.stopPropagation();
                           setTabsDrawerOpen(false);
-                          openActions(tab.id);
+                          openActions(tab.id, undefined, {
+                            suppressClick: false,
+                          });
                         }}
                         className={cn(
                           "flex min-h-11 min-w-0 flex-1 items-center gap-2 rounded-md px-1.5 py-2 text-left outline-none transition-colors",
