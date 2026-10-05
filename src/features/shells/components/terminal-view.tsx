@@ -75,21 +75,55 @@ function attachWebgl(
   }
 }
 
-function restoreSurface(term: Terminal, fit: FitAddon, sessionId: string) {
-  fit.fit();
-  term.refresh(0, Math.max(0, term.rows - 1));
-  void sshResize(sessionId, term.cols, term.rows);
+type TerminalSize = { cols: number; rows: number };
+
+/**
+ * Send ssh_resize only when cols/rows actually changed. Tab reveals call
+ * fit() with an identical size; without this guard every reveal sends
+ * SIGWINCH and fish repaints its prompt over the refreshed buffer.
+ */
+function sendResizeIfChanged(
+  term: Terminal,
+  sessionId: string,
+  lastSent: { current: TerminalSize | null },
+): boolean {
+  const cols = term.cols;
+  const rows = term.rows;
+  const prev = lastSent.current;
+  if (prev && prev.cols === cols && prev.rows === rows) return false;
+  lastSent.current = { cols, rows };
+  void sshResize(sessionId, cols, rows);
+  return true;
 }
 
+/**
+ * Refit after a reveal/resize. Refreshes the canvas only when the size
+ * actually changed, so a same-size tab switch never disturbs the shell.
+ */
+function restoreSurface(
+  term: Terminal,
+  fit: FitAddon,
+  sessionId: string,
+  lastSent: { current: TerminalSize | null },
+) {
+  fit.fit();
+  if (!sendResizeIfChanged(term, sessionId, lastSent)) return;
+  term.refresh(0, Math.max(0, term.rows - 1));
+}
+
+/**
+ * Apply a font-size change, resizing the PTY only if the grid changed.
+ */
 function applyFontSize(
   term: Terminal,
   fit: FitAddon,
   sessionId: string,
   size: number,
+  lastSent: { current: TerminalSize | null },
 ) {
   term.options.fontSize = size;
   fit.fit();
-  void sshResize(sessionId, term.cols, term.rows);
+  sendResizeIfChanged(term, sessionId, lastSent);
 }
 
 function cellHeightPx(term: Terminal, element: HTMLElement): number {
@@ -314,6 +348,7 @@ function attachFontZoom(
   sessionId: string,
   container: HTMLElement,
   isActive: () => boolean,
+  lastSent: { current: TerminalSize | null },
 ): () => void {
   let resizeFrame = 0;
   let pendingSize: number | null = null;
@@ -323,7 +358,7 @@ function attachFontZoom(
     cancelAnimationFrame(resizeFrame);
     resizeFrame = requestAnimationFrame(() => {
       if (pendingSize == null) return;
-      applyFontSize(term, fit, sessionId, pendingSize);
+      applyFontSize(term, fit, sessionId, pendingSize, lastSent);
       pendingSize = null;
     });
   };
@@ -425,6 +460,7 @@ export function TerminalView({
   const onCwdChangeRef = useRef(onCwdChange);
   const lastCwdRef = useRef<string | null>(null);
   const forceFocusRef = useRef(false);
+  const lastSentSizeRef = useRef<TerminalSize | null>(null);
   // Drop click-through input (often Enter) when a UI click reveals this terminal.
   const ignoreInputUntilRef = useRef(0);
   const wasActiveVisibleRef = useRef(false);
@@ -499,8 +535,9 @@ export function TerminalView({
       return true;
     });
     webglRef.current = attachWebgl(term, null);
+    lastSentSizeRef.current = null;
     fit.fit();
-    void sshResize(sessionId, term.cols, term.rows);
+    sendResizeIfChanged(term, sessionId, lastSentSizeRef);
     const detachMobileScroll = attachMobileScroll(
       term,
       containerRef.current,
@@ -515,6 +552,7 @@ export function TerminalView({
       sessionId,
       containerRef.current,
       () => activeRef.current && visibleRef.current,
+      lastSentSizeRef,
     );
 
     const dataSub = term.onData((data) => {
@@ -546,11 +584,12 @@ export function TerminalView({
 
     let fitFrame = 0;
     const scheduleFit = () => {
+      if (!visibleRef.current || !activeRef.current) return;
       if (containerRef.current?.offsetParent === null) return;
       cancelAnimationFrame(fitFrame);
       fitFrame = requestAnimationFrame(() => {
         fit.fit();
-        void sshResize(sessionId, term.cols, term.rows);
+        sendResizeIfChanged(term, sessionId, lastSentSizeRef);
       });
     };
 
@@ -641,7 +680,7 @@ export function TerminalView({
         frame = requestAnimationFrame(run);
         return;
       }
-      restoreSurface(term, fit, sessionId);
+      restoreSurface(term, fit, sessionId, lastSentSizeRef);
       if (active) {
         // Defer past the activating pointer/click so it cannot type into xterm.
         focusTimer = window.setTimeout(() => {
@@ -657,27 +696,6 @@ export function TerminalView({
       window.clearTimeout(focusTimer);
     };
   }, [active, visible, sessionId]);
-
-  useEffect(() => {
-    const element = containerRef.current;
-    if (!element) return;
-
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (!entries.some((entry) => entry.isIntersecting)) return;
-        if (!activeRef.current || !visibleRef.current) return;
-        const term = termRef.current;
-        const fit = fitRef.current;
-        if (!term || !fit) return;
-        requestAnimationFrame(() => {
-          restoreSurface(term, fit, sessionId);
-        });
-      },
-      { threshold: 0 },
-    );
-    observer.observe(element);
-    return () => observer.disconnect();
-  }, [sessionId]);
 
   return (
     <div
