@@ -1,6 +1,10 @@
 use std::sync::Arc;
 
+use tokio::io::AsyncWriteExt as _;
+
 use russh_sftp::client::SftpSession;
+use russh_sftp::client::error::Error as SftpError;
+use russh_sftp::protocol::StatusCode;
 
 use super::connection::handle_is_closed;
 use super::error::{SshError, SshErrorCode};
@@ -16,8 +20,61 @@ pub(crate) struct LiveSftp {
     pub(crate) session: Arc<SftpSession>,
 }
 
-fn map_sftp_err(err: impl std::fmt::Display) -> SshError {
-    SshError::new(SshErrorCode::TransferFailed, err.to_string())
+fn dedupe_status_text(code: StatusCode, server_message: &str) -> String {
+    let code_text = code.to_string();
+    let msg = server_message.trim();
+    if msg.is_empty() || msg.eq_ignore_ascii_case(&code_text) {
+        return code_text;
+    }
+    // Some servers echo the code text as a "{code}: {detail}" prefix (e.g.
+    // OpenSSH sftp-server replies "No such file" to a NoSuchFile status,
+    // which would otherwise render as "No such file: No such file").
+    // Only strip when the echo is followed by a separator; a message that
+    // merely starts with the same words ("No such file or directory...")
+    // is kept whole.
+    let lower_msg = msg.to_lowercase();
+    let lower_code = code_text.to_lowercase();
+    if let Some(rest) = lower_msg.strip_prefix(&lower_code) {
+        if rest.is_empty() {
+            return code_text;
+        }
+        if matches!(rest.chars().next(), Some(':' | '-' | '\u{2013}')) {
+            let detail = rest.trim_start_matches([':', '-', '\u{2013}', ' ']);
+            if detail.is_empty() {
+                return code_text;
+            }
+            let cut = msg.len() - detail.len();
+            return msg[cut..].trim().to_string();
+        }
+    }
+    msg.to_string()
+}
+
+fn map_status_err(
+    code: StatusCode,
+    server_message: &str,
+    path: &str,
+) -> SshError {
+    let detail = dedupe_status_text(code, server_message);
+    let message = if path.trim().is_empty() {
+        detail
+    } else {
+        format!("{}: {}", detail, path.trim())
+    };
+    let code = match code {
+        StatusCode::NoSuchFile => SshErrorCode::NotFound,
+        _ => SshErrorCode::TransferFailed,
+    };
+    SshError::new(code, message)
+}
+
+fn map_sftp_err_path(err: SftpError, path: &str) -> SshError {
+    match err {
+        SftpError::Status(status) => {
+            map_status_err(status.status_code, &status.error_message, path)
+        }
+        other => SshError::new(SshErrorCode::TransferFailed, other.to_string()),
+    }
 }
 
 fn join_path(parent: &str, name: &str) -> String {
@@ -82,7 +139,7 @@ impl SshManager {
 
         let session = SftpSession::new(channel.into_stream())
             .await
-            .map_err(map_sftp_err)?;
+            .map_err(|e| map_sftp_err_path(e, ""))?;
         let session = Arc::new(session);
 
         {
@@ -123,11 +180,11 @@ pub(crate) async fn remote_list(
     let path = session
         .canonicalize(&requested)
         .await
-        .map_err(map_sftp_err)?;
+        .map_err(|e| map_sftp_err_path(e, &requested))?;
     let mut entries: Vec<FsEntry> = session
         .read_dir(&path)
         .await
-        .map_err(map_sftp_err)?
+        .map_err(|e| map_sftp_err_path(e, &path))?
         .map(|entry| {
             let name = entry.file_name();
             let is_dir = entry.file_type().is_dir();
@@ -163,7 +220,10 @@ pub(crate) async fn remote_read(
     config: FsReadConfig,
 ) -> Result<Vec<u8>, SshError> {
     let session = manager.ensure_sftp(&config.host_id).await?;
-    let meta = session.metadata(&config.path).await.map_err(map_sftp_err)?;
+    let meta = session
+        .metadata(&config.path)
+        .await
+        .map_err(|e| map_sftp_err_path(e, &config.path))?;
     let size = meta.size.unwrap_or(0) as usize;
     if size > MAX_TRANSFER_BYTES {
         return Err(SshError::new(
@@ -174,7 +234,10 @@ pub(crate) async fn remote_read(
             ),
         ));
     }
-    session.read(&config.path).await.map_err(map_sftp_err)
+    session
+        .read(&config.path)
+        .await
+        .map_err(|e| map_sftp_err_path(e, &config.path))
 }
 
 pub(crate) async fn remote_write(
@@ -182,10 +245,22 @@ pub(crate) async fn remote_write(
     config: FsWriteConfig,
 ) -> Result<(), SshError> {
     let session = manager.ensure_sftp(&config.host_id).await?;
-    session
-        .write(&config.path, &config.data)
+    // NOTE: `SftpSession::write` opens with WRITE only and fails with
+    // NoSuchFile on missing files — `create` opens with
+    // CREATE|TRUNCATE|WRITE, so new files (first registry save, uploads)
+    // work. Dropping `File` closes the handle, same as before.
+    let mut file = session
+        .create(&config.path)
         .await
-        .map_err(map_sftp_err)
+        .map_err(|e| map_sftp_err_path(e, &config.path))?;
+    file.write_all(&config.data)
+        .await
+        .map_err(|e| {
+            SshError::new(
+                SshErrorCode::TransferFailed,
+                format!("Could not write {}: {e}", config.path),
+            )
+        })
 }
 
 pub(crate) async fn remote_mkdir(
@@ -196,7 +271,7 @@ pub(crate) async fn remote_mkdir(
     session
         .create_dir(&config.path)
         .await
-        .map_err(map_sftp_err)
+        .map_err(|e| map_sftp_err_path(e, &config.path))
 }
 
 pub(crate) async fn remote_remove(
@@ -208,12 +283,12 @@ pub(crate) async fn remote_remove(
         session
             .remove_dir(&config.path)
             .await
-            .map_err(map_sftp_err)
+            .map_err(|e| map_sftp_err_path(e, &config.path))
     } else {
         session
             .remove_file(&config.path)
             .await
-            .map_err(map_sftp_err)
+            .map_err(|e| map_sftp_err_path(e, &config.path))
     }
 }
 
@@ -225,5 +300,53 @@ pub(crate) async fn remote_rename(
     session
         .rename(&config.from, &config.to)
         .await
-        .map_err(map_sftp_err)
+        .map_err(|e| map_sftp_err_path(e, &config.from))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn dedupes_echoed_no_such_file() {
+        assert_eq!(
+            dedupe_status_text(StatusCode::NoSuchFile, "No such file"),
+            "No such file"
+        );
+        assert_eq!(
+            dedupe_status_text(StatusCode::NoSuchFile, "No such file: No such file"),
+            "No such file"
+        );
+    }
+
+    #[test]
+    fn keeps_distinct_server_detail() {
+        assert_eq!(
+            dedupe_status_text(StatusCode::Failure, "link failed"),
+            "link failed"
+        );
+        // OS-style messages that merely start with the same words are
+        // kept whole, not chopped mid-word.
+        assert_eq!(
+            dedupe_status_text(
+                StatusCode::NoSuchFile,
+                "No such file or directory (os error 2)",
+            ),
+            "No such file or directory (os error 2)"
+        );
+    }
+
+    #[test]
+    fn maps_missing_file_to_not_found_with_path() {
+        let err = map_status_err(
+            StatusCode::NoSuchFile,
+            "No such file",
+            "/home/user/.config/relix/projects.json",
+        );
+        assert!(matches!(err.code, SshErrorCode::NotFound));
+        assert_eq!(
+            err.message,
+            "No such file: /home/user/.config/relix/projects.json"
+        );
+    }
 }
