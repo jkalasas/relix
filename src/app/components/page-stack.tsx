@@ -29,8 +29,8 @@ type PageStackProps = {
   onSaveHost: (config: HostConfig) => void;
   onDeleteHost: (id: string) => void;
   onCloseHostForm: () => void;
-  onSaveProject: (config: ProjectConfig) => void;
-  onDeleteProject: (hostId: string, projectId: string) => void;
+  onSaveProject: (config: ProjectConfig) => Promise<void>;
+  onDeleteProject: (hostId: string, projectId: string) => Promise<void>;
   onCloseProjectForm: () => void;
 };
 
@@ -121,11 +121,11 @@ export function PageStack({
           }
           connecting={connectingId === projectsHost.id}
           onConnect={() => onConnectHost(projectsHost.id)}
-          onSave={(config) => void onSaveProject(config)}
+          onSave={onSaveProject}
           onCancel={onCloseProjectForm}
           onDelete={
             page.mode === "edit"
-              ? (id) => void onDeleteProject(page.hostId, id)
+              ? (id) => onDeleteProject(page.hostId, id)
               : undefined
           }
         />

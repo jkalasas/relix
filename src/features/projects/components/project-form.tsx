@@ -29,9 +29,9 @@ type ProjectFormProps = {
   initialPath?: string | null;
   connecting?: boolean;
   onConnect?: () => void;
-  onSave: (config: ProjectConfig) => void;
+  onSave: (config: ProjectConfig) => Promise<void>;
   onCancel: () => void;
-  onDelete?: (id: string) => void;
+  onDelete?: (id: string) => Promise<void>;
 };
 
 function emptyProject(hostId: string, path = ""): ProjectConfig {
@@ -72,6 +72,8 @@ export function ProjectForm({
   const [error, setError] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [nameTouched, setNameTouched] = useState(Boolean(initial?.name));
+  const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   const connected = host.status === "connected" || isLocalHost(host);
   const files = useFiles({
@@ -110,8 +112,9 @@ export function ProjectForm({
     setForm((current) => ({ ...current, name: value }));
   }
 
-  function handleSubmit(event: React.FormEvent) {
+  async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
+    if (saving || deleting) return;
     if (!connected) {
       setError("Connect to save projects on this host");
       return;
@@ -127,7 +130,26 @@ export function ProjectForm({
       return;
     }
     setError(null);
-    onSave(normalizeProjectConfig(next));
+    setSaving(true);
+    try {
+      await onSave(normalizeProjectConfig(next));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not save project");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleDelete(id: string) {
+    if (!onDelete || saving || deleting) return;
+    setDeleting(true);
+    try {
+      await onDelete(id);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not delete project");
+    } finally {
+      setDeleting(false);
+    }
   }
 
   const title = isEdit ? "Edit project" : "Add project";
@@ -285,8 +307,8 @@ export function ProjectForm({
           ) : null}
 
           <div className="flex shrink-0 flex-wrap items-center gap-2 pb-[max(0.5rem,env(safe-area-inset-bottom))]">
-            <Button type="submit" size="sm" disabled={!connected}>
-              {isEdit ? "Save project" : "Create project"}
+            <Button type="submit" size="sm" disabled={!connected || saving || deleting}>
+              {saving ? "Saving…" : isEdit ? "Save project" : "Create project"}
             </Button>
             <Button type="button" variant="ghost" size="sm" onClick={onCancel}>
               Cancel
@@ -298,10 +320,10 @@ export function ProjectForm({
                   variant="destructive"
                   size="sm"
                   className="ml-auto"
-                  disabled={!connected}
-                  onClick={() => onDelete(form.id)}
+                  disabled={!connected || saving || deleting}
+                  onClick={() => void handleDelete(form.id)}
                 >
-                  Confirm delete
+                  {deleting ? "Deleting…" : "Confirm delete"}
                 </Button>
               ) : (
                 <Button
@@ -309,7 +331,7 @@ export function ProjectForm({
                   variant="ghost"
                   size="sm"
                   className="ml-auto text-destructive hover:text-destructive"
-                  disabled={!connected}
+                  disabled={!connected || saving || deleting}
                   onClick={() => setConfirmDelete(true)}
                 >
                   Delete

@@ -85,10 +85,20 @@ export function useWorkspaceActions({
       if (migrateFromAdhoc) {
         const fromId = adhocWorkspaceId(config.hostId);
         const toId = projectWorkspaceId(config.hostId, config.id);
-        await shells.moveWorkspaceShells(fromId, toId, {
-          tmuxSession: selectedHost?.tmuxSession,
-        });
-        sessionTabs.moveWorkspace(fromId, toId);
+        try {
+          await shells.moveWorkspaceShells(fromId, toId, {
+            tmuxSession: selectedHost?.tmuxSession,
+          });
+          sessionTabs.moveWorkspace(fromId, toId);
+        } catch {
+          // Registry write already succeeded; still open the new workspace
+          // so a tmux move failure can't leave the form stuck.
+          try {
+            sessionTabs.moveWorkspace(fromId, toId);
+          } catch {
+            // tabs are best-effort here
+          }
+        }
       }
 
       workspace.afterSaveProject(config.hostId, config.id);
@@ -152,9 +162,11 @@ export function useWorkspaceActions({
     async (hostId: string, projectId: string) => {
       const workspaceId = projectWorkspaceId(hostId, projectId);
       const sessions = shells.sessionsByWorkspace[workspaceId] ?? [];
-      for (const session of sessions) {
-        await shells.closeShell(workspaceId, hostId, session.id);
-      }
+      await Promise.allSettled(
+        sessions.map((session) =>
+          shells.closeShell(workspaceId, hostId, session.id),
+        ),
+      );
       sessionTabs.removeWorkspace(workspaceId);
       shells.removeWorkspaceShells(workspaceId);
       await projects.deleteProject(hostId, projectId);

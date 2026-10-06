@@ -42,12 +42,11 @@ export function useProjects() {
     [projectsByHost],
   );
 
-  const getProject = useCallback(
-    (hostId: string, projectId: string) =>
-      (projectsByHost[hostId] ?? []).find((project) => project.id === projectId) ??
-      null,
-    [projectsByHost],
-  );
+  const getProject = useCallback((hostId: string, projectId: string) => {
+    const list =
+      projectsByHostRef.current[hostId] ?? projectsByHost[hostId] ?? [];
+    return list.find((project) => project.id === projectId) ?? null;
+  }, [projectsByHost]);
 
   const syncHostProjects = useCallback(async (hostId: string) => {
     const existing = syncInflightRef.current.get(hostId);
@@ -105,15 +104,34 @@ export function useProjects() {
 
   const deleteProject = useCallback(
     async (hostId: string, projectId: string) => {
-      const list = projectsByHostRef.current[hostId] ?? [];
-      if (!list.some((project) => project.id === projectId)) return;
-      const nextList = list.filter((project) => project.id !== projectId);
+      const cached = projectsByHostRef.current[hostId] ?? [];
+      if (cached.some((project) => project.id === projectId)) {
+        const nextList = cached.filter(
+          (project) => project.id !== projectId,
+        );
 
-      await writeHostProjects(hostId, nextList.map(toHostProjectEntry));
+        await writeHostProjects(hostId, nextList.map(toHostProjectEntry));
+
+        const next = {
+          ...projectsByHostRef.current,
+          [hostId]: nextList,
+        };
+        await persistCache(next);
+        return;
+      }
+
+      // Cache is stale or empty (e.g. mid-sync): converge with the host
+      // registry so delete doesn't silently no-op.
+      const { projects: hostEntries } = await readHostProjects(hostId);
+      if (!hostEntries.some((entry) => entry.id === projectId)) return;
+      const nextEntries = hostEntries.filter(
+        (entry) => entry.id !== projectId,
+      );
+      await writeHostProjects(hostId, nextEntries);
 
       const next = {
         ...projectsByHostRef.current,
-        [hostId]: nextList,
+        [hostId]: nextEntries.map((entry) => toProjectConfig(hostId, entry)),
       };
       await persistCache(next);
     },

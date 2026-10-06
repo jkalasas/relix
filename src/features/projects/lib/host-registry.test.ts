@@ -5,6 +5,7 @@ import {
   serializeHostProjectsFile,
   toHostProjectEntry,
   toProjectConfig,
+  withHostWriteLock,
 } from "@/features/projects/lib/host-registry";
 
 const entry: HostProjectEntry = {
@@ -74,6 +75,35 @@ describe("parseHostProjectsFile", () => {
     expect(() =>
       parseHostProjectsFile(JSON.stringify({ version: 1 })),
     ).toThrow("Host projects registry is missing projects");
+  });
+});
+
+describe("withHostWriteLock", () => {
+  it("serializes concurrent writes per host", async () => {
+    const order: string[] = [];
+    const gate = (name: string, ms: number) => () =>
+      new Promise<string>((resolve) => {
+        order.push(`start:${name}`);
+        setTimeout(() => {
+          order.push(`end:${name}`);
+          resolve(name);
+        }, ms);
+      });
+    const [a, b] = await Promise.all([
+      withHostWriteLock("h1", gate("a", 20)),
+      withHostWriteLock("h1", gate("b", 0)),
+    ]);
+    expect([a, b]).toEqual(["a", "b"]);
+    expect(order).toEqual(["start:a", "end:a", "start:b", "end:b"]);
+  });
+
+  it("lets the next writer through after a failure", async () => {
+    await expect(
+      withHostWriteLock("h2", () => Promise.reject(new Error("boom"))),
+    ).rejects.toThrow("boom");
+    await expect(
+      withHostWriteLock("h2", () => Promise.resolve("ok")),
+    ).resolves.toBe("ok");
   });
 });
 

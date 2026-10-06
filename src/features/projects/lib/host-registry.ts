@@ -16,7 +16,7 @@ import {
 const REGISTRY_VERSION = 1;
 const CONFIG_DIR_SEGMENTS = [".config", "relix"] as const;
 const REGISTRY_FILE = "projects.json";
-const REGISTRY_TMP = "projects.json.tmp";
+const REGISTRY_TMP_PREFIX = "projects.json.tmp.";
 
 export type HostRegistryRead = {
   projects: HostProjectEntry[];
@@ -27,8 +27,28 @@ type RegistryPaths = {
   home: string;
   dir: string;
   file: string;
-  tmp: string;
 };
+
+// Serializes registry writes per host. Concurrent saves (form submit +
+// background worktree auto-save, rapid edits) otherwise share one tmp
+// filename and can steal/rename it out from under each other.
+const hostWriteChains = new Map<string, Promise<void>>();
+
+export function withHostWriteLock<T>(
+  hostId: string,
+  run: () => Promise<T>,
+): Promise<T> {
+  const tail = hostWriteChains.get(hostId) ?? Promise.resolve();
+  const result = tail.then(run, run);
+  hostWriteChains.set(
+    hostId,
+    result.then(
+      () => undefined,
+      () => undefined,
+    ),
+  );
+  return result;
+}
 
 function decodeText(bytes: Uint8Array): string {
   return new TextDecoder("utf-8", { fatal: false }).decode(bytes);
@@ -164,7 +184,6 @@ async function resolveRegistryPaths(hostId: string): Promise<RegistryPaths> {
     home,
     dir,
     file: joinFsPath(dir, REGISTRY_FILE),
-    tmp: joinFsPath(dir, REGISTRY_TMP),
   };
 }
 
@@ -235,34 +254,72 @@ export async function writeHostProjects(
   hostId: string,
   projects: HostProjectEntry[],
 ): Promise<void> {
-  const paths = await resolveRegistryPaths(hostId);
-  try {
-    await ensureDir(hostId, paths.dir);
-    const payload = encodeText(serializeHostProjectsFile(projects));
-    await hostFsWrite(hostId, paths.tmp, payload);
-
-    if (await pathExists(hostId, paths.file)) {
-      try {
-        await hostFsRemove(hostId, paths.file, false);
-      } catch {
-        // rename may still replace
-      }
-    }
-
+  return withHostWriteLock(hostId, async () => {
+    const paths = await resolveRegistryPaths(hostId);
+    // Unique tmp per write so concurrent writers (or another window)
+    // never share — and steal — one tmp filename.
+    const tmp = joinFsPath(
+      paths.dir,
+      `${REGISTRY_TMP_PREFIX}${crypto.randomUUID()}`,
+    );
     try {
-      await hostFsRename(hostId, paths.tmp, paths.file);
-    } catch (renameError) {
-      await hostFsWrite(hostId, paths.file, payload);
+      await ensureDir(hostId, paths.dir);
+      const payload = encodeText(serializeHostProjectsFile(projects));
       try {
-        await hostFsRemove(hostId, paths.tmp, false);
-      } catch {
-        // best-effort cleanup
+        await hostFsWrite(hostId, tmp, payload);
+      } catch (error) {
+        if (parseSshError(error).code !== "not_found") throw error;
+        // Dir vanished between ensureDir and write; recreate once, retry.
+        await ensureDir(hostId, paths.dir);
+        await hostFsWrite(hostId, tmp, payload);
       }
-      if (!(await pathExists(hostId, paths.file))) {
-        throw renameError;
+      void sweepStaleTmps(hostId, paths.dir, tmp);
+
+      if (await pathExists(hostId, paths.file)) {
+        try {
+          await hostFsRemove(hostId, paths.file, false);
+        } catch {
+          // rename may still replace
+        }
       }
+
+      try {
+        await hostFsRename(hostId, tmp, paths.file);
+      } catch (renameError) {
+        await hostFsWrite(hostId, paths.file, payload);
+        try {
+          await hostFsRemove(hostId, tmp, false);
+        } catch {
+          // best-effort cleanup
+        }
+        if (!(await pathExists(hostId, paths.file))) {
+          throw renameError;
+        }
+      }
+    } catch (error) {
+      throw rewriteError(error);
     }
-  } catch (error) {
-    throw rewriteError(error);
+  });
+}
+
+async function sweepStaleTmps(
+  hostId: string,
+  dir: string,
+  keepTmp: string,
+): Promise<void> {
+  try {
+    const listed = await hostFsList(hostId, dir);
+    const keepName = basename(keepTmp);
+    const stale = listed.entries.filter(
+      (entry) =>
+        !entry.isDir &&
+        entry.name.startsWith(REGISTRY_TMP_PREFIX) &&
+        entry.name !== keepName,
+    );
+    await Promise.allSettled(
+      stale.map((entry) => hostFsRemove(hostId, entry.path, false)),
+    );
+  } catch {
+    // best-effort only; never fail the save for cleanup
   }
 }
