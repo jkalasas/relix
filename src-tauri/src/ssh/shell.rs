@@ -453,7 +453,16 @@ mod tests {
 
     #[test]
     fn bash_login_pi_cwd_survives_fish_c() {
-        let cmd = bash_login("cd '/home/jkalasas/Projects/personal/relix' && pwd && command -v pi");
+        const PI_WORKSPACE: &str = "/home/jkalasas/Projects/personal/relix";
+        let fish_present = std::process::Command::new("fish")
+            .arg("--version")
+            .output()
+            .is_ok();
+        if !fish_present || !std::path::Path::new(PI_WORKSPACE).is_dir() {
+            eprintln!("skipping: requires fish and the workstation checkout");
+            return;
+        }
+        let cmd = bash_login(&format!("cd '{PI_WORKSPACE}' && pwd && command -v pi"));
         let output = std::process::Command::new("fish")
             .args(["-c", &cmd])
             .output()
