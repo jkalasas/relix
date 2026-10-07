@@ -61,21 +61,24 @@ fn sh_single_quote(value: &str) -> String {
     format!("'{}'", value.replace('\'', "'\"'\"'"))
 }
 
-/// Sorted `env KEY='value' …` prefix so tab env is deterministic and safe
-/// for fish/zsh/bash `sh -c` wrappers. Callers append the real command.
-fn env_prefix(env: &std::collections::HashMap<String, String>) -> String {
+/// Sorted `export KEY='value' && …` prefix, spliced into the `bash -lc`
+/// script so tab env never depends on the remote login shell's quoting.
+/// Exotic `$SHELL`s may mangle an `env K='v' cmd` prefix into separate
+/// words and silently drop the assignment, so every env-carrying shell
+/// goes through bash instead. Callers append the real command after `&&`.
+fn export_prefix(env: &std::collections::HashMap<String, String>) -> String {
     let mut keys: Vec<&String> = env.keys().collect();
     keys.sort();
-    let mut parts = vec!["env".to_string()];
+    let mut parts = Vec::with_capacity(keys.len());
     for key in keys {
         let value = &env[key];
         parts.push(format!(
-            "{}={}",
+            "export {}={}",
             sh_single_quote(key),
             sh_single_quote(value)
         ));
     }
-    parts.join(" ")
+    parts.join(" && ")
 }
 
 /// OpenSSH runs exec via the user's login shell as `shell -c <command>`.
@@ -98,37 +101,50 @@ fn build_shell_remote(
 ) -> ShellRemote {
     let cwd = cwd.filter(|value| !value.is_empty());
     let command = command.filter(|value| !value.is_empty());
-    let prefix = if env.is_empty() {
-        None
-    } else {
-        Some(env_prefix(env))
-    };
-    let with_env = |cmd: String| match &prefix {
-        Some(p) => format!("{p} {cmd}"),
-        None => cmd,
-    };
 
-    match (command, cwd.as_deref()) {
-        (Some(cmd), Some(path)) => {
-            let script = format!("cd {} && exec {}", sh_single_quote(path), with_env(cmd));
-            ShellRemote::Exec(bash_login(&script))
-        }
-        (Some(cmd), None) => ShellRemote::Exec(with_env(cmd)),
-        (None, Some(path)) => {
-            let script = format!(
-                "cd {} && exec {}",
-                sh_single_quote(path),
-                with_env("\"${SHELL:-/bin/bash}\" -il".to_string()),
-            );
-            ShellRemote::Exec(bash_login(&script))
-        }
-        (None, None) => match prefix {
-            Some(p) => ShellRemote::Exec(format!(
-                "{p} \"${{SHELL:-/bin/bash}}\" -il"
-            )),
-            None => ShellRemote::RequestShell,
-        },
+    // Without env, preserve the previous behavior exactly: direct commands
+    // run via the user's login shell and interactive shells request a PTY
+    // shell, so fish/zsh config and OSC 7 keep working untouched.
+    if env.is_empty() {
+        return match (command, cwd.as_deref()) {
+            (Some(cmd), Some(path)) => {
+                let script = format!("cd {} && exec {}", sh_single_quote(path), cmd);
+                ShellRemote::Exec(bash_login(&script))
+            }
+            (Some(cmd), None) => ShellRemote::Exec(cmd),
+            (None, Some(path)) => {
+                let script = format!(
+                    "cd {} && exec \"${{SHELL:-/bin/bash}}\" -il",
+                    sh_single_quote(path),
+                );
+                ShellRemote::Exec(bash_login(&script))
+            }
+            (None, None) => ShellRemote::RequestShell,
+        };
     }
+
+    // With env, every shell goes through `bash -lc` with an in-script
+    // `export` — never a bare `env K='v' cmd` exec parsed by an unknown
+    // `$SHELL`, and never dependent on whether `cwd` happened to be set.
+    // The login profile also loads, so direct agent launches resolve the
+    // same PATH as interactive shells.
+    let exports = export_prefix(env);
+    let script = match (command, cwd.as_deref()) {
+        (Some(cmd), Some(path)) => format!(
+            "{} && cd {} && exec {}",
+            exports,
+            sh_single_quote(path),
+            cmd
+        ),
+        (Some(cmd), None) => format!("{} && exec {}", exports, cmd),
+        (None, Some(path)) => format!(
+            "{} && cd {} && exec \"${{SHELL:-/bin/bash}}\" -il",
+            exports,
+            sh_single_quote(path),
+        ),
+        (None, None) => format!("{} && exec \"${{SHELL:-/bin/bash}}\" -il", exports),
+    };
+    ShellRemote::Exec(bash_login(&script))
 }
 
 impl SshManager {
@@ -420,7 +436,7 @@ impl SshManager {
 
 #[cfg(test)]
 mod tests {
-    use super::{bash_login, build_shell_remote, env_prefix, sh_single_quote, ShellRemote};
+    use super::{bash_login, build_shell_remote, export_prefix, sh_single_quote, ShellRemote};
 
     fn no_env() -> std::collections::HashMap<String, String> {
         std::collections::HashMap::new()
@@ -524,29 +540,29 @@ mod tests {
     }
 
     #[test]
-    fn prefixes_command_with_tab_env() {
+    fn direct_command_without_cwd_still_exports_tab_env_via_bash() {
         match build_shell_remote(Some("claude".into()), None, &tab_env()) {
             ShellRemote::Exec(cmd) => assert_eq!(
                 cmd,
-                "env '_RELIX_TAB_ID'='shell:abc' claude"
+                bash_login("export '_RELIX_TAB_ID'='shell:abc' && exec claude"),
             ),
             ShellRemote::RequestShell => panic!("expected exec"),
         }
     }
 
     #[test]
-    fn exports_tab_env_inside_bash_login_script() {
+    fn exports_tab_env_before_cd_in_bash_login_script() {
         match build_shell_remote(
             Some("pi".into()),
             Some("/home/u/proj".into()),
             &tab_env(),
         ) {
-            ShellRemote::Exec(cmd) => {
-                assert!(cmd.starts_with("bash -lc "));
-                assert!(cmd.contains("_RELIX_TAB_ID"));
-                assert!(cmd.contains("shell:abc"));
-                assert!(cmd.contains("env "));
-            }
+            ShellRemote::Exec(cmd) => assert_eq!(
+                cmd,
+                bash_login(
+                    "export '_RELIX_TAB_ID'='shell:abc' && cd '/home/u/proj' && exec pi"
+                ),
+            ),
             ShellRemote::RequestShell => panic!("expected exec"),
         }
     }
@@ -554,20 +570,71 @@ mod tests {
     #[test]
     fn request_shell_with_env_becomes_exec_with_login_shell() {
         match build_shell_remote(None, None, &tab_env()) {
-            ShellRemote::Exec(cmd) => {
-                assert!(cmd.contains("'_RELIX_TAB_ID'='shell:abc'"));
-                assert!(cmd.contains("${SHELL:-/bin/bash}"));
-            }
+            ShellRemote::Exec(cmd) => assert_eq!(
+                cmd,
+                bash_login(
+                    "export '_RELIX_TAB_ID'='shell:abc' && exec \"${SHELL:-/bin/bash}\" -il"
+                ),
+            ),
             ShellRemote::RequestShell => panic!("expected exec"),
         }
     }
 
     #[test]
-    fn env_prefix_sorts_keys_and_quotes() {
+    fn interactive_with_cwd_exports_tab_env_before_cd() {
+        match build_shell_remote(None, Some("/home/u/proj".into()), &tab_env()) {
+            ShellRemote::Exec(cmd) => assert_eq!(
+                cmd,
+                bash_login(
+                    "export '_RELIX_TAB_ID'='shell:abc' && cd '/home/u/proj' && exec \"${SHELL:-/bin/bash}\" -il"
+                ),
+            ),
+            ShellRemote::RequestShell => panic!("expected exec"),
+        }
+    }
+
+    #[test]
+    fn export_prefix_sorts_keys_and_quotes() {
         let env = std::collections::HashMap::from([
             ("B".to_string(), "b'c".to_string()),
             ("A".to_string(), "1".to_string()),
         ]);
-        assert_eq!(env_prefix(&env), "env 'A'='1' 'B'='b'\"'\"'c'");
+        assert_eq!(
+            export_prefix(&env),
+            "export 'A'='1' && export 'B'='b'\"'\"'c'"
+        );
+    }
+
+    fn tab_env_exec_string(command: Option<&str>, cwd: Option<&str>) -> String {
+        match build_shell_remote(
+            command.map(str::to_string),
+            cwd.map(str::to_string),
+            &tab_env(),
+        ) {
+            ShellRemote::Exec(cmd) => cmd,
+            ShellRemote::RequestShell => panic!("expected exec with tab env"),
+        }
+    }
+
+    #[test]
+    fn direct_command_without_cwd_exports_tab_env_through_fish_c() {
+        let cmd = tab_env_exec_string(Some("printenv _RELIX_TAB_ID"), None);
+        let output = std::process::Command::new("fish")
+            .args(["-c", &cmd])
+            .output()
+            .expect("fish");
+        assert!(output.status.success(), "stderr={}", String::from_utf8_lossy(&output.stderr));
+        assert_eq!(String::from_utf8_lossy(&output.stdout).trim(), "shell:abc");
+    }
+
+    #[test]
+    fn direct_command_with_cwd_exports_tab_env_through_fish_c() {
+        let cmd = tab_env_exec_string(Some("printenv _RELIX_TAB_ID"), Some("/tmp"));
+        let output = std::process::Command::new("fish")
+            .args(["-c", &cmd])
+            .output()
+            .expect("fish");
+        assert!(output.status.success(), "stderr={}", String::from_utf8_lossy(&output.stderr));
+        assert_eq!(String::from_utf8_lossy(&output.stdout).trim(), "shell:abc");
     }
 }
