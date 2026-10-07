@@ -60,6 +60,7 @@ export type TmuxWindow = {
 export type TmuxBootstrapResult = {
   session: string;
   windows: TmuxWindow[];
+  created: boolean;
 };
 
 export type SshConnectPayload = {

@@ -21,6 +21,7 @@ pub struct TmuxWindow {
 pub struct TmuxBootstrapResult {
     pub session: String,
     pub windows: Vec<TmuxWindow>,
+    pub created: bool,
 }
 
 fn sh_single_quote(value: &str) -> String {
@@ -61,9 +62,23 @@ pub(crate) fn attach_command(session: &str, window_id: &str) -> String {
     format!("bash -lc {}", sh_single_quote(&script))
 }
 
-fn ensure_session_command(session: &str) -> String {
+fn has_session_command(session: &str) -> String {
+    format!("tmux has-session -t {} 2>/dev/null", sh_single_quote(session))
+}
+
+fn ensure_session_command(
+    session: &str,
+    env: &std::collections::HashMap<String, String>,
+) -> String {
     let quoted = sh_single_quote(session);
-    format!("tmux has-session -t {quoted} 2>/dev/null || tmux new-session -d -s {quoted}")
+    let mut create = format!("tmux new-session -d -s {quoted}");
+    let mut keys: Vec<&String> = env.keys().collect();
+    keys.sort();
+    for key in keys {
+        let value = &env[key];
+        create.push_str(&format!(" -e {}", sh_single_quote(&format!("{key}={value}"))));
+    }
+    format!("tmux has-session -t {quoted} 2>/dev/null || {create}")
 }
 
 /// Relix tabs are the window chrome — hide tmux's own status bar.
@@ -411,9 +426,14 @@ impl SshManager {
         &self,
         host_id: String,
         session: Option<String>,
+        env: std::collections::HashMap<String, String>,
     ) -> Result<TmuxBootstrapResult, SshError> {
         let session = resolve_session(session)?;
-        self.tmux_exec(&host_id, &ensure_session_command(&session))
+        let created = self
+            .tmux_exec(&host_id, &has_session_command(&session))
+            .await
+            .is_err();
+        self.tmux_exec(&host_id, &ensure_session_command(&session, &env))
             .await?;
         let _ = self
             .tmux_exec(&host_id, &configure_session_command(&session))
@@ -422,7 +442,7 @@ impl SshManager {
             .tmux_exec(&host_id, &list_windows_command(&session))
             .await?;
         let windows = parse_windows(&stdout)?;
-        Ok(TmuxBootstrapResult { session, windows })
+        Ok(TmuxBootstrapResult { session, windows, created })
     }
 
     async fn tmux_pane_path(
@@ -470,7 +490,7 @@ impl SshManager {
         env: std::collections::HashMap<String, String>,
     ) -> Result<TmuxWindow, SshError> {
         let session = resolve_session(session)?;
-        self.tmux_exec(&host_id, &ensure_session_command(&session))
+        self.tmux_exec(&host_id, &ensure_session_command(&session, &std::collections::HashMap::new()))
             .await?;
         let _ = self
             .tmux_exec(&host_id, &configure_session_command(&session))
@@ -520,10 +540,12 @@ impl SshManager {
             Ok(stdout) => Ok(TmuxBootstrapResult {
                 session,
                 windows: parse_windows_stdout(&stdout),
+                created: false,
             }),
             Err(error) if is_missing_session_error(&error.message) => Ok(TmuxBootstrapResult {
                 session,
                 windows: Vec::new(),
+                created: false,
             }),
             Err(error) => Err(error),
         }
@@ -653,9 +675,18 @@ mod tests {
 
     #[test]
     fn builds_ensure_list_and_configure_commands() {
+        let no_env = std::collections::HashMap::new();
         assert_eq!(
-            ensure_session_command("relix"),
+            ensure_session_command("relix", &no_env),
             "tmux has-session -t 'relix' 2>/dev/null || tmux new-session -d -s 'relix'"
+        );
+        let tab_env = std::collections::HashMap::from([(
+            "_RELIX_TAB_ID".to_string(),
+            "shell:abc".to_string(),
+        )]);
+        assert_eq!(
+            ensure_session_command("relix", &tab_env),
+            "tmux has-session -t 'relix' 2>/dev/null || tmux new-session -d -s 'relix' -e '_RELIX_TAB_ID=shell:abc'"
         );
         assert!(list_windows_command("relix").contains("list-windows -t 'relix'"));
         assert!(configure_session_command("relix").contains("status off"));

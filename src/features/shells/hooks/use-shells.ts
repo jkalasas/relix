@@ -217,15 +217,27 @@ export function useShells(options: UseShellsOptions = {}) {
           workspaceId,
         );
         try {
-          const result = await sshTmuxBootstrap(hostId, sessionName);
+          const freshId = crypto.randomUUID();
+          const result = await sshTmuxBootstrap(hostId, sessionName, {
+            [RELIX_TAB_ENV]: shellTabId(freshId),
+          });
           const existing = sessionsByWorkspaceRef.current[workspaceId] ?? [];
-          const { sessions, deadChannels } = mergeTmuxSessions(
+          const { sessions: merged, deadChannels } = mergeTmuxSessions(
             hostId,
             workspaceId,
             result.session,
             existing,
             result.windows,
           );
+          const initialWindowId =
+            (result.windows.find((window) => window.active) ?? result.windows[0])?.id ?? null;
+          const sessions = result.created && initialWindowId
+            ? merged.map((session) =>
+                session.tmuxWindowId === initialWindowId
+                  ? { ...session, id: freshId }
+                  : session,
+              )
+            : merged;
           for (const channelId of deadChannels) {
             void closeChannel(channelId);
           }

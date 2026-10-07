@@ -220,7 +220,7 @@ export function TerminalHost({
       className={
         surfaceOpen
           ? "relative flex min-h-0 flex-1 flex-col"
-          : "pointer-events-none fixed top-0 left-[-100vw] z-[-1] h-[70vh] w-[70vw] opacity-0"
+          : "pointer-events-none invisible fixed top-0 left-[-100vw] z-[-1] h-[70vh] w-[70vw] opacity-0 [content-visibility:hidden]"
       }
       aria-hidden={!surfaceOpen}
     >

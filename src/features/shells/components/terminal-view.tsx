@@ -211,40 +211,127 @@ function attachMobileScroll(
   container.appendChild(layer);
 
   const dragThresholdPx = 10;
+  const flingMinVelocityPxPerMs = 0.25;
+  const flingStopVelocityPxPerMs = 0.02;
+  const flingTimeConstantMs = 180;
   let tracking = false;
   let scrolling = false;
   let startY = 0;
   let lastY = 0;
   let remainder = 0;
+  let pendingDelta = 0;
+  let scrollFrame = 0;
+  let flingFrame = 0;
+  let flingVelocity = 0;
+  let lastFlingTime = 0;
+  let stuckFrames = 0;
+  let lastViewportY: number | null = null;
+  let samples: Array<{ y: number; t: number }> = [];
 
   let pinching = false;
   let pinchStartDistance = 0;
   let pinchStartFontSize = getTerminalFontSize();
+  let pinchFrame = 0;
+  let pendingPinchSize: number | null = null;
 
-  const scrollByDelta = (deltaY: number) => {
-    const scrollTarget =
-      term.element?.querySelector(".xterm-scrollable-element") ?? term.element;
-    if (scrollTarget) {
-      scrollTarget.dispatchEvent(
-        new WheelEvent("wheel", {
-          deltaY: -deltaY,
-          deltaMode: WheelEvent.DOM_DELTA_PIXEL,
-          bubbles: true,
-          cancelable: true,
-        }),
-      );
-      return;
+  const readViewportY = (): number | null => {
+    try {
+      return term.buffer.active.viewportY;
+    } catch {
+      return null;
     }
+  };
 
+  const applyLines = (deltaY: number): boolean => {
     const linePx = cellHeightPx(term, container);
     remainder += deltaY;
     const lines = Math.trunc(remainder / linePx);
-    if (lines === 0) return;
+    if (lines === 0) return true;
     remainder -= lines * linePx;
+    const before = readViewportY();
     term.scrollLines(-lines);
+    const after = readViewportY();
+    if (before != null && after != null && before === after) return false;
+    return true;
+  };
+
+  const flushPending = () => {
+    scrollFrame = 0;
+    if (pendingDelta === 0) return;
+    const delta = pendingDelta;
+    pendingDelta = 0;
+    applyLines(delta);
+  };
+
+  const scheduleFlush = () => {
+    if (scrollFrame) return;
+    scrollFrame = requestAnimationFrame(flushPending);
+  };
+
+  const cancelFling = () => {
+    cancelAnimationFrame(flingFrame);
+    flingFrame = 0;
+    flingVelocity = 0;
+    stuckFrames = 0;
+    lastViewportY = null;
+  };
+
+  const stepFling = (now: number) => {
+    flingFrame = 0;
+    const dt = Math.min(50, Math.max(1, now - lastFlingTime));
+    lastFlingTime = now;
+    const dy = flingVelocity * dt;
+    flingVelocity *= Math.exp(-dt / flingTimeConstantMs);
+    if (Math.abs(flingVelocity) < flingStopVelocityPxPerMs) {
+      cancelFling();
+      return;
+    }
+    const moved = applyLines(dy);
+    const currentY = readViewportY();
+    if (!moved || (currentY != null && currentY === lastViewportY)) {
+      stuckFrames += 1;
+      if (stuckFrames >= 2) {
+        cancelFling();
+        return;
+      }
+    } else {
+      stuckFrames = 0;
+    }
+    lastViewportY = currentY;
+    flingFrame = requestAnimationFrame(stepFling);
+  };
+
+  const startFling = (velocity: number) => {
+    cancelFling();
+    if (scrollFrame) {
+      cancelAnimationFrame(scrollFrame);
+      scrollFrame = 0;
+    }
+    if (pendingDelta !== 0) {
+      applyLines(pendingDelta);
+      pendingDelta = 0;
+    }
+    flingVelocity = velocity;
+    lastFlingTime = performance.now();
+    lastViewportY = readViewportY();
+    stuckFrames = 0;
+    flingFrame = requestAnimationFrame(stepFling);
+  };
+
+  const flushPinch = () => {
+    pinchFrame = 0;
+    if (pendingPinchSize == null) return;
+    setTerminalFontSize(pendingPinchSize);
+    pendingPinchSize = null;
   };
 
   const onTouchStart = (event: TouchEvent) => {
+    cancelFling();
+    if (scrollFrame) {
+      cancelAnimationFrame(scrollFrame);
+      scrollFrame = 0;
+    }
+    pendingDelta = 0;
     if (event.touches.length === 2) {
       tracking = false;
       scrolling = false;
@@ -267,14 +354,15 @@ function attachMobileScroll(
     startY = event.touches[0].clientY;
     lastY = startY;
     remainder = 0;
+    samples = [{ y: startY, t: performance.now() }];
   };
 
   const onTouchMove = (event: TouchEvent) => {
     if (pinching && event.touches.length === 2) {
       const distance = touchDistance(event.touches[0], event.touches[1]);
       if (pinchStartDistance > 0) {
-        const scale = distance / pinchStartDistance;
-        setTerminalFontSize(pinchStartFontSize * scale);
+        pendingPinchSize = pinchStartFontSize * (distance / pinchStartDistance);
+        if (!pinchFrame) pinchFrame = requestAnimationFrame(flushPinch);
       }
       event.preventDefault();
       event.stopPropagation();
@@ -294,7 +382,17 @@ function attachMobileScroll(
     const delta = y - lastY;
     lastY = y;
     if (delta === 0) return;
-    scrollByDelta(delta);
+    pendingDelta += delta;
+    scheduleFlush();
+    const now = performance.now();
+    samples.push({ y, t: now });
+    while (samples.length > 6) samples.shift();
+    while (
+      samples.length > 2 &&
+      now - samples[0].t > 120
+    ) {
+      samples.shift();
+    }
     event.preventDefault();
     event.stopPropagation();
   };
@@ -304,6 +402,14 @@ function attachMobileScroll(
       if (event.touches.length < 2) {
         pinching = false;
         pinchStartDistance = 0;
+        if (pinchFrame) {
+          cancelAnimationFrame(pinchFrame);
+          pinchFrame = 0;
+        }
+        if (pendingPinchSize != null) {
+          setTerminalFontSize(pendingPinchSize);
+          pendingPinchSize = null;
+        }
       }
       return;
     }
@@ -313,7 +419,21 @@ function attachMobileScroll(
     tracking = false;
     scrolling = false;
     remainder = 0;
-    if (!wasTap) return;
+    if (!wasTap) {
+      const last = samples[samples.length - 1];
+      const first = samples[0];
+      if (last && first && last.t > first.t) {
+        const velocity = (last.y - first.y) / (last.t - first.t);
+        if (Math.abs(velocity) >= flingMinVelocityPxPerMs) {
+          startFling(velocity);
+          samples = [];
+          return;
+        }
+      }
+      samples = [];
+      return;
+    }
+    samples = [];
 
     const force = shouldForceFocus();
     focusTerminal(term, { force });
@@ -333,6 +453,9 @@ function attachMobileScroll(
   layer.addEventListener("click", onClick);
 
   return () => {
+    cancelFling();
+    cancelAnimationFrame(scrollFrame);
+    cancelAnimationFrame(pinchFrame);
     layer.removeEventListener("touchstart", onTouchStart);
     layer.removeEventListener("touchmove", onTouchMove);
     layer.removeEventListener("touchend", onTouchEnd);
@@ -474,12 +597,13 @@ export function TerminalView({
   useEffect(() => {
     if (!containerRef.current) return;
 
+    const touch = isTouchUi();
     const term = new Terminal({
-      cursorBlink: true,
+      cursorBlink: !touch,
       fontFamily: '"Geist Mono Variable", ui-monospace, monospace',
       fontSize: getTerminalFontSize(),
       lineHeight: 1.3,
-      scrollback: 5000,
+      scrollback: touch ? 1000 : 5000,
       theme: {
         background: "oklch(0.12 0.012 250)",
         foreground: "oklch(0.93 0.012 250)",
@@ -702,9 +826,7 @@ export function TerminalView({
       ref={containerRef}
       className={cn(
         "relative min-h-0 min-w-0 overflow-hidden",
-        active
-          ? "flex-1"
-          : "pointer-events-none absolute inset-0 opacity-0 [&_*]:pointer-events-none",
+        active ? "flex-1" : "hidden",
       )}
       aria-hidden={!active}
     />

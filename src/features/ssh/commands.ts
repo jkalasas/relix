@@ -6,6 +6,7 @@ import type {
   OpenShellResult,
   FsListResult,
   SshConnectPayload,
+  SshShellEnv,
   StartDynamicForwardPayload,
   StartLocalForwardPayload,
   StartRemoteForwardPayload,
@@ -171,10 +172,12 @@ export async function hostFsRename(
 export async function sshTmuxBootstrap(
   hostId: string,
   session?: string,
+  env?: SshShellEnv,
 ): Promise<TmuxBootstrapResult> {
   return invoke<TmuxBootstrapResult>("ssh_tmux_bootstrap", {
     hostId,
     session,
+    env,
   });
 }
 
