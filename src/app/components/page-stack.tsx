@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import type { AppPage } from "@/app/types";
 import { HostForm, type Host, type HostConfig } from "@/features/hosts";
 import {
@@ -16,6 +17,7 @@ type PageStackProps = {
   editingProject: ProjectConfig | null;
   connectingId: string | null;
   openWorkspaceIds: Set<string>;
+  headerExtra?: ReactNode;
   onSelectHost: (id: string) => void;
   onAddHost: () => void;
   onOpenHosts: () => void;
@@ -43,6 +45,7 @@ export function PageStack({
   editingProject,
   connectingId,
   openWorkspaceIds,
+  headerExtra,
   onSelectHost,
   onAddHost,
   onOpenHosts,
@@ -67,6 +70,7 @@ export function PageStack({
           hosts={hosts}
           onSelect={onSelectHost}
           onAddHost={onAddHost}
+          headerExtra={headerExtra}
         />
       ) : null}
 
@@ -89,12 +93,14 @@ export function PageStack({
             onConnect={() => onConnectHost(projectsHost.id)}
             onDisconnect={() => onDisconnectHost(projectsHost)}
             onEditHost={() => onEditHost(projectsHost.id)}
+            headerExtra={headerExtra}
           />
         ) : (
           <HostsPage
             hosts={hosts}
             onSelect={onSelectHost}
             onAddHost={onAddHost}
+            headerExtra={headerExtra}
           />
         )
       ) : null}

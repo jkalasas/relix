@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import {
   createWorkspaceSessionChrome,
 } from "@/app/components/workspace-shell";
@@ -11,11 +11,21 @@ import { useWorkspace } from "@/app/hooks/use-workspace";
 import { useWorkspaceActions } from "@/app/hooks/use-workspace-actions";
 import { useWorkspaceView } from "@/app/hooks/use-workspace-view";
 import { useForwards } from "@/features/forwards";
-import { sendOsNotification, useNotifyRelay } from "@/features/notify";
-import { parseWorkspaceId, projectActiveRoot, useProjects } from "@/features/projects";
+import {
+  buildNotificationItems,
+  findTabWorkspace,
+  goToTab,
+  listenOsNotificationTap,
+  sendOsNotification,
+  useNotifications,
+  useNotifyRelay,
+  type NotificationBellProps,
+  type NotificationItem,
+} from "@/features/notify";
+import { projectActiveRoot, useProjects } from "@/features/projects";
 import { useSessionTabs } from "@/features/session-tabs";
 import { useIsMobileOs, useShells } from "@/features/shells";
-import { toastInfo } from "@/lib/toast";
+import { toastInfoWithAction } from "@/lib/toast";
 import { useMediaQuery } from "@/hooks/use-media-query";
 import { useSidebarWidth } from "@/hooks/use-sidebar-width";
 
@@ -95,32 +105,108 @@ export function useAppController() {
     [hosts.hosts],
   );
 
+  const notifications = useNotifications();
+  const tabsByWorkspaceRef = useRef(sessionTabs.tabsByWorkspace);
+  tabsByWorkspaceRef.current = sessionTabs.tabsByWorkspace;
+
+  const openNotificationTab = useCallback(
+    (tabId: string) => {
+      const moved = goToTab(
+        {
+          openWorkspace: workspace.openWorkspace,
+          selectTab: sessionTabs.selectTab,
+          selectShell: (targetWorkspaceId, targetHostId, shellId) => {
+            void shells
+              .selectShell(targetWorkspaceId, targetHostId, shellId)
+              .catch(() => {});
+          },
+        },
+        tabsByWorkspaceRef.current,
+        tabId,
+      );
+      if (moved) notifications.resolve(tabId);
+      return moved;
+    },
+    [
+      notifications.resolve,
+      sessionTabs.selectTab,
+      shells.selectShell,
+      workspace.openWorkspace,
+    ],
+  );
+
   const handleNotify = useCallback(
-    (payload: { id: string; tabId: string; title?: string; body?: string }) => {
+    (payload: { id: string; tabId: string; title?: string; body?: string }, hostId: string) => {
+      const found = findTabWorkspace(
+        tabsByWorkspaceRef.current,
+        payload.tabId,
+      );
+      notifications.upsert(payload, hostId, found?.workspaceId ?? null);
       const title = payload.title?.trim() || "Host notification";
       const description = payload.body?.trim() || `tab ${payload.tabId}`;
-      toastInfo(title, description);
-      void sendOsNotification({ title, body: description });
-      const tabsByWorkspace = sessionTabs.tabsByWorkspace;
-      for (const [workspaceId, tabs] of Object.entries(tabsByWorkspace)) {
-        const tab = tabs.find((item) => item.id === payload.tabId);
-        if (!tab) continue;
-        const ref = parseWorkspaceId(workspaceId);
-        if (!ref) continue;
-        workspace.openWorkspace(ref.hostId, ref.scope);
-        sessionTabs.selectTab(workspaceId, tab.id);
-        if (tab.kind === "shell") {
-          void shells
-            .selectShell(workspaceId, ref.hostId, tab.shellId)
-            .catch(() => {});
-        }
-        break;
-      }
+      toastInfoWithAction(title, description, "Open", () =>
+        openNotificationTab(payload.tabId),
+      );
+      void sendOsNotification({ title, body: description, tabId: payload.tabId });
     },
-    [sessionTabs, shells.selectShell, workspace.openWorkspace],
+    [notifications.upsert, openNotificationTab],
   );
 
   useNotifyRelay({ connectedHostIds, onNotify: handleNotify });
+
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+    void listenOsNotificationTap(openNotificationTab).then((stop) => {
+      unlisten = stop;
+    });
+    return () => unlisten?.();
+  }, [openNotificationTab]);
+
+  useEffect(() => {
+    notifications.pruneClosedTabs(sessionTabs.tabsByWorkspace);
+  }, [notifications.pruneClosedTabs, sessionTabs.tabsByWorkspace]);
+
+  const notificationItems = useMemo(
+    () =>
+      buildNotificationItems(notifications.entries, {
+        tabsByWorkspace: sessionTabs.tabsByWorkspace,
+        hosts: hosts.hosts,
+        projectsByHost: projects.projectsByHost,
+        sessionsByWorkspace: shells.sessionsByWorkspace,
+      }),
+    [
+      notifications.entries,
+      sessionTabs.tabsByWorkspace,
+      hosts.hosts,
+      projects.projectsByHost,
+      shells.sessionsByWorkspace,
+    ],
+  );
+
+  const attentionTabIds = useMemo(() => {
+    const activeWorkspaceId = view.activeWorkspaceId;
+    if (!activeWorkspaceId) return undefined;
+    const ids = notifications.entries
+      .filter((entry) => entry.workspaceId === activeWorkspaceId)
+      .map((entry) => entry.tabId);
+    return ids.length > 0 ? new Set(ids) : undefined;
+  }, [notifications.entries, view.activeWorkspaceId]);
+
+  const handleOpenNotification = useCallback(
+    (item: NotificationItem) => {
+      openNotificationTab(item.tabId);
+    },
+    [openNotificationTab],
+  );
+
+  const notificationCenter: NotificationBellProps = {
+    items: notificationItems,
+    count: notifications.count,
+    onOpen: handleOpenNotification,
+    onDismiss: notifications.dismiss,
+    onClearAll: notifications.clearAll,
+    variant: useTitlebarSessionChrome ? "titlebar" : "default",
+  };
 
   const actions = useWorkspaceActions({
     page: workspace.page,
@@ -334,6 +420,8 @@ export function useAppController() {
         onOpenFiles: openFilesTab,
         onOpenPorts: openPortsTab,
         onOpenGit: openGitTab,
+        notificationCenter,
+        attentionTabIds,
       }),
     [
       actions.handleSaveAdhocAsProject,
@@ -343,6 +431,8 @@ export function useAppController() {
       hosts.connectingId,
       hosts.hosts,
       openFilesTab,
+      attentionTabIds,
+      notificationCenter,
       openGitTab,
       openPortsTab,
       projects.projectsByHost,
@@ -390,6 +480,7 @@ export function useAppController() {
     shells,
     androidBackground,
     sessionChrome,
+    notificationCenter,
     connectHost,
     openFilesTab,
     openPortsTab,

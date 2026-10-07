@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import {
   ArrowLeft,
   FolderGit2,
@@ -27,6 +28,7 @@ type ProjectsPageProps = {
   onConnect: () => void;
   onDisconnect: () => void;
   onEditHost: () => void;
+  headerExtra?: ReactNode;
   className?: string;
 };
 
@@ -43,6 +45,7 @@ export function ProjectsPage({
   onConnect,
   onDisconnect,
   onEditHost,
+  headerExtra,
   className,
 }: ProjectsPageProps) {
   const local = isLocalHost(host);
@@ -81,6 +84,7 @@ export function ProjectsPage({
             </div>
           </div>
           <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
+            {headerExtra}
             <SessionChip status={host.status} className="max-sm:hidden" />
             {local ? null : (
               <>

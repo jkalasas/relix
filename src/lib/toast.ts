@@ -15,3 +15,23 @@ export function toastInfo(title: string, description?: string) {
     ...(description ? { description } : {}),
   });
 }
+
+export function toastInfoWithAction(
+  title: string,
+  description: string | undefined,
+  actionLabel: string,
+  onAction: () => void,
+) {
+  const id = toast.add({
+    type: "info",
+    title,
+    ...(description ? { description } : {}),
+    actionProps: {
+      children: actionLabel,
+      onClick: () => {
+        toast.close(id);
+        onAction();
+      },
+    },
+  });
+}

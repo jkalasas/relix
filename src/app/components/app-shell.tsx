@@ -1,5 +1,6 @@
 import type { CSSProperties } from "react";
 import type { AppController } from "@/app/hooks/use-app-controller";
+import { NotificationBell } from "@/features/notify";
 import { AppDialogs } from "@/app/components/app-dialogs";
 import { PageStack } from "@/app/components/page-stack";
 import {
@@ -32,6 +33,7 @@ export function AppShell({ app }: AppShellProps) {
     shells,
     androidBackground,
     sessionChrome,
+    notificationCenter,
     connectHost,
     openFilesTab,
     changeFileText,
@@ -60,7 +62,14 @@ export function AppShell({ app }: AppShellProps) {
         {showWindowChrome ? (
           <DesktopTitleBar
             showSidebarTrigger={isDesktop && view.showFileRail}
-            trailing={useTitlebarSessionChrome ? sessionHeader : null}
+            trailing={
+              useTitlebarSessionChrome ? (
+                <>
+                  <NotificationBell {...notificationCenter} />
+                  {sessionHeader}
+                </>
+              ) : null
+            }
           >
             {useTitlebarSessionChrome ? sessionTabBar : null}
           </DesktopTitleBar>
@@ -86,6 +95,11 @@ export function AppShell({ app }: AppShellProps) {
             <PageStack
               page={workspace.page}
               hosts={hosts.hosts}
+              headerExtra={
+                useTitlebarSessionChrome ? undefined : (
+                  <NotificationBell {...notificationCenter} />
+                )
+              }
               projectsHost={view.projectsHost}
               projectsForHost={projects.projectsForHost}
               editingHost={view.editingHost}

@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { Plus, Server } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { StatusDot } from "@/components/status/status-dot";
@@ -10,6 +11,7 @@ type HostsPageProps = {
   hosts: Host[];
   onSelect: (id: string) => void;
   onAddHost: () => void;
+  headerExtra?: ReactNode;
   className?: string;
 };
 
@@ -17,6 +19,7 @@ export function HostsPage({
   hosts,
   onSelect,
   onAddHost,
+  headerExtra,
   className,
 }: HostsPageProps) {
   return (
@@ -34,6 +37,7 @@ export function HostsPage({
           <span className="min-w-0 flex-1 text-sm font-semibold tracking-tight">
             Relix
           </span>
+          {headerExtra}
           <Button
             type="button"
             variant="ghost"

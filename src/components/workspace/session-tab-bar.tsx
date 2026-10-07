@@ -74,6 +74,7 @@ type SessionTabBarProps = {
   onOpenFiles: () => void;
   onOpenPorts: () => void;
   onOpenGit: () => void;
+  attentionIds?: Set<string>;
   variant?: "default" | "titlebar";
 };
 
@@ -198,6 +199,13 @@ function tabDirty(tab: SessionTab, files: Record<string, OpenFileState>): boolea
   return file?.status === "ready" && file.dirty;
 }
 
+function tabNeedsAttention(
+  tab: SessionTab,
+  attentionIds: Set<string> | undefined,
+): boolean {
+  return attentionIds?.has(tab.id) ?? false;
+}
+
 export function SessionTabBar({
   tabs,
   activeId,
@@ -212,6 +220,7 @@ export function SessionTabBar({
   onOpenFiles,
   onOpenPorts,
   onOpenGit,
+  attentionIds,
   variant = "default",
 }: SessionTabBarProps) {
   const titlebar = variant === "titlebar";
@@ -551,6 +560,9 @@ export function SessionTabBar({
     ? tabLabel(activeTab, shells, files)
     : "Sessions";
   const activeDirty = activeTab ? tabDirty(activeTab, files) : false;
+  const activeAttention = activeTab
+    ? tabNeedsAttention(activeTab, attentionIds)
+    : false;
   const ActiveIcon = activeTab ? tabIcon(activeTab) : TerminalSquare;
 
   return (
@@ -619,6 +631,13 @@ export function SessionTabBar({
                     aria-label="Unsaved changes"
                   />
                 ) : null}
+                {activeAttention ? (
+                  <span
+                    className="size-1.5 shrink-0 rounded-full bg-primary ring-1 ring-background"
+                    aria-label="Needs attention"
+                    title="Needs attention"
+                  />
+                ) : null}
                 <ChevronDown
                   className="size-3.5 shrink-0 text-muted-foreground"
                   aria-hidden
@@ -637,6 +656,7 @@ export function SessionTabBar({
               const active = tab.id === activeId;
               const label = tabLabel(tab, shells, files);
               const dirty = tabDirty(tab, files);
+              const attention = tabNeedsAttention(tab, attentionIds);
               const dragging = draggingId === tab.id;
               const editing = editingId === tab.id;
               const Icon = tabIcon(tab);
@@ -699,6 +719,13 @@ export function SessionTabBar({
                         <span
                           className="size-1.5 shrink-0 rounded-full bg-primary"
                           aria-label="Unsaved changes"
+                        />
+                      ) : null}
+                      {attention ? (
+                        <span
+                          className="size-1.5 shrink-0 rounded-full bg-primary ring-1 ring-background"
+                          aria-label="Needs attention"
+                          title="Needs attention"
                         />
                       ) : null}
                     </button>
@@ -856,6 +883,7 @@ export function SessionTabBar({
                   const active = tab.id === activeId;
                   const label = tabLabel(tab, shells, files);
                   const dirty = tabDirty(tab, files);
+                  const attention = tabNeedsAttention(tab, attentionIds);
                   const Icon = tabIcon(tab);
                   return (
                     <div
@@ -915,6 +943,13 @@ export function SessionTabBar({
                           <span
                             className="size-1.5 shrink-0 rounded-full bg-primary"
                             aria-label="Unsaved changes"
+                          />
+                        ) : null}
+                        {attention ? (
+                          <span
+                            className="size-1.5 shrink-0 rounded-full bg-primary ring-1 ring-background"
+                            aria-label="Needs attention"
+                            title="Needs attention"
                           />
                         ) : null}
                       </button>

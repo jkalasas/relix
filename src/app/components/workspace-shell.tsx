@@ -1,6 +1,10 @@
 import type { ReactNode } from "react";
 import { SessionTabBar } from "@/components/workspace/session-tab-bar";
 import {
+  NotificationBell,
+  type NotificationBellProps,
+} from "@/features/notify";
+import {
   AppSidebar,
   SessionHeader,
   type Host,
@@ -84,6 +88,8 @@ type WorkspaceChromeProps = {
   onOpenFiles: () => void;
   onOpenPorts: () => void;
   onOpenGit: () => void;
+  notificationCenter?: NotificationBellProps;
+  attentionTabIds?: Set<string>;
 };
 
 export function createWorkspaceSessionChrome({
@@ -122,6 +128,8 @@ export function createWorkspaceSessionChrome({
   onOpenFiles,
   onOpenPorts,
   onOpenGit,
+  notificationCenter,
+  attentionTabIds,
 }: WorkspaceChromeProps): {
   sessionHeader: ReactNode;
   sessionTabBar: ReactNode;
@@ -142,6 +150,7 @@ export function createWorkspaceSessionChrome({
         onOpenFiles={onOpenFiles}
         onOpenPorts={onOpenPorts}
         onOpenGit={onOpenGit}
+        attentionIds={attentionTabIds}
         variant={useTitlebarSessionChrome ? "titlebar" : "default"}
       />
     ) : null;
@@ -166,6 +175,9 @@ export function createWorkspaceSessionChrome({
           }
           onSelect={onSetProjectWorktree}
         />
+      ) : null}
+      {notificationCenter ? (
+        <NotificationBell {...notificationCenter} />
       ) : null}
     </div>
   );
