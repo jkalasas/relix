@@ -1,6 +1,8 @@
 import { useState, type ReactNode } from "react";
-import { ArrowLeft, FolderPlus, MoreHorizontal } from "lucide-react";
+import { ArrowLeft, ChevronDown, FolderPlus, MoreHorizontal } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Separator } from "@/components/ui/separator";
 import {
   Drawer,
   DrawerContent,
@@ -28,6 +30,7 @@ type SessionHeaderProps = {
   onSaveProject?: () => void;
   leadingExtra?: ReactNode;
   trailingExtra?: ReactNode;
+  menuControls?: ReactNode;
   variant?: "default" | "titlebar";
   className?: string;
 };
@@ -67,6 +70,7 @@ export function SessionHeader({
   onSaveProject,
   leadingExtra,
   trailingExtra,
+  menuControls,
   variant = "default",
   className,
 }: SessionHeaderProps) {
@@ -78,6 +82,7 @@ export function SessionHeader({
   const titlebar = variant === "titlebar";
   const isDesktop = useMediaQuery("(min-width: 768px)");
   const [moreOpen, setMoreOpen] = useState(false);
+  const [sessionOpen, setSessionOpen] = useState(false);
 
   const fullSecondary = scopePath?.trim()
     ? `${scopeLabel} · ${scopePath}`
@@ -162,26 +167,122 @@ export function SessionHeader({
   );
 
   if (titlebar) {
+    const hasSessionActions = Boolean(onSaveProject) || hasRemoteActions;
     return (
-      <div
-        className={cn(
-          "flex h-full min-w-0 shrink-0 items-center gap-2 pl-1",
-          className,
-        )}
-      >
-        {leadingExtra}
-        <div className="min-w-0 max-w-[16rem]">
-          <p
-            className="truncate font-mono text-xs text-muted-foreground"
-            title={`${host.name} · ${target}`}
-          >
+      <Popover open={sessionOpen} onOpenChange={setSessionOpen}>
+        <PopoverTrigger
+          render={
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              aria-label={`Session ${host.name} · ${scopeLabel}`}
+              title={`${host.name} · ${target}`}
+              className={cn(
+                "h-7 max-w-64 gap-1.5 px-2 font-mono text-xs font-normal",
+                className,
+              )}
+            />
+          }
+        >
+          <StatusDot status={host.status} />
+          <span className="truncate text-muted-foreground">
             {host.name}
             <span className="text-muted-foreground/70"> · {scopeLabel}</span>
-          </p>
-        </div>
-        {trailingExtra}
-        {inlineActions}
-      </div>
+          </span>
+          <ChevronDown className="size-3.5 shrink-0 text-muted-foreground/70" />
+        </PopoverTrigger>
+        <PopoverContent align="end" sideOffset={8}>
+          <div className="flex items-start gap-2 px-0.5 pt-0.5">
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-[13px] font-medium text-foreground">
+                {host.name}
+                <span className="font-normal text-muted-foreground">
+                  {" "}· {scopeLabel}
+                </span>
+              </p>
+              <p
+                className="mt-0.5 truncate font-mono text-[11px] text-muted-foreground"
+                title={fullSecondary}
+              >
+                {secondary}
+              </p>
+            </div>
+            <SessionChip status={host.status} className="shrink-0" />
+          </div>
+          {menuControls ? (
+            <>
+              <Separator />
+              {menuControls}
+            </>
+          ) : null}
+          {hasSessionActions ? (
+            <>
+              <Separator />
+              <div className="flex flex-col items-stretch gap-0.5">
+                {onSaveProject ? (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      setSessionOpen(false);
+                      onSaveProject();
+                    }}
+                    className="h-9 justify-start gap-2 px-2"
+                  >
+                    <FolderPlus className="size-3.5" />
+                    Save project
+                  </Button>
+                ) : null}
+                {local ? null : (
+                  <>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        setSessionOpen(false);
+                        onEdit();
+                      }}
+                      className="h-9 justify-start px-2"
+                    >
+                      Edit
+                    </Button>
+                    {isConnected ? (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          setSessionOpen(false);
+                          onDisconnect();
+                        }}
+                        className="h-9 justify-start px-2"
+                      >
+                        Disconnect
+                      </Button>
+                    ) : (
+                      <Button
+                        type="button"
+                        size="sm"
+                        onClick={() => {
+                          setSessionOpen(false);
+                          onConnect();
+                        }}
+                        disabled={connecting}
+                        className="h-9 justify-start px-2"
+                      >
+                        {connecting ? "Connecting…" : "Connect"}
+                      </Button>
+                    )}
+                  </>
+                )}
+              </div>
+            </>
+          ) : null}
+        </PopoverContent>
+      </Popover>
     );
   }
 

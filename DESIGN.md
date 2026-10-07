@@ -177,7 +177,7 @@ Hosts / Projects — full-width pages (no host rail)
 
 Workspace (connected):
 ┌─────────────────────────────────────────────────────────────┐
-│ titlebar: tabs · host/scope · recents · status · win ctrls  │
+│ titlebar: tabs · session button · win ctrls                 │
 ├────────────┬────────────────────────────────────────────────┤
 │ file tree  │ shell / editor / files / ports / git           │
 │ (optional) │                                                │
@@ -188,7 +188,7 @@ Workspace (connected):
 |---|---|---|
 | Title bar | 40px (`2.5rem`) | Frameless window. Tabs + session header + window controls when in workspace. Drag via `data-tauri-drag-region` |
 | File tree rail | ~240px default, drag-resizable (180–480px); collapsible | Only on **connected workspace**. Not a host catalog. Hosts link returns to hosts page |
-| Session header | 40px desktop / 48px mobile | Host · scope label; chip + connect (desktop inline / mobile More drawer); back to projects; recents + worktree trailing on mobile |
+| Session header | 40px desktop / 48px mobile | Host · scope label; desktop titlebar collapses to one session button + popover card, otherwise chip + connect (desktop inline / mobile More drawer); back to projects; recents + worktree trailing on mobile |
 | Session tabs | title bar (desktop) / below header (mobile) | Desktop: document strip (shells, files, tools). Mobile: active session chip → sessions drawer |
 | Workspace body | flex-1 | Active tab panel (`SidebarInset`) |
 
@@ -248,7 +248,7 @@ Task-specific, one primary action, no fake metrics. Icon in a quiet bordered til
 | `ProjectForm` | `features/projects/components/project-form.tsx` | Create / edit project directory |
 | `WorkspaceRecents` | `features/projects/components/workspace-recents.tsx` | Jump between open workspaces |
 | `AppSidebar` | `features/hosts/components/app-sidebar.tsx` | Desktop file-tree rail (workspace only) |
-| `SessionHeader` | `features/hosts/components/session-header.tsx` | Host · scope + status + connect; back to projects |
+| `SessionHeader` | `features/hosts/components/session-header.tsx` | Host · scope + status + connect; back to projects; titlebar collapses to session button + popover |
 | `SessionTabBar` | `components/workspace/session-tab-bar.tsx` | Document tabs: shells · open files · Files · Ports · Git |
 | `TerminalPanel` | `features/shells/components/terminal-panel.tsx` | Shell workspace |
 | `FilesPanel` | `features/files/components/files-panel.tsx` | Mobile file list browser / transfer |

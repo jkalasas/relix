@@ -170,6 +170,36 @@ export function createWorkspaceSessionChrome({
     </div>
   );
 
+  const hasMenuContent =
+    recents.length > 0 ||
+    Boolean(activeProject && gitWorktrees && onSetProjectWorktree);
+  const sessionMenuControls =
+    useTitlebarSessionChrome && hasMenuContent ? (
+      <div className="flex flex-col items-stretch gap-0.5">
+        <WorkspaceRecents
+          recents={recents}
+          hosts={hosts}
+          projectsByHost={projectsByHost}
+          activeWorkspaceId={activeWorkspaceId}
+          onSelect={onOpenRecent}
+          onReorder={onReorderRecents}
+          className="h-9 w-full justify-start px-2 text-[13px]"
+        />
+        {activeProject && gitWorktrees && onSetProjectWorktree ? (
+          <WorktreeSwitcher
+            project={activeProject}
+            worktrees={gitWorktrees}
+            connected={
+              selectedHost != null &&
+              (selectedIsLocal || selectedHost.status === "connected")
+            }
+            onSelect={onSetProjectWorktree}
+            className="h-9 w-full justify-start px-2 text-[13px]"
+          />
+        ) : null}
+      </div>
+    ) : undefined;
+
   const activeRoot = activeProject ? projectActiveRoot(activeProject) : null;
   const currentWorktree =
     activeRoot && gitWorktrees
@@ -200,8 +230,8 @@ export function createWorkspaceSessionChrome({
         onEdit={() => onEditHost(selectedHost.id)}
         onBack={onBack}
         onSaveProject={onSaveProject}
-        leadingExtra={useTitlebarSessionChrome ? sessionControls : undefined}
         trailingExtra={useTitlebarSessionChrome ? undefined : sessionControls}
+        menuControls={sessionMenuControls}
         variant={useTitlebarSessionChrome ? "titlebar" : "default"}
       />
     ) : null;
