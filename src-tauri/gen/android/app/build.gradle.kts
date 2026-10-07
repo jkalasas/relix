@@ -47,7 +47,6 @@ android {
     }
     buildTypes {
         getByName("debug") {
-            applicationIdSuffix = ".debug"
             resValue("string", "app_name", "Relix Dev")
             resValue("string", "main_activity_title", "Relix Dev")
             manifestPlaceholders["usesCleartextTraffic"] = "true"
