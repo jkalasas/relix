@@ -18,7 +18,7 @@ pub async fn start_keepalive<R: Runtime>(
     #[cfg(not(target_os = "android"))]
     {
         let _ = (app, args);
-        Ok(())
+        Err(Error::PluginInvoke("relix-keepalive is Android-only".into()))
     }
 }
 
@@ -31,7 +31,7 @@ pub async fn stop_keepalive<R: Runtime>(app: AppHandle<R>) -> Result<(), Error> 
     #[cfg(not(target_os = "android"))]
     {
         let _ = app;
-        Ok(())
+        Err(Error::PluginInvoke("relix-keepalive is Android-only".into()))
     }
 }
 
@@ -44,7 +44,7 @@ pub async fn is_keepalive_running<R: Runtime>(app: AppHandle<R>) -> Result<bool,
     #[cfg(not(target_os = "android"))]
     {
         let _ = app;
-        Ok(false)
+        Err(Error::PluginInvoke("relix-keepalive is Android-only".into()))
     }
 }
 
@@ -60,9 +60,7 @@ pub async fn get_notification_permission_status<R: Runtime>(
     #[cfg(not(target_os = "android"))]
     {
         let _ = app;
-        Ok(NotificationPermissionStatus {
-            status: "granted".into(),
-        })
+        Err(Error::PluginInvoke("relix-keepalive is Android-only".into()))
     }
 }
 
@@ -78,9 +76,7 @@ pub async fn request_notification_permission<R: Runtime>(
     #[cfg(not(target_os = "android"))]
     {
         let _ = app;
-        Ok(NotificationPermissionStatus {
-            status: "granted".into(),
-        })
+        Err(Error::PluginInvoke("relix-keepalive is Android-only".into()))
     }
 }
 

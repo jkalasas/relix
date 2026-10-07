@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Relix loopback exception.
+
+  Release builds set android:usesCleartextTraffic="false" (see
+  gen/android/app/build.gradle.kts). The host-notification relay
+  (relix-notify) is reached from the WebView over plain HTTP on
+  loopback (http://127.0.0.1:<ephemeral-port>/events), tunneled
+  through the SSH connection by the Rust backend. Without this
+  per-domain exception, Android 9+ blocks the probe fetch and the
+  EventSource with ERR_CLEARTEXT_NOT_PERMITTED — but only in
+  release builds, since debug sets usesCleartextTraffic="true".
+
+  Global cleartext stays denied; only loopback is allowed.
+  Re-apply after `tauri android init` if gen/android is regenerated.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="true">127.0.0.1</domain>
+        <domain includeSubdomains="true">localhost</domain>
+        <!-- Android emulator alias for host loopback -->
+        <domain includeSubdomains="true">10.0.2.2</domain>
+    </domain-config>
+</network-security-config>

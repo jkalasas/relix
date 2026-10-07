@@ -52,6 +52,38 @@ async function probeRelay(localPort: number): Promise<string | null> {
   }
 }
 
+/**
+ * Starts the ephemeral notify forward, clearing one stale same-id
+ * forward first. Throws the underlying SSH error when no forward
+ * can be established (host raced disconnect, relay unreachable).
+ */
+async function startNotifyForward(
+  hostId: string,
+  forwardId: string,
+): Promise<number> {
+  const config = {
+    hostId,
+    forwardId,
+    localHost: NOTIFY_LOCAL_HOST,
+    localPort: 0,
+    remoteHost: NOTIFY_REMOTE_HOST,
+    remotePort: NOTIFY_PORT,
+  };
+  try {
+    return (await sshStartLocalForward(config)).localPort;
+  } catch (error) {
+    if (!parseSshError(error).message.includes("already active")) {
+      throw error;
+    }
+  }
+  try {
+    await sshStopForward(forwardId);
+  } catch {
+    // still listed but unstoppable — host raced disconnect; retry below anyway
+  }
+  return (await sshStartLocalForward(config)).localPort;
+}
+
 function parseEventData(data: unknown): NotifyPayload | null {
   const text = String(data ?? "");
   // Accept both raw SSE frames (`data: {...}`) and bare JSON (EventSource strips the prefix).
@@ -106,18 +138,10 @@ export function useNotifyRelay({
       let localPort = direct ? NOTIFY_PORT : 0;
       if (!direct) {
         try {
-          const started = await sshStartLocalForward({
-            hostId,
-            forwardId: forwardId as string,
-            localHost: NOTIFY_LOCAL_HOST,
-            localPort: 0,
-            remoteHost: NOTIFY_REMOTE_HOST,
-            remotePort: NOTIFY_PORT,
-          });
-          localPort = started.localPort;
+          localPort = await startNotifyForward(hostId, forwardId as string);
         } catch (error) {
           // Host raced disconnect — retry on the next tick, still no toast.
-          console.debug(
+          console.warn(
             `[notify] ${hostId}: forward failed (${parseSshError(error).message}), will retry`,
           );
           return;
@@ -136,8 +160,8 @@ export function useNotifyRelay({
       // retry later. No toast: a missing relay is the normal case.
       const probeProblem = await probeRelay(localPort);
       if (probeProblem) {
-        console.debug(
-          `[notify] ${hostId}: relay not reachable via :${localPort} (${probeProblem}) — is relix-notify running ${direct ? "locally" : "on the SSH host"}? Will retry`,
+        console.warn(
+          `[notify] ${hostId}: relay not reachable via :${localPort} (${probeProblem}) — is relix-notify running ${direct ? "locally" : "on the SSH host"}? On Android also check loopback cleartext. Will retry`,
         );
         if (forwardId) {
           try {
@@ -153,7 +177,7 @@ export function useNotifyRelay({
       try {
         source = new EventSource(`${relayBase(localPort)}${NOTIFY_EVENTS_PATH}`);
       } catch (error) {
-        console.debug(
+        console.warn(
           `[notify] ${hostId}: EventSource failed (${error instanceof Error ? error.message : String(error)}), will retry`,
         );
         if (forwardId) {

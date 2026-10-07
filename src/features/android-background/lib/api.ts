@@ -22,6 +22,10 @@ function isNotificationsGranted(value: unknown): boolean {
   return false;
 }
 
+/**
+ * True on Android. The keepalive plugin rejects on desktop (its commands
+ * are Android-only), so a successful invoke means the native bridge exists.
+ */
 export async function isAndroidPlatform(): Promise<boolean> {
   if (typeof navigator !== "undefined" && /Android/i.test(navigator.userAgent)) {
     return true;
