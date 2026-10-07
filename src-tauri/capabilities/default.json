@@ -12,6 +12,7 @@
     "opener:default",
     "store:default",
     "dialog:default",
+    "notification:default",
     "android-battery-optimization:default",
     "relix-keepalive:default",
     "fs:default",

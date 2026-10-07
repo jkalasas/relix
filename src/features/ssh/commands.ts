@@ -1,6 +1,8 @@
 import { invoke } from "@tauri-apps/api/core";
 import type { HostConfig } from "@/features/hosts";
 import type {
+  LocalForwardStarted,
+  OpenShellOptions,
   OpenShellResult,
   FsListResult,
   SshConnectPayload,
@@ -8,6 +10,7 @@ import type {
   StartLocalForwardPayload,
   StartRemoteForwardPayload,
   TmuxBootstrapResult,
+  TmuxNewWindowOptions,
   TmuxWindow,
 } from "@/features/ssh/types";
 
@@ -51,12 +54,7 @@ export async function sshCancelConnect(hostId: string): Promise<void> {
 
 export async function sshOpenShell(
   hostId: string,
-  options?: {
-    cols?: number;
-    rows?: number;
-    command?: string;
-    cwd?: string;
-  },
+  options?: OpenShellOptions,
 ): Promise<OpenShellResult> {
   return invoke<OpenShellResult>("ssh_open_shell", {
     hostId,
@@ -64,6 +62,7 @@ export async function sshOpenShell(
     rows: options?.rows,
     command: options?.command,
     cwd: options?.cwd,
+    env: options?.env,
   });
 }
 
@@ -94,8 +93,8 @@ export async function sshTrustHostKey(input: {
 
 export async function sshStartLocalForward(
   config: StartLocalForwardPayload,
-): Promise<void> {
-  await invoke("ssh_start_local_forward", { config });
+): Promise<LocalForwardStarted> {
+  return invoke<LocalForwardStarted>("ssh_start_local_forward", { config });
 }
 
 export async function sshStartRemoteForward(
@@ -181,13 +180,7 @@ export async function sshTmuxBootstrap(
 
 export async function sshTmuxNewWindow(
   hostId: string,
-  options?: {
-    session?: string;
-    name?: string;
-    command?: string;
-    cwd?: string;
-    sourceWindowId?: string;
-  },
+  options?: TmuxNewWindowOptions,
 ): Promise<TmuxWindow> {
   return invoke<TmuxWindow>("ssh_tmux_new_window", {
     hostId,
@@ -196,6 +189,7 @@ export async function sshTmuxNewWindow(
     command: options?.command,
     cwd: options?.cwd,
     sourceWindowId: options?.sourceWindowId,
+    env: options?.env,
   });
 }
 

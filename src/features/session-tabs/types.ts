@@ -33,6 +33,9 @@ export const FILES_TAB_ID = "files";
 export const PORTS_TAB_ID = "ports";
 export const GIT_TAB_ID = "git";
 
+/** Env var exported into every shell PTY with the owning tab's id. */
+export const RELIX_TAB_ENV = "_RELIX_TAB_ID";
+
 export function isShellTab(
   tab: SessionTab,
 ): tab is Extract<SessionTab, { kind: "shell" }> {

@@ -7,6 +7,7 @@ export {
   FILES_TAB_ID,
   GIT_TAB_ID,
   PORTS_TAB_ID,
+  RELIX_TAB_ENV,
   fileTabId,
   isFileTab,
   isShellTab,

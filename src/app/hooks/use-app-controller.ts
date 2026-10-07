@@ -11,9 +11,11 @@ import { useWorkspace } from "@/app/hooks/use-workspace";
 import { useWorkspaceActions } from "@/app/hooks/use-workspace-actions";
 import { useWorkspaceView } from "@/app/hooks/use-workspace-view";
 import { useForwards } from "@/features/forwards";
-import { projectActiveRoot, useProjects } from "@/features/projects";
+import { sendOsNotification, useNotifyRelay } from "@/features/notify";
+import { parseWorkspaceId, projectActiveRoot, useProjects } from "@/features/projects";
 import { useSessionTabs } from "@/features/session-tabs";
 import { useIsMobileOs, useShells } from "@/features/shells";
+import { toastInfo } from "@/lib/toast";
 import { useMediaQuery } from "@/hooks/use-media-query";
 import { useSidebarWidth } from "@/hooks/use-sidebar-width";
 
@@ -83,6 +85,42 @@ export function useAppController() {
   shortcutFilesRef.current = sessions.onShortcutFiles;
   shortcutPortsRef.current = sessions.onShortcutPorts;
   shortcutGitRef.current = sessions.onShortcutGit;
+
+  // Local host dials the relay directly (no SSH forward); remotes tunnel.
+  const connectedHostIds = useMemo(
+    () =>
+      hosts.hosts
+        .filter((host) => host.status === "connected")
+        .map((host) => host.id),
+    [hosts.hosts],
+  );
+
+  const handleNotify = useCallback(
+    (payload: { id: string; tabId: string; title?: string; body?: string }) => {
+      const title = payload.title?.trim() || "Host notification";
+      const description = payload.body?.trim() || `tab ${payload.tabId}`;
+      toastInfo(title, description);
+      void sendOsNotification({ title, body: description });
+      const tabsByWorkspace = sessionTabs.tabsByWorkspace;
+      for (const [workspaceId, tabs] of Object.entries(tabsByWorkspace)) {
+        const tab = tabs.find((item) => item.id === payload.tabId);
+        if (!tab) continue;
+        const ref = parseWorkspaceId(workspaceId);
+        if (!ref) continue;
+        workspace.openWorkspace(ref.hostId, ref.scope);
+        sessionTabs.selectTab(workspaceId, tab.id);
+        if (tab.kind === "shell") {
+          void shells
+            .selectShell(workspaceId, ref.hostId, tab.shellId)
+            .catch(() => {});
+        }
+        break;
+      }
+    },
+    [sessionTabs, shells.selectShell, workspace.openWorkspace],
+  );
+
+  useNotifyRelay({ connectedHostIds, onNotify: handleNotify });
 
   const actions = useWorkspaceActions({
     page: workspace.page,

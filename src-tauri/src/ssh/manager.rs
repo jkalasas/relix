@@ -17,7 +17,8 @@ pub type ForwardId = String;
 
 pub use super::connection::ConnectConfig;
 pub use super::forward::{
-    StartDynamicForwardConfig, StartLocalForwardConfig, StartRemoteForwardConfig,
+    LocalForwardStarted, StartDynamicForwardConfig, StartLocalForwardConfig,
+    StartRemoteForwardConfig,
 };
 pub use super::shell::OpenShellResult;
 

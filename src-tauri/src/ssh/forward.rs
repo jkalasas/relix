@@ -42,6 +42,13 @@ pub struct StartDynamicForwardConfig {
     pub local_port: u16,
 }
 
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LocalForwardStarted {
+    pub forward_id: String,
+    pub local_port: u16,
+}
+
 pub(crate) enum LiveForwardKind {
     Local,
     Remote { bind_host: String, bind_port: u32 },
@@ -127,7 +134,7 @@ impl SshManager {
         &self,
         app: &AppHandle,
         config: StartLocalForwardConfig,
-    ) -> Result<(), SshError> {
+    ) -> Result<LocalForwardStarted, SshError> {
         let (handle, _) = self
             .take_live_handle(&config.host_id, &config.forward_id)
             .await?;
@@ -141,6 +148,8 @@ impl SshManager {
                 ),
             )
         })?;
+
+        let bound_port = listener.local_addr().map(|a| a.port()).unwrap_or(config.local_port);
 
         let children = Arc::new(Mutex::new(Vec::new()));
         let children_for_task = Arc::clone(&children);
@@ -242,7 +251,10 @@ impl SshManager {
             ));
         }
 
-        Ok(())
+        Ok(LocalForwardStarted {
+            forward_id: config.forward_id.clone(),
+            local_port: bound_port,
+        })
     }
 
     pub async fn start_remote_forward(

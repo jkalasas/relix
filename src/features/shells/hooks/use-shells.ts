@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ShellMode } from "@/features/hosts";
 import { isWorkspaceForHost } from "@/features/projects";
+import { RELIX_TAB_ENV, shellTabId } from "@/features/session-tabs";
 import {
   launchBaseTitle,
   nextSessionTitle,
@@ -138,6 +139,7 @@ export function useShells(options: UseShellsOptions = {}) {
     ) => {
       const { sessionId: channelId } = await sshOpenShell(hostId, {
         command: tmuxAttachCommand(tmuxSession, tmuxWindowId),
+        env: { [RELIX_TAB_ENV]: shellTabId(sessionId) },
       });
       const nextList = (sessionsByWorkspaceRef.current[workspaceId] ?? []).map(
         (session) =>
@@ -314,14 +316,15 @@ export function useShells(options: UseShellsOptions = {}) {
 
       try {
         if (shellMode === "tmux") {
+          const sessionId = crypto.randomUUID();
           const window = await sshTmuxNewWindow(hostId, {
             session: tmuxSession,
             name: baseTitle,
             command: launch.command,
             cwd,
             sourceWindowId: activeSession?.tmuxWindowId,
+            env: { [RELIX_TAB_ENV]: shellTabId(sessionId) },
           });
-          const sessionId = crypto.randomUUID();
           const next: ShellSession = {
             id: sessionId,
             hostId,
@@ -354,11 +357,12 @@ export function useShells(options: UseShellsOptions = {}) {
           return sessionId;
         }
 
+        const sessionId = crypto.randomUUID();
         const { sessionId: channelId } = await sshOpenShell(hostId, {
           command: launch.command,
           cwd,
+          env: { [RELIX_TAB_ENV]: shellTabId(sessionId) },
         });
-        const sessionId = crypto.randomUUID();
         setSessionsByWorkspace((current) => {
           const existing = current[workspaceId] ?? [];
           const next: ShellSession = {

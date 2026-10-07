@@ -44,6 +44,7 @@ fn resolve_shell_program() -> String {
 fn build_local_command(
     command: Option<String>,
     cwd: Option<String>,
+    env: &std::collections::HashMap<String, String>,
 ) -> portable_pty::CommandBuilder {
     use portable_pty::CommandBuilder;
 
@@ -81,6 +82,11 @@ fn build_local_command(
 
     cmd.env("TERM", "xterm-256color");
     cmd.env("COLORTERM", "truecolor");
+    let mut keys: Vec<&String> = env.keys().collect();
+    keys.sort();
+    for key in keys {
+        cmd.env(key, &env[key]);
+    }
     cmd
 }
 
@@ -98,10 +104,11 @@ pub(crate) async fn open_local_shell(
     rows: u32,
     command: Option<String>,
     cwd: Option<String>,
+    env: std::collections::HashMap<String, String>,
 ) -> Result<String, SshError> {
     #[cfg(mobile)]
     {
-        let _ = (app, shells_map, cols, rows, command, cwd);
+        let _ = (app, shells_map, cols, rows, command, cwd, env);
         return Err(SshError::new(
             SshErrorCode::Internal,
             "Local shell is only available on desktop",
@@ -110,7 +117,7 @@ pub(crate) async fn open_local_shell(
 
     #[cfg(not(mobile))]
     {
-        open_local_shell_desktop(app, shells_map, cols, rows, command, cwd).await
+        open_local_shell_desktop(app, shells_map, cols, rows, command, cwd, env).await
     }
 }
 
@@ -122,6 +129,7 @@ async fn open_local_shell_desktop(
     rows: u32,
     command: Option<String>,
     cwd: Option<String>,
+    env: std::collections::HashMap<String, String>,
 ) -> Result<String, SshError> {
     use portable_pty::{native_pty_system, PtySize};
 
@@ -135,7 +143,7 @@ async fn open_local_shell_desktop(
         })
         .map_err(|e| SshError::new(SshErrorCode::Internal, e.to_string()))?;
 
-    let cmd = build_local_command(command, cwd);
+    let cmd = build_local_command(command, cwd, &env);
     let child = pair
         .slave
         .spawn_command(cmd)

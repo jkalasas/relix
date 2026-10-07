@@ -3,8 +3,8 @@ use tauri::{AppHandle, State};
 use super::error::SshError;
 use super::local_shell;
 use super::manager::{
-    ConnectConfig, OpenShellResult, SshManager, StartDynamicForwardConfig,
-    StartLocalForwardConfig, StartRemoteForwardConfig,
+    ConnectConfig, LocalForwardStarted, OpenShellResult, SshManager,
+    StartDynamicForwardConfig, StartLocalForwardConfig, StartRemoteForwardConfig,
 };
 use super::host_fs::{
     FsListConfig, FsListResult, FsMkdirConfig, FsReadConfig, FsRemoveConfig, FsRenameConfig,
@@ -52,6 +52,7 @@ pub async fn ssh_open_shell(
     rows: Option<u32>,
     command: Option<String>,
     cwd: Option<String>,
+    env: Option<std::collections::HashMap<String, String>>,
 ) -> Result<OpenShellResult, SshError> {
     state
         .open_shell(
@@ -61,6 +62,7 @@ pub async fn ssh_open_shell(
             rows.unwrap_or(24),
             command,
             cwd,
+            env.unwrap_or_default(),
         )
         .await
 }
@@ -112,7 +114,7 @@ pub async fn ssh_start_local_forward(
     app: AppHandle,
     state: State<'_, SshManager>,
     config: StartLocalForwardConfig,
-) -> Result<(), SshError> {
+) -> Result<LocalForwardStarted, SshError> {
     state.start_local_forward(&app, config).await
 }
 
@@ -215,9 +217,18 @@ pub async fn ssh_tmux_new_window(
     command: Option<String>,
     cwd: Option<String>,
     source_window_id: Option<String>,
+    env: Option<std::collections::HashMap<String, String>>,
 ) -> Result<TmuxWindow, SshError> {
     state
-        .tmux_new_window(host_id, session, name, command, cwd, source_window_id)
+        .tmux_new_window(
+            host_id,
+            session,
+            name,
+            command,
+            cwd,
+            source_window_id,
+            env.unwrap_or_default(),
+        )
         .await
 }
 

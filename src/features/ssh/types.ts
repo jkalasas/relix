@@ -31,6 +31,25 @@ export type OpenShellResult = {
   sessionId: string;
 };
 
+export type SshShellEnv = Record<string, string>;
+
+export type OpenShellOptions = {
+  cols?: number;
+  rows?: number;
+  command?: string;
+  cwd?: string;
+  env?: SshShellEnv;
+};
+
+export type TmuxNewWindowOptions = {
+  session?: string;
+  name?: string;
+  command?: string;
+  cwd?: string;
+  sourceWindowId?: string;
+  env?: SshShellEnv;
+};
+
 export type TmuxWindow = {
   id: string;
   index: number;
@@ -62,6 +81,11 @@ export type StartLocalForwardPayload = {
   localPort: number;
   remoteHost: string;
   remotePort: number;
+};
+
+export type LocalForwardStarted = {
+  forwardId: string;
+  localPort: number;
 };
 
 export type StartRemoteForwardPayload = {

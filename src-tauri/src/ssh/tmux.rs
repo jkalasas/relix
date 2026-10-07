@@ -198,6 +198,7 @@ fn new_window_command(
     name: Option<&str>,
     command: Option<&str>,
     cwd: Option<&str>,
+    env: &std::collections::HashMap<String, String>,
 ) -> String {
     let mut parts = vec![
         "tmux new-window".to_string(),
@@ -205,6 +206,12 @@ fn new_window_command(
         "-P".to_string(),
         "-F '#{window_id}\t#{window_index}\t#{window_name}\t#{window_active}'".to_string(),
     ];
+    let mut keys: Vec<&String> = env.keys().collect();
+    keys.sort();
+    for key in keys {
+        let value = &env[key];
+        parts.push(format!("-e {}", sh_single_quote(&format!("{key}={value}"))));
+    }
     if let Some(cwd) = cwd.map(str::trim).filter(|value| !value.is_empty()) {
         parts.push(format!("-c {}", sh_single_quote(cwd)));
     }
@@ -460,6 +467,7 @@ impl SshManager {
         command: Option<String>,
         cwd: Option<String>,
         source_window_id: Option<String>,
+        env: std::collections::HashMap<String, String>,
     ) -> Result<TmuxWindow, SshError> {
         let session = resolve_session(session)?;
         self.tmux_exec(&host_id, &ensure_session_command(&session))
@@ -489,6 +497,7 @@ impl SshManager {
                     name.as_deref(),
                     command.as_deref(),
                     resolved_cwd.as_deref(),
+                    &env,
                 ),
             )
             .await?;
@@ -665,13 +674,22 @@ mod tests {
 
     #[test]
     fn builds_new_window_and_attach() {
+        let no_env = std::collections::HashMap::new();
         assert_eq!(
-            new_window_command("relix", Some("claude"), Some("claude"), Some("/home/u/proj")),
+            new_window_command("relix", Some("claude"), Some("claude"), Some("/home/u/proj"), &no_env),
             "tmux new-window -t 'relix' -P -F '#{window_id}\t#{window_index}\t#{window_name}\t#{window_active}' -c '/home/u/proj' -n 'claude' claude"
         );
         assert_eq!(
-            new_window_command("relix", Some("shell"), None, None),
+            new_window_command("relix", Some("shell"), None, None, &no_env),
             "tmux new-window -t 'relix' -P -F '#{window_id}\t#{window_index}\t#{window_name}\t#{window_active}' -n 'shell'"
+        );
+        let tab_env = std::collections::HashMap::from([(
+            "_RELIX_TAB_ID".to_string(),
+            "shell:abc".to_string(),
+        )]);
+        assert_eq!(
+            new_window_command("relix", Some("shell"), None, None, &tab_env),
+            "tmux new-window -t 'relix' -P -F '#{window_id}\t#{window_index}\t#{window_name}\t#{window_active}' -e '_RELIX_TAB_ID=shell:abc' -n 'shell'"
         );
         let attach = attach_command("relix", "@3");
         assert!(attach.starts_with("bash -lc "));
