@@ -53,6 +53,21 @@ export function useForwards() {
     });
   }, []);
 
+  const markHostForwardsReconnecting = useCallback((hostId: string) => {
+    setForwardsByHost((current) => {
+      const list = current[hostId];
+      if (!list || list.length === 0) return current;
+      return {
+        ...current,
+        [hostId]: list.map((forward) =>
+          forward.status === "active"
+            ? { ...forward, errorMessage: "connection lost — retrying" }
+            : forward,
+        ),
+      };
+    });
+  }, []);
+
   const updateForwardStatus = useCallback(
     (
       hostId: string,
@@ -123,6 +138,19 @@ export function useForwards() {
       const list = forwardsByHost[hostId] ?? [];
       const pending = list.filter(
         (forward) => forward.autoStart && forward.status !== "active",
+      );
+      await Promise.allSettled(
+        pending.map((forward) => startForward(hostId, forward)),
+      );
+    },
+    [forwardsByHost, startForward],
+  );
+
+  const restartActiveForwards = useCallback(
+    async (hostId: string) => {
+      const list = forwardsByHost[hostId] ?? [];
+      const pending = list.filter(
+        (forward) => forward.status === "active" || forward.autoStart,
       );
       await Promise.allSettled(
         pending.map((forward) => startForward(hostId, forward)),
@@ -263,8 +291,10 @@ export function useForwards() {
     forwardsByHost,
     loadForwards,
     markHostForwardsIdle,
+    markHostForwardsReconnecting,
     startForward,
     autoStartForwards,
+    restartActiveForwards,
     stopForward,
     saveForward,
     deleteForward,

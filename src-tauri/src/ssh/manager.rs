@@ -150,12 +150,67 @@ impl SshManager {
         Ok(())
     }
 
+    pub async fn handle_connection_lost(&self, app: &AppHandle, host_id: &str, reason: &str) {
+        let (removed_shells, removed_forwards) = {
+            let mut inner = self.inner.lock().await;
+            if !inner.connections.contains_key(host_id) {
+                return;
+            }
+            let session_ids: Vec<SessionId> = inner.shells.iter().filter(|(_, s)| s.host_id == host_id).map(|(id, _)| id.clone()).collect();
+            let mut shells = Vec::with_capacity(session_ids.len());
+            for id in session_ids {
+                if let Some(shell) = inner.shells.remove(&id) {
+                    shells.push((id, shell));
+                }
+            }
+            let forward_ids: Vec<ForwardId> = inner.forwards.iter().filter(|(_, f)| f.host_id == host_id).map(|(id, _)| id.clone()).collect();
+            let mut forwards = Vec::with_capacity(forward_ids.len());
+            for id in forward_ids {
+                if let Some(forward) = inner.forwards.remove(&id) {
+                    forwards.push((id, forward));
+                }
+            }
+            inner.sftp.remove(host_id);
+            inner.connections.remove(host_id);
+            let entry = inner.connect_generations.entry(host_id.to_string()).or_insert(0);
+            *entry = entry.wrapping_add(1);
+            (shells, forwards)
+        };
+        for (id, shell) in removed_shells {
+            shell.abort.abort();
+            shell.close_io().await;
+            let _ = app.emit("ssh://shell-closed", serde_json::json!({"sessionId": id, "hostId": host_id, "reason": "disconnect"}));
+        }
+        for (id, forward) in removed_forwards {
+            abort_forward(&forward).await;
+            let _ = app.emit("ssh://forward-closed", serde_json::json!({"forwardId": id, "hostId": host_id, "reason": "disconnect"}));
+        }
+        let _ = app.emit("ssh://connection-closed", serde_json::json!({"hostId": host_id, "reason": reason}));
+    }
+
+    fn evict_dead_connection(inner: &mut SshManagerInner, host_id: &str) {
+        inner.connections.remove(host_id);
+        inner.sftp.remove(host_id);
+        let dead_shells: Vec<SessionId> = inner.shells.iter().filter(|(_, s)| s.host_id == host_id).map(|(id, _)| id.clone()).collect();
+        for id in dead_shells {
+            if let Some(shell) = inner.shells.remove(&id) {
+                shell.abort.abort();
+            }
+        }
+        let dead_forwards: Vec<ForwardId> = inner.forwards.iter().filter(|(_, f)| f.host_id == host_id).map(|(id, _)| id.clone()).collect();
+        for id in dead_forwards {
+            if let Some(forward) = inner.forwards.remove(&id) {
+                tokio::spawn(async move { abort_forward(&forward).await; });
+            }
+        }
+    }
+
     pub(crate) async fn live_handle(&self, host_id: &str) -> Result<SharedHandle, SshError> {
         let mut inner = self.inner.lock().await;
         match inner.connections.get(host_id) {
             Some(conn) if !handle_is_closed(&conn.handle) => Ok(Arc::clone(&conn.handle)),
             Some(_) => {
-                inner.connections.remove(host_id);
+                Self::evict_dead_connection(&mut inner, host_id);
                 Err(SshError::new(
                     SshErrorCode::NotConnected,
                     "Host is not connected",
@@ -185,7 +240,7 @@ impl SshManager {
                 Ok((Arc::clone(&conn.handle), Arc::clone(&conn.remote_routes)))
             }
             Some(_) => {
-                inner.connections.remove(host_id);
+                Self::evict_dead_connection(&mut inner, host_id);
                 Err(SshError::new(
                     SshErrorCode::NotConnected,
                     "Host is not connected",

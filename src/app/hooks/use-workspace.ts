@@ -176,10 +176,12 @@ export function useWorkspace({
   }, []);
 
   const openAddForward = useCallback(() => {
+    setMobileTool(null);
     setForwardFormMode({ type: "add" });
   }, []);
 
   const openEditForward = useCallback((id: string) => {
+    setMobileTool(null);
     setForwardFormMode({ type: "edit", id });
   }, []);
 
@@ -214,12 +216,12 @@ export function useWorkspace({
   }, []);
 
   const handleBack = useCallback(() => {
-    if (mobileTool) {
-      setMobileTool(null);
-      return true;
-    }
     if (forwardFormMode) {
       setForwardFormMode(null);
+      return true;
+    }
+    if (mobileTool) {
+      setMobileTool(null);
       return true;
     }
 

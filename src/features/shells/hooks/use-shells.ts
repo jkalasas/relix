@@ -562,6 +562,20 @@ export function useShells(options: UseShellsOptions = {}) {
     [attachTmuxWindow, onOpenFailed, reconcileTmux],
   );
 
+  const markHostDisconnected = useCallback((hostId: string) => {
+    setSessionsByWorkspace((current) => {
+      const next = { ...current };
+      for (const workspaceId of workspaceIdsForHost(next, hostId)) {
+        next[workspaceId] = (next[workspaceId] ?? []).map((session) => {
+          if (!session.channelId) return session;
+          const { channelId: _removed, ...rest } = session;
+          return rest;
+        });
+      }
+      return next;
+    });
+  }, []);
+
   const clearHostShells = useCallback(async (hostId: string) => {
     const workspaceIds = workspaceIdsForHost(
       sessionsByWorkspaceRef.current,
@@ -808,6 +822,7 @@ export function useShells(options: UseShellsOptions = {}) {
     closeShell,
     killTmuxSession,
     selectShell,
+    markHostDisconnected,
     clearHostShells,
     removeHostShells,
     removeWorkspaceShells,

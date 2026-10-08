@@ -288,8 +288,27 @@ export function WorkspaceMain({
   }
 
   if (forwardFormMode) {
+    if (forwardFormMode.type === "edit" && !editingForward) {
+      return (
+        <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-2 text-sm text-muted-foreground">
+          <p>Tunnel no longer exists</p>
+          <button
+            type="button"
+            onClick={onCloseForwardForm}
+            className="min-h-9 px-3 text-[13px] font-medium text-foreground underline underline-offset-4"
+          >
+            Back to ports
+          </button>
+        </div>
+      );
+    }
     return (
       <ForwardForm
+        key={
+          forwardFormMode.type === "edit"
+            ? `edit-${forwardFormMode.id}`
+            : "add"
+        }
         initial={editingForward}
         onSave={onSaveForward}
         onCancel={onCloseForwardForm}

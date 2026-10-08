@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import type { AppPage, ForwardFormMode } from "@/app/types";
 import type { useForwards } from "@/features/forwards";
 import { useGit, useGitWorktrees } from "@/features/git";
@@ -170,15 +170,27 @@ export function useWorkspaceView({
     cwd: worktreeListCwd,
   });
 
+  const worktreeMissRef = useRef(new Map<string, number>());
+
   useEffect(() => {
     if (!activeProject || gitWorktrees.loading || gitWorktrees.error) return;
     if (gitWorktrees.worktrees.length === 0) return;
     const override = activeProject.activeWorktreePath?.trim();
-    if (!override || pathsMatch(override, activeProject.path)) return;
+    if (!override || pathsMatch(override, activeProject.path)) {
+      worktreeMissRef.current.delete(activeProject.id);
+      return;
+    }
     const known = gitWorktrees.worktrees.some((entry) =>
       pathsMatch(entry.path, override),
     );
-    if (known) return;
+    if (known) {
+      worktreeMissRef.current.delete(activeProject.id);
+      return;
+    }
+    const misses = (worktreeMissRef.current.get(activeProject.id) ?? 0) + 1;
+    worktreeMissRef.current.set(activeProject.id, misses);
+    if (misses < 2) return;
+    worktreeMissRef.current.delete(activeProject.id);
     void projects.saveProject({
       ...activeProject,
       activeWorktreePath: null,

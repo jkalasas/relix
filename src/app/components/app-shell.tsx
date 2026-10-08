@@ -52,10 +52,12 @@ export function AppShell({ app }: AppShellProps) {
   const { sessionHeader, sessionTabBar } = sessionChrome;
 
   const inWorkspace = workspace.page.name === "workspace";
+  const formOpen = workspace.forwardFormMode != null;
   const sidePanelOpen =
     isDesktop &&
     !workspace.panelCollapsed &&
     inWorkspace &&
+    !formOpen &&
     view.selectedHost != null;
 
   return (
@@ -231,7 +233,7 @@ export function AppShell({ app }: AppShellProps) {
             <WorkspaceSidePanel
               host={view.selectedHost}
               show
-              collapsed={!isDesktop || workspace.panelCollapsed}
+              collapsed={!isDesktop || workspace.panelCollapsed || formOpen}
               activeTab={workspace.panelTab}
               widthPx={sidePanelWidth.widthPx}
               rootLabel={view.activeProject?.name ?? view.selectedHost.name}
@@ -268,6 +270,7 @@ export function AppShell({ app }: AppShellProps) {
           {view.selectedHost &&
           !isDesktop &&
           workspace.mobileTool &&
+          !workspace.forwardFormMode &&
           workspace.page.name === "workspace" ? (
             <WorkspaceMobileTool
               host={view.selectedHost}

@@ -14,21 +14,25 @@ type UseSshLifecycleOptions = {
     lastError?: string,
   ) => void;
   markHostForwardsIdle: (hostId: string) => void;
+  markHostForwardsReconnecting: (hostId: string) => void;
   markForwardClosed: (hostId: string, forwardId: string) => void;
   markForwardError: (hostId: string, forwardId: string, message: string) => void;
   handleChannelClosed: (hostId: string, channelId: string) => void;
   clearSessionsForHost: (hostId: string) => void;
   clearTabsForHost?: (hostId: string) => void;
+  onConnectionLost: (hostId: string) => void;
 };
 
 export function useSshLifecycle({
   setHostStatus,
   markHostForwardsIdle,
+  markHostForwardsReconnecting,
   markForwardClosed,
   markForwardError,
   handleChannelClosed,
   clearSessionsForHost,
   clearTabsForHost,
+  onConnectionLost,
 }: UseSshLifecycleOptions) {
   useEffect(() => {
     let disposed = false;
@@ -46,9 +50,7 @@ export function useSshLifecycle({
 
       const connectionClosed = await listenSshConnectionClosed((event) => {
         setHostStatus(event.hostId, "error", "SSH connection closed");
-        clearSessionsForHost(event.hostId);
-        clearTabsForHost?.(event.hostId);
-        markHostForwardsIdle(event.hostId);
+        onConnectionLost(event.hostId);
         toastError("SSH connection closed");
       });
       if (disposed) {
@@ -58,6 +60,10 @@ export function useSshLifecycle({
       unsubs.push(connectionClosed);
 
       const forwardClosed = await listenSshForwardClosed((event) => {
+        if (event.reason === "disconnect") {
+          markHostForwardsReconnecting(event.hostId);
+          return;
+        }
         markForwardClosed(event.hostId, event.forwardId);
       });
       if (disposed) {
@@ -87,6 +93,8 @@ export function useSshLifecycle({
     markForwardClosed,
     markForwardError,
     markHostForwardsIdle,
+    markHostForwardsReconnecting,
+    onConnectionLost,
     setHostStatus,
   ]);
 }

@@ -5,6 +5,7 @@ import {
 import { useAndroidBack } from "@/app/hooks/use-android-back";
 import { useBoot } from "@/app/hooks/use-boot";
 import { useHostLifecycle } from "@/app/hooks/use-host-lifecycle";
+import { useReconnect } from "@/app/hooks/use-reconnect";
 import { useSessionBridge } from "@/app/hooks/use-session-bridge";
 import { useSshLifecycle } from "@/app/hooks/use-ssh-lifecycle";
 import { useWorkspace } from "@/app/hooks/use-workspace";
@@ -235,6 +236,7 @@ export function useAppController() {
     activeWorkspaceId: view.activeWorkspaceId,
     activeShellCwd: view.activeShellCwd,
     filesPath: view.files.path,
+    isDesktop,
     hosts,
     forwards,
     shells,
@@ -279,6 +281,14 @@ export function useAppController() {
 
   useAndroidBack({ handleBack });
 
+  useReconnect({
+    hosts: hosts.hosts,
+    connectingId: hosts.connectingId,
+    connectHost: (hostId: string) => {
+      void hosts.connectHost(hostId);
+    },
+  });
+
   useBoot({
     setHosts: hosts.setHosts,
     loadForwards: forwards.loadForwards,
@@ -291,11 +301,13 @@ export function useAppController() {
   useSshLifecycle({
     setHostStatus: hosts.setHostStatus,
     markHostForwardsIdle: forwards.markHostForwardsIdle,
+    markHostForwardsReconnecting: forwards.markHostForwardsReconnecting,
     markForwardClosed: forwards.markForwardClosed,
     markForwardError: forwards.markForwardError,
     handleChannelClosed: shells.handleChannelClosed,
     clearSessionsForHost: shells.clearSessionsForHost,
     clearTabsForHost: sessionTabs.clearHost,
+    onConnectionLost: hostLife.onConnectionLost,
   });
 
   const connectHost = useCallback(

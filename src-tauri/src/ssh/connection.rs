@@ -635,6 +635,37 @@ impl SshManager {
                 },
             );
         }
+        {
+            let host_id = config.host_id.clone();
+            let watch_inner = Arc::clone(&self.inner);
+            let watch_app = app.clone();
+            let watch_handle = {
+                let inner = self.inner.lock().await;
+                inner.connections.get(&host_id).map(|c| Arc::clone(&c.handle))
+            };
+            if let Some(watch_handle) = watch_handle {
+                tokio::spawn(async move {
+                    let manager = SshManager { inner: Arc::clone(&watch_inner) };
+                    loop {
+                        tokio::time::sleep(Duration::from_secs(5)).await;
+                        let same_live = {
+                            let inner = watch_inner.lock().await;
+                            match inner.connections.get(&host_id) {
+                                Some(conn) => Arc::ptr_eq(&conn.handle, &watch_handle),
+                                None => break,
+                            }
+                        };
+                        if !same_live {
+                            break;
+                        }
+                        if handle_is_closed(&watch_handle) {
+                            manager.handle_connection_lost(&watch_app, &host_id, "keepalive").await;
+                            break;
+                        }
+                    }
+                });
+            }
+        }
         Ok(())
     }
 

@@ -8,7 +8,7 @@ import {
   type HostConfig,
   useHosts,
 } from "@/features/hosts";
-import { adhocWorkspaceId, type useProjects } from "@/features/projects";
+import { adhocWorkspaceId, isWorkspaceForHost, type useProjects } from "@/features/projects";
 import type { useSessionTabs } from "@/features/session-tabs";
 import { DEFAULT_TMUX_SESSION, type useShells } from "@/features/shells";
 import { appQuit, listenAppQuitRequested } from "@/features/ssh";
@@ -38,6 +38,10 @@ export function useHostLifecycle({
 
   const sessionTabsRef = useRef(sessionTabs);
   sessionTabsRef.current = sessionTabs;
+  const shellsRef = useRef(shells);
+  shellsRef.current = shells;
+  const forwardsRef = useRef(forwards);
+  forwardsRef.current = forwards;
 
   const onConnected = useCallback(
     async (host: HostConfig) => {
@@ -46,10 +50,23 @@ export function useHostLifecycle({
       } catch {
         // cache remains until a later successful sync
       }
-      await forwards.autoStartForwards(host.id);
+      await forwardsRef.current.restartActiveForwards(host.id);
+      const workspaceIds = Object.keys(
+        shellsRef.current.sessionsByWorkspace,
+      ).filter((id) => isWorkspaceForHost(id, host.id));
+      await Promise.allSettled(
+        workspaceIds.map((workspaceId) =>
+          shellsRef.current.bootstrapTmux(workspaceId, host.id),
+        ),
+      );
     },
-    [forwards.autoStartForwards, projects.syncHostProjects],
+    [projects.syncHostProjects],
   );
+
+  const onConnectionLost = useCallback((hostId: string) => {
+    shellsRef.current.markHostDisconnected(hostId);
+    forwardsRef.current.markHostForwardsReconnecting(hostId);
+  }, []);
 
   const onDisconnecting = useCallback(
     async (hostId: string) => {
@@ -225,6 +242,7 @@ export function useHostLifecycle({
     confirmDisconnect,
     clearDisconnectPrompt,
     bootstrapLocalTmux,
+    onConnectionLost,
     quitPrompt,
     quitBusy,
     confirmQuit,

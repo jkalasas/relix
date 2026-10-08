@@ -42,6 +42,7 @@ type UseWorkspaceActionsOptions = {
   activeWorkspaceId: WorkspaceId | null;
   activeShellCwd: string | null;
   filesPath: string | null | undefined;
+  isDesktop: boolean;
   hosts: {
     saveHost: (config: HostConfig) => Promise<void>;
     deleteHost: (id: string) => Promise<void>;
@@ -59,6 +60,7 @@ export function useWorkspaceActions({
   activeWorkspaceId,
   activeShellCwd,
   filesPath,
+  isDesktop,
   hosts,
   forwards,
   shells,
@@ -213,11 +215,14 @@ export function useWorkspaceActions({
       forwards.saveForward(selectedHost.id, config);
       workspace.afterSaveForward();
       workspace.selectPanelTab("ports");
-      workspace.openMobileTool("ports");
+      if (!isDesktop) {
+        workspace.openMobileTool("ports");
+      }
     },
     [
       activeWorkspaceId,
       forwards.saveForward,
+      isDesktop,
       selectedHost,
       workspace.afterSaveForward,
       workspace.selectPanelTab,

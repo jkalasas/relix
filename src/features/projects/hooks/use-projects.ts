@@ -54,10 +54,20 @@ export function useProjects() {
 
     const run = (async () => {
       const { projects: hostEntries, exists } = await readHostProjects(hostId);
-      let list = hostEntries.map((entry) => toProjectConfig(hostId, entry));
+      const cached = projectsByHostRef.current[hostId] ?? [];
+      const cachedWorktree = new Map(
+        cached.map((project) => [project.id, project.activeWorktreePath ?? null]),
+      );
+      let list = hostEntries.map((entry) => {
+        const config = toProjectConfig(hostId, entry);
+        const localOverride = cachedWorktree.get(entry.id);
+        if (localOverride && !config.activeWorktreePath) {
+          return { ...config, activeWorktreePath: localOverride };
+        }
+        return config;
+      });
 
       if (!exists) {
-        const cached = projectsByHostRef.current[hostId] ?? [];
         if (cached.length > 0) {
           const entries = cached.map(toHostProjectEntry);
           await writeHostProjects(hostId, entries);
@@ -90,7 +100,19 @@ export function useProjects() {
         list.push(normalized);
       }
 
-      await writeHostProjects(hostId, list.map(toHostProjectEntry));
+      try {
+        await writeHostProjects(hostId, list.map(toHostProjectEntry));
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "";
+        await persistCache({
+          ...projectsByHostRef.current,
+          [hostId]: list,
+        });
+        if (message.includes("Connect to save")) {
+          return normalized;
+        }
+        throw error;
+      }
 
       const next = {
         ...projectsByHostRef.current,
