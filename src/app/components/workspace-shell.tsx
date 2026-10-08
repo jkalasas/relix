@@ -17,13 +17,11 @@ import {
 } from "@/features/forwards";
 import type { GitWorktreesController } from "@/features/git";
 import {
-  WorkspaceRecents,
   ProjectWorktreeTree,
   parseWorkspaceId,
   pathsMatch,
   type ProjectConfig,
   type WorkspaceId,
-  type WorkspaceRef,
 } from "@/features/projects";
 import type { OpenFileState, SessionTab } from "@/features/session-tabs";
 import {
@@ -49,15 +47,11 @@ type WorkspaceChromeProps = {
   filesPath: string | null;
   connecting: boolean;
   inWorkspace: boolean;
-  activeWorkspaceId: WorkspaceId | null;
   selectedTabs: SessionTab[];
   activeTabId: string | null;
   selectedSessions: ShellSession[];
   selectedFiles: Record<string, OpenFileState>;
   selectedIsLocal: boolean;
-  recents: WorkspaceRef[];
-  hosts: Host[];
-  projectsByHost: Record<string, ProjectConfig[]>;
   gitWorktrees: GitWorktreesController | null;
   activeScopeWorktreePath: string | null;
   projectRootPath: string | null;
@@ -66,8 +60,6 @@ type WorkspaceChromeProps = {
   onEditHost: (hostId: string) => void;
   onBack: () => void;
   onSaveProject?: () => void;
-  onOpenRecent: (ref: WorkspaceRef) => void;
-  onReorderRecents: (orderedIds: string[]) => void;
   onSelectTab: (tabId: string) => void;
   onCloseTab: (tabId: string) => void;
   onRenameShell: (shellId: string, name: string) => void;
@@ -89,15 +81,11 @@ export function createWorkspaceSessionChrome({
   filesPath,
   connecting,
   inWorkspace,
-  activeWorkspaceId,
   selectedTabs,
   activeTabId,
   selectedSessions,
   selectedFiles,
   selectedIsLocal,
-  recents,
-  hosts,
-  projectsByHost,
   gitWorktrees,
   activeScopeWorktreePath,
   projectRootPath,
@@ -106,8 +94,6 @@ export function createWorkspaceSessionChrome({
   onEditHost,
   onBack,
   onSaveProject,
-  onOpenRecent,
-  onReorderRecents,
   onSelectTab,
   onCloseTab,
   onRenameShell,
@@ -143,37 +129,11 @@ export function createWorkspaceSessionChrome({
       />
     ) : null;
 
-  const sessionControls = (
+  const sessionControls = notificationCenter ? (
     <div className="flex shrink-0 items-center gap-0.5">
-      <WorkspaceRecents
-        recents={recents}
-        hosts={hosts}
-        projectsByHost={projectsByHost}
-        activeWorkspaceId={activeWorkspaceId}
-        onSelect={onOpenRecent}
-        onReorder={onReorderRecents}
-      />
-      {notificationCenter ? (
-        <NotificationBell {...notificationCenter} />
-      ) : null}
+      <NotificationBell {...notificationCenter} />
     </div>
-  );
-
-  const hasMenuContent = recents.length > 0;
-  const sessionMenuControls =
-    useTitlebarSessionChrome && hasMenuContent ? (
-      <div className="flex flex-col items-stretch gap-0.5">
-        <WorkspaceRecents
-          recents={recents}
-          hosts={hosts}
-          projectsByHost={projectsByHost}
-          activeWorkspaceId={activeWorkspaceId}
-          onSelect={onOpenRecent}
-          onReorder={onReorderRecents}
-          className="h-9 w-full justify-start px-2 text-[13px]"
-        />
-      </div>
-    ) : undefined;
+  ) : null;
 
   const activeRoot = projectRootPath ?? null;
   const currentWorktree =
@@ -206,7 +166,6 @@ export function createWorkspaceSessionChrome({
         onBack={onBack}
         onSaveProject={onSaveProject}
         trailingExtra={useTitlebarSessionChrome ? undefined : sessionControls}
-        menuControls={sessionMenuControls}
         variant={useTitlebarSessionChrome ? "titlebar" : "default"}
       />
     ) : null;

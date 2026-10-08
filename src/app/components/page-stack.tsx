@@ -5,8 +5,10 @@ import {
   HostsPage,
   ProjectForm,
   ProjectsPage,
+  ProjectsTreePage,
   type ProjectConfig,
 } from "@/features/projects";
+import { useMediaQuery } from "@/hooks/use-media-query";
 
 type PageStackProps = {
   page: AppPage;
@@ -23,6 +25,16 @@ type PageStackProps = {
   onOpenHosts: () => void;
   onOpenAdhoc: (hostId: string) => void;
   onOpenProject: (hostId: string, projectId: string) => void;
+  onSelectProjectWorktree: (
+    hostId: string,
+    projectId: string,
+    worktreePath: string | null,
+  ) => void;
+  onSetProjectWorktree: (
+    hostId: string,
+    projectId: string,
+    worktreePath: string | null,
+  ) => void;
   onAddProject: (hostId: string) => void;
   onEditProject: (hostId: string, projectId: string) => void;
   onConnectHost: (hostId: string) => void;
@@ -51,6 +63,8 @@ export function PageStack({
   onOpenHosts,
   onOpenAdhoc,
   onOpenProject,
+  onSelectProjectWorktree,
+  onSetProjectWorktree,
   onAddProject,
   onEditProject,
   onConnectHost,
@@ -63,6 +77,7 @@ export function PageStack({
   onDeleteProject,
   onCloseProjectForm,
 }: PageStackProps) {
+  const isDesktop = useMediaQuery("(min-width: 768px)");
   return (
     <>
       {page.name === "hosts" ? (
@@ -76,25 +91,58 @@ export function PageStack({
 
       {page.name === "projects" ? (
         projectsHost ? (
-          <ProjectsPage
-            host={projectsHost}
-            projects={projectsForHost(projectsHost.id)}
-            connecting={connectingId === projectsHost.id}
-            openWorkspaceIds={openWorkspaceIds}
-            onBack={onOpenHosts}
-            onOpenAdhoc={() => onOpenAdhoc(projectsHost.id)}
-            onOpenProject={(projectId) =>
-              onOpenProject(projectsHost.id, projectId)
-            }
-            onAddProject={() => onAddProject(projectsHost.id)}
-            onEditProject={(projectId) =>
-              onEditProject(projectsHost.id, projectId)
-            }
-            onConnect={() => onConnectHost(projectsHost.id)}
-            onDisconnect={() => onDisconnectHost(projectsHost)}
-            onEditHost={() => onEditHost(projectsHost.id)}
-            headerExtra={headerExtra}
-          />
+          isDesktop ? (
+            <ProjectsPage
+              host={projectsHost}
+              projects={projectsForHost(projectsHost.id)}
+              connecting={connectingId === projectsHost.id}
+              openWorkspaceIds={openWorkspaceIds}
+              onBack={onOpenHosts}
+              onOpenAdhoc={() => onOpenAdhoc(projectsHost.id)}
+              onOpenProject={(projectId) =>
+                onOpenProject(projectsHost.id, projectId)
+              }
+              onAddProject={() => onAddProject(projectsHost.id)}
+              onEditProject={(projectId) =>
+                onEditProject(projectsHost.id, projectId)
+              }
+              onConnect={() => onConnectHost(projectsHost.id)}
+              onDisconnect={() => onDisconnectHost(projectsHost)}
+              onEditHost={() => onEditHost(projectsHost.id)}
+              headerExtra={headerExtra}
+            />
+          ) : (
+            <ProjectsTreePage
+              host={projectsHost}
+              projects={projectsForHost(projectsHost.id)}
+              connecting={connectingId === projectsHost.id}
+              openWorkspaceIds={openWorkspaceIds}
+              onBack={onOpenHosts}
+              onOpenAdhoc={() => onOpenAdhoc(projectsHost.id)}
+              onSelectWorktree={(projectId, worktreePath) =>
+                onSelectProjectWorktree(
+                  projectsHost.id,
+                  projectId,
+                  worktreePath,
+                )
+              }
+              onAddProject={() => onAddProject(projectsHost.id)}
+              onEditProject={(projectId) =>
+                onEditProject(projectsHost.id, projectId)
+              }
+              onSetWorktree={(projectId, worktreePath) =>
+                onSetProjectWorktree(
+                  projectsHost.id,
+                  projectId,
+                  worktreePath,
+                )
+              }
+              onConnect={() => onConnectHost(projectsHost.id)}
+              onDisconnect={() => onDisconnectHost(projectsHost)}
+              onEditHost={() => onEditHost(projectsHost.id)}
+              headerExtra={headerExtra}
+            />
+          )
         ) : (
           <HostsPage
             hosts={hosts}

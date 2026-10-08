@@ -167,6 +167,16 @@ export function AppShell({ app }: AppShellProps) {
                   project?.activeWorktreePath ?? null,
                 );
               }}
+              onSelectProjectWorktree={(hostId, projectId, worktreePath) =>
+                workspace.openProject(hostId, projectId, worktreePath)
+              }
+              onSetProjectWorktree={(hostId, projectId, worktreePath) => {
+                void actions.handleSetProjectWorktree(
+                  hostId,
+                  projectId,
+                  worktreePath,
+                );
+              }}
               onAddProject={workspace.openAddProject}
               onEditProject={workspace.openEditProject}
               onConnectHost={connectHost}

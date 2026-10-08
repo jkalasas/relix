@@ -2,10 +2,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import type { AppPage, ForwardFormMode } from "@/app/types";
 import {
   normalizeWorktreePath,
-  parseWorkspaceId,
   toWorkspaceId,
   type WorkspaceId,
-  type WorkspaceRef,
   type WorkspaceScope,
 } from "@/features/projects";
 
@@ -52,7 +50,6 @@ export function useWorkspace({
 }: UseWorkspaceOptions) {
   const [page, setPage] = useState<AppPage>({ name: "hosts" });
   const [forwardFormMode, setForwardFormMode] = useState<ForwardFormMode>(null);
-  const [recents, setRecents] = useState<WorkspaceRef[]>([]);
   const [panelTab, setPanelTabState] = useState<SidePanelTab>(readPanelTab);
   const [panelCollapsed, setPanelCollapsedState] = useState(readPanelCollapsed);
   const [mobileTool, setMobileTool] = useState<SidePanelTab | null>(null);
@@ -65,42 +62,6 @@ export function useWorkspace({
       : page.name === "host-form"
         ? (page.hostId ?? null)
         : page.hostId;
-
-  const rememberWorkspace = useCallback((ref: WorkspaceRef) => {
-    setRecents((current) => {
-      const id = toWorkspaceId(ref);
-      if (current.some((item) => toWorkspaceId(item) === id)) {
-        return current;
-      }
-      return [...current, ref].slice(0, 12);
-    });
-  }, []);
-
-  const reorderRecents = useCallback((orderedIds: string[]) => {
-    setRecents((current) => {
-      if (orderedIds.length === 0) return current;
-      const byId = new Map(
-        current.map((item) => [toWorkspaceId(item), item] as const),
-      );
-      const next: WorkspaceRef[] = [];
-      for (const id of orderedIds) {
-        const item = byId.get(id);
-        if (!item) continue;
-        next.push(item);
-        byId.delete(id);
-      }
-      for (const item of current) {
-        if (byId.has(toWorkspaceId(item))) next.push(item);
-      }
-      if (
-        next.length === current.length &&
-        next.every((item, index) => item === current[index])
-      ) {
-        return current;
-      }
-      return next;
-    });
-  }, []);
 
   const openHosts = useCallback(() => {
     setPage({ name: "hosts" });
@@ -125,8 +86,6 @@ export function useWorkspace({
       } else {
         nextScope = { kind: "adhoc" };
       }
-      const ref = { hostId: nextHostId, scope: nextScope };
-      rememberWorkspace(ref);
       setPage({
         name: "workspace",
         hostId: nextHostId,
@@ -135,7 +94,7 @@ export function useWorkspace({
       setForwardFormMode(null);
       setMobileTool(null);
     },
-    [rememberWorkspace],
+    [],
   );
 
   const openAdhoc = useCallback(
@@ -148,13 +107,6 @@ export function useWorkspace({
   const openProject = useCallback(
     (nextHostId: string, projectId: string, worktreePath?: string | null) => {
       openWorkspace(nextHostId, { kind: "project", projectId, worktreePath });
-    },
-    [openWorkspace],
-  );
-
-  const openRecent = useCallback(
-    (ref: WorkspaceRef) => {
-      openWorkspace(ref.hostId, ref.scope);
     },
     [openWorkspace],
   );
@@ -240,10 +192,7 @@ export function useWorkspace({
     setForwardFormMode(null);
   }, []);
 
-  const afterDeleteHost = useCallback((deletedId: string) => {
-    setRecents((current) =>
-      current.filter((item) => item.hostId !== deletedId),
-    );
+  const afterDeleteHost = useCallback((_deletedId: string) => {
     setPage({ name: "hosts" });
     setForwardFormMode(null);
   }, []);
@@ -255,20 +204,10 @@ export function useWorkspace({
     [openProject],
   );
 
-  const afterDeleteProject = useCallback(
-    (nextHostId: string, projectId: string) => {
-      const prefix = `${nextHostId}::project::${projectId}`;
-      setRecents((current) =>
-        current.filter((item) => {
-          const id = toWorkspaceId(item);
-          return id !== prefix && !id.startsWith(`${prefix}::worktree::`);
-        }),
-      );
-      setPage({ name: "projects", hostId: nextHostId });
-      setForwardFormMode(null);
-    },
-    [],
-  );
+  const afterDeleteProject = useCallback((nextHostId: string) => {
+    setPage({ name: "projects", hostId: nextHostId });
+    setForwardFormMode(null);
+  }, []);
 
   const afterSaveForward = useCallback(() => {
     setForwardFormMode(null);
@@ -392,33 +331,11 @@ export function useWorkspace({
     setMobileTool(null);
   }, []);
 
-  const pruneRecents = useCallback((hostIds: Set<string>) => {
-    setRecents((current) =>
-      current.filter((item) => hostIds.has(item.hostId)),
-    );
-  }, []);
-
-  const dropRecentWorkspace = useCallback((id: WorkspaceId) => {
-    setRecents((current) =>
-      current.filter((item) => toWorkspaceId(item) !== id),
-    );
-    const parsed = parseWorkspaceId(id);
-    if (!parsed) return;
-    setPage((current) => {
-      if (current.name !== "workspace") return current;
-      if (toWorkspaceId({ hostId: current.hostId, scope: current.scope }) !== id) {
-        return current;
-      }
-      return { name: "projects", hostId: parsed.hostId };
-    });
-  }, []);
-
   return {
     page,
     hostId,
     workspaceId,
     forwardFormMode,
-    recents,
     panelTab,
     panelCollapsed,
     selectPanelTab,
@@ -431,7 +348,6 @@ export function useWorkspace({
     openWorkspace,
     openAdhoc,
     openProject,
-    openRecent,
     openAddHost,
     openEditHost,
     openAddProject,
@@ -447,9 +363,5 @@ export function useWorkspace({
     afterDeleteProject,
     afterSaveForward,
     handleBack,
-    pruneRecents,
-    dropRecentWorkspace,
-    rememberWorkspace,
-    reorderRecents,
   };
 }

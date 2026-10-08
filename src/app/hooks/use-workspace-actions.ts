@@ -24,7 +24,7 @@ type WorkspaceNav = {
     projectId: string,
     worktreePath?: string | null,
   ) => void;
-  afterDeleteProject: (hostId: string, projectId: string) => void;
+  afterDeleteProject: (hostId: string) => void;
   afterSaveForward: () => void;
   closeForwardForm: () => void;
   selectPanelTab: (tab: "files" | "git" | "ports") => void;
@@ -194,7 +194,7 @@ export function useWorkspaceActions({
         shells.removeWorkspaceShells(workspaceId);
       }
       await projects.deleteProject(hostId, projectId);
-      workspace.afterDeleteProject(hostId, projectId);
+      workspace.afterDeleteProject(hostId);
     },
     [
       projects.deleteProject,

@@ -26,6 +26,10 @@ export {
   describeTab,
   type NotificationItem,
 } from "@/features/notify/lib/notification-items";
+export {
+  isAppWindowVisible,
+  isViewedNotification,
+} from "@/features/notify/lib/is-viewed";
 export { useNotifyRelay } from "@/features/notify/hooks/use-notify-relay";
 export {
   useNotifications,

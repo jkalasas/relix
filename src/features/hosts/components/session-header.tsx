@@ -30,7 +30,6 @@ type SessionHeaderProps = {
   onSaveProject?: () => void;
   leadingExtra?: ReactNode;
   trailingExtra?: ReactNode;
-  menuControls?: ReactNode;
   variant?: "default" | "titlebar";
   className?: string;
 };
@@ -70,7 +69,6 @@ export function SessionHeader({
   onSaveProject,
   leadingExtra,
   trailingExtra,
-  menuControls,
   variant = "default",
   className,
 }: SessionHeaderProps) {
@@ -104,7 +102,6 @@ export function SessionHeader({
         titlebar ? "gap-1.5" : "gap-1.5 sm:gap-2",
       )}
     >
-      <SessionChip status={host.status} />
       {onSaveProject ? (
         <Button
           type="button"
@@ -210,12 +207,6 @@ export function SessionHeader({
             </div>
             <SessionChip status={host.status} className="shrink-0" />
           </div>
-          {menuControls ? (
-            <>
-              <Separator />
-              {menuControls}
-            </>
-          ) : null}
           {hasSessionActions ? (
             <>
               <Separator />
@@ -311,10 +302,7 @@ export function SessionHeader({
 
         <div className="min-w-0 flex-1">
           <p className="flex min-w-0 items-center gap-1.5 truncate text-sm font-medium text-foreground">
-            <StatusDot
-              status={host.status}
-              className="size-1.5 shrink-0 md:hidden"
-            />
+            <StatusDot status={host.status} className="size-1.5 shrink-0" />
             <span className="truncate">
               {host.name}
               <span className="font-normal text-muted-foreground">
@@ -367,9 +355,6 @@ export function SessionHeader({
               </DrawerTitle>
             </DrawerHeader>
             <DrawerFooter className="gap-2 pb-[max(1rem,env(safe-area-inset-bottom))]">
-              <div className="flex justify-start pb-1">
-                <SessionChip status={host.status} />
-              </div>
               {onSaveProject ? (
                 <Button
                   type="button"

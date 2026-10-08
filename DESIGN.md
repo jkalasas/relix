@@ -166,7 +166,7 @@ Hosts page  →  Projects page  →  Workspace
 **Ad hoc** — no saved project. Files and git follow the active shell cwd (OSC7 / tmux path).
 **Project** — saved name + home directory on that host. Each worktree is its own workspace: shells, tabs, and open files are scoped by worktree path and restored on switch; new shells open at the effective root (worktree or home); files and git stay rooted there. Switch / add / remove worktrees from the left project rail. `activeWorktreePath` persists the last-opened worktree per project. Project registry is **host-side** (`~/.config/relix/projects.json`); clients cache the list for offline browsing and refresh on connect.
 
-Open workspaces stay alive in the background. Jump via **Recents** (header / title bar). Back: workspace → projects → hosts.
+Open workspaces stay alive in the background. Switch scope via the project rail (desktop workspace) or the projects tree page (mobile, Back from workspace). Back: workspace → projects → hosts.
 
 Connections are **one SSH session per host**, shared by every project/Ad hoc on that host. Switching scope never reconnects.
 
@@ -192,7 +192,7 @@ Workspace (connected):
 | Title bar | 40px (`2.5rem`) | Frameless window. One strip over content + right panel: sidebar toggle + side-panel toggle + drag region + window controls (always top-right of the window). Left rail runs full window height beneath it |
 | Project rail | ~240px default, drag-resizable (180–480px); collapsible | Workspace only (connected or not). Ad hoc + projects with worktree children; clicking a worktree switches workspace (tabs follow the worktree). Hosts link returns to hosts page |
 | Side panel | ~320px default, drag-resizable (180–480px); toggle lives in the titlebar strip | Workspace only, desktop only. Tabbed Files · Git · Ports below the shared window strip |
-| Session header | 40px desktop / 48px mobile | Host · scope label; desktop titlebar collapses to one session button + popover card, otherwise chip + connect (desktop inline / mobile More drawer); back to projects; recents trailing |
+| Session header | 40px desktop / 48px mobile | Host · scope label + status dot; desktop titlebar collapses to one session button + popover card, otherwise connect (desktop inline / mobile More drawer); back to projects; notification bell trailing |
 | Session tabs | below the session header, center column | Shell + open-file tabs only. Trailing Files / Git / Ports buttons select the side panel (desktop) or open full-screen tool pages (mobile). Mobile: active session chip → sessions drawer |
 | Workspace body | flex-1 | Terminal when no file editor is active; open file editors otherwise (`SidebarInset`) |
 
@@ -216,7 +216,7 @@ Hosts                        Projects                     Workspace
 | Open host | Pushes projects page |
 | Open Ad hoc / project | Pushes workspace full-screen |
 | Back | Workspace → projects → hosts; Esc / Android back same stack |
-| Workspace header | Single row: back · host · scope · trailing icons (recents, more). Title `flex-1` + truncate. Edit / Disconnect / Save project live in a More drawer. Secondary line is branch or short path — never a full absolute path mid-truncation |
+| Workspace header | Single row: back · host · scope · trailing icons (bell, more). Title `flex-1` + truncate. Edit / Disconnect / Save project live in a More drawer. Secondary line is branch or short path — never a full absolute path mid-truncation |
 | Tabs | Active session chip (≥44px) opens sessions drawer; tools stay trailing |
 | Tools | Trailing Files / Ports / Git open full-screen tool pages (Back returns to terminal) |
 | Primary actions | Thumb zone when possible |
@@ -250,7 +250,7 @@ Task-specific, one primary action, no fake metrics. Icon in a quiet bordered til
 | `HostsPage` | `features/projects/components/hosts-page.tsx` | Full-page host catalog |
 | `ProjectsPage` | `features/projects/components/projects-page.tsx` | Per-host Ad hoc + project list |
 | `ProjectForm` | `features/projects/components/project-form.tsx` | Create / edit project directory |
-| `WorkspaceRecents` | `features/projects/components/workspace-recents.tsx` | Jump between open workspaces |
+| `ProjectsTreePage` | `features/projects/components/projects-tree-page.tsx` | Mobile projects surface: rail tree as a full page (worktree switching included) |
 | `ProjectWorktreeTree` | `features/projects/components/project-worktree-tree.tsx` | Left rail: Ad hoc + projects with worktree children; status dot = live sessions, `primary` = main worktree |
 | `WorkspaceSidePanel` | `app/components/workspace-side-panel.tsx` | Desktop right panel: tabbed Files · Git · Ports |
 | `WorkspaceMobileTool` | `app/components/workspace-mobile-tool.tsx` | Mobile full-screen Files / Git / Ports pages |
@@ -270,7 +270,7 @@ Task-specific, one primary action, no fake metrics. Icon in a quiet bordered til
 
 ### Toasts
 
-Sparse, error-oriented feedback for failures the user may not be staring at (e.g. unexpected SSH disconnect, shell open/attach). Prefer durable status (host/forward rows), panel banners, and dialogs when the surface is already on-screen. Never success-spam. Ops copy only. Implementation: shadcn Base UI `toast` + `src/lib/toast.ts`.
+Sparse, error-oriented feedback for failures the user may not be staring at (e.g. unexpected SSH disconnect, shell open/attach). Prefer durable status (host/forward rows), panel banners, and dialogs when the surface is already on-screen. Never success-spam. Ops copy only. Implementation: shadcn Base UI `toast` + `src/lib/toast.ts`. Host notifications (`relix-notify`) skip every signal — toast, OS banner, bell entry, tab dot — when the target tab is already active in the open workspace and the window is visible and focused.
 
 ### Status mapping
 

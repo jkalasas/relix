@@ -15,6 +15,8 @@ import {
   buildNotificationItems,
   findTabWorkspace,
   goToTab,
+  isAppWindowVisible,
+  isViewedNotification,
   listenOsNotificationTap,
   sendOsNotification,
   useNotifications,
@@ -111,6 +113,10 @@ export function useAppController() {
   const notifications = useNotifications();
   const tabsByWorkspaceRef = useRef(sessionTabs.tabsByWorkspace);
   tabsByWorkspaceRef.current = sessionTabs.tabsByWorkspace;
+  const activeWorkspaceRef = useRef(view.activeWorkspaceId);
+  activeWorkspaceRef.current = view.activeWorkspaceId;
+  const activeTabRef = useRef(view.activeTabId);
+  activeTabRef.current = view.activeTabId;
 
   const openNotificationTab = useCallback(
     (tabId: string) => {
@@ -144,6 +150,14 @@ export function useAppController() {
         tabsByWorkspaceRef.current,
         payload.tabId,
       );
+      const viewed = isViewedNotification({
+        tabId: payload.tabId,
+        workspaceId: found?.workspaceId ?? null,
+        activeWorkspaceId: activeWorkspaceRef.current,
+        activeTabId: activeTabRef.current,
+        windowVisible: isAppWindowVisible(),
+      });
+      if (viewed) return;
       notifications.upsert(payload, hostId, found?.workspaceId ?? null);
       const title = payload.title?.trim() || "Host notification";
       const description = payload.body?.trim() || `tab ${payload.tabId}`;
@@ -168,6 +182,10 @@ export function useAppController() {
   useEffect(() => {
     notifications.pruneClosedTabs(sessionTabs.tabsByWorkspace);
   }, [notifications.pruneClosedTabs, sessionTabs.tabsByWorkspace]);
+
+  useEffect(() => {
+    if (view.activeTabId) notifications.resolve(view.activeTabId);
+  }, [notifications.resolve, view.activeTabId, view.activeWorkspaceId]);
 
   const notificationItems = useMemo(
     () =>
@@ -407,15 +425,11 @@ export function useAppController() {
           view.selectedHost != null &&
           hosts.connectingId === view.selectedHost.id,
         inWorkspace: view.inWorkspace,
-        activeWorkspaceId: view.activeWorkspaceId,
         selectedTabs: view.selectedTabs,
         activeTabId: view.activeTabId,
         selectedSessions: view.selectedSessions,
         selectedFiles: view.selectedFiles,
         selectedIsLocal: view.selectedIsLocal,
-        recents: workspace.recents,
-        hosts: hosts.hosts,
-        projectsByHost: projects.projectsByHost,
         gitWorktrees: view.activeProject ? view.gitWorktrees : null,
         activeScopeWorktreePath: view.activeScopeWorktreePath,
         projectRootPath: view.projectRootPath,
@@ -426,8 +440,6 @@ export function useAppController() {
         onSaveProject: view.canSaveAdhocProject
           ? actions.handleSaveAdhocAsProject
           : undefined,
-        onOpenRecent: workspace.openRecent,
-        onReorderRecents: workspace.reorderRecents,
         onSelectTab: sessions.selectSessionTab,
         onCloseTab: sessions.closeSessionTab,
         onRenameShell: renameShell,
@@ -445,13 +457,11 @@ export function useAppController() {
       connectHost,
       hostLife.requestDisconnect,
       hosts.connectingId,
-      hosts.hosts,
       openFilesTab,
       attentionTabIds,
       notificationCenter,
       openGitTab,
       openPortsTab,
-      projects.projectsByHost,
       renameShell,
       reorderTabs,
       sessions.closeSessionTab,
@@ -462,7 +472,6 @@ export function useAppController() {
       view.activeScopeLabel,
       view.activeShellCwd,
       view.activeTabId,
-      view.activeWorkspaceId,
       view.canSaveAdhocProject,
       view.files.path,
       view.gitWorktrees,
@@ -474,9 +483,6 @@ export function useAppController() {
       view.selectedTabs,
       workspace.handleBack,
       workspace.openEditHost,
-      workspace.openRecent,
-      workspace.recents,
-      workspace.reorderRecents,
     ],
   );
 
