@@ -40,6 +40,25 @@ fn resolve_shell_program() -> String {
     }
 }
 
+fn home_fallback() -> Option<String> {
+    for key in ["HOME", "USERPROFILE"] {
+        if let Ok(value) = std::env::var(key) {
+            let trimmed = value.trim();
+            if !trimmed.is_empty() {
+                return Some(trimmed.to_string());
+            }
+        }
+    }
+    None
+}
+
+fn effective_local_cwd(cwd: Option<String>) -> Option<String> {
+    let cwd = cwd
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty());
+    cwd.or_else(home_fallback)
+}
+
 #[cfg(not(mobile))]
 fn build_local_command(
     command: Option<String>,
@@ -50,7 +69,7 @@ fn build_local_command(
 
     let shell = resolve_shell_program();
     let command = command.filter(|value| !value.is_empty());
-    let cwd = cwd.filter(|value| !value.is_empty());
+    let cwd = effective_local_cwd(cwd);
 
     let mut cmd = CommandBuilder::new(&shell);
 
@@ -132,6 +151,15 @@ async fn open_local_shell_desktop(
     env: std::collections::HashMap<String, String>,
 ) -> Result<String, SshError> {
     use portable_pty::{native_pty_system, PtySize};
+
+    if let Some(path) = cwd.as_deref().map(str::trim).filter(|v| !v.is_empty()) {
+        if !std::path::Path::new(path).is_dir() {
+            return Err(SshError::new(
+                SshErrorCode::NotFound,
+                format!("Directory does not exist: {path}"),
+            ));
+        }
+    }
 
     let pty_system = native_pty_system();
     let pair = pty_system
@@ -257,12 +285,24 @@ pub(crate) fn shutdown_local(handles: &LocalShellHandles) {
 
 #[cfg(test)]
 mod tests {
-    use super::{is_local_host_id, resolve_shell_program, LOCAL_HOST_ID};
+    use super::{effective_local_cwd, is_local_host_id, resolve_shell_program, LOCAL_HOST_ID};
 
     #[test]
     fn local_host_id_matches() {
         assert!(is_local_host_id(LOCAL_HOST_ID));
         assert!(!is_local_host_id("other"));
+    }
+
+    #[test]
+    fn explicit_cwd_passes_through_and_blank_is_ignored() {
+        assert_eq!(
+            effective_local_cwd(Some("/home/u/proj".into())),
+            Some("/home/u/proj".to_string())
+        );
+        assert_eq!(
+            effective_local_cwd(Some("  /home/u/proj  ".into())),
+            Some("/home/u/proj".to_string())
+        );
     }
 
     #[test]

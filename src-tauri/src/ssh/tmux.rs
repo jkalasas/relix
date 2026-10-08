@@ -200,6 +200,14 @@ fn list_windows_command(session: &str) -> String {
     )
 }
 
+fn resolve_tmux_cwd(cwd: Option<String>, pane_path: Option<String>) -> Option<String> {
+    let explicit = cwd.filter(|value| !value.trim().is_empty());
+    if explicit.is_some() {
+        return explicit;
+    }
+    pane_path.filter(|value| !value.trim().is_empty())
+}
+
 fn pane_path_command(session: &str, window_id: &str) -> String {
     format!(
         "tmux display-message -p -t {}:{} '#{{pane_current_path}}'",
@@ -496,18 +504,19 @@ impl SshManager {
             .tmux_exec(&host_id, &configure_session_command(&session))
             .await;
 
-        // Prefer live pane path from the source window — OSC7 often does not
-        // pass through tmux, so frontend cwd is frequently missing.
-        let mut resolved_cwd = cwd.filter(|value| !value.trim().is_empty());
-        if let Some(window_id) = source_window_id
+        // Explicit project root always wins. Fall back to the live pane
+        // path only when the caller sent no cwd — OSC7 often does not
+        // pass through tmux, so frontend cwd is frequently missing
+        // for ad-hoc shells.
+        let pane_path = match source_window_id
             .as_deref()
             .map(str::trim)
             .filter(|value| !value.is_empty())
         {
-            if let Some(path) = self.tmux_pane_path(&host_id, &session, window_id).await {
-                resolved_cwd = Some(path);
-            }
-        }
+            Some(window_id) => self.tmux_pane_path(&host_id, &session, window_id).await,
+            None => None,
+        };
+        let resolved_cwd = resolve_tmux_cwd(cwd, pane_path);
 
         let stdout = self
             .tmux_exec(
@@ -657,7 +666,7 @@ mod tests {
         is_primary_for_base, kill_session_command, kill_window_command, list_windows_command,
         move_window_command, new_window_command, pane_path_command, parse_session_names,
         parse_window_line, parse_windows, parse_windows_stdout, primary_sessions_for_base,
-        resolve_session, sh_single_quote,
+        resolve_session, resolve_tmux_cwd, sh_single_quote,
     };
 
     #[test]
@@ -734,6 +743,20 @@ mod tests {
             pane_path_command("relix", "@3"),
             "tmux display-message -p -t relix:@3 '#{pane_current_path}'"
         );
+    }
+
+    #[test]
+    fn explicit_cwd_wins_over_pane_path() {
+        assert_eq!(
+            resolve_tmux_cwd(Some("/proj/b".into()), Some("/stale/a".into())),
+            Some("/proj/b".to_string())
+        );
+        assert_eq!(
+            resolve_tmux_cwd(None, Some("/pane/dir".into())),
+            Some("/pane/dir".to_string())
+        );
+        assert_eq!(resolve_tmux_cwd(Some("   ".into()), None), None);
+        assert_eq!(resolve_tmux_cwd(None, None), None);
     }
 
     #[test]

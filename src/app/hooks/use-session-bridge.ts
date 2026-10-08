@@ -352,7 +352,7 @@ export function useSessionBridge({
         : null;
     const cwd =
       scope?.kind === "project"
-        ? (scope.worktreePath?.trim() || project?.path)
+        ? (scope.worktreePath?.trim() || project?.path?.trim() || undefined)
         : undefined;
     void openShell(
       currentWorkspaceId,

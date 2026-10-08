@@ -324,7 +324,7 @@ export function useShells(options: UseShellsOptions = {}) {
       const activeSession = (sessionsByWorkspace[workspaceId] ?? []).find(
         (session) => session.id === activeId,
       );
-      const cwd = hostOptions.cwd?.trim() || activeSession?.cwd;
+      const requestedCwd = hostOptions.cwd?.trim() || undefined;
 
       try {
         if (shellMode === "tmux") {
@@ -333,7 +333,7 @@ export function useShells(options: UseShellsOptions = {}) {
             session: tmuxSession,
             name: baseTitle,
             command: launch.command,
-            cwd,
+            cwd: requestedCwd,
             sourceWindowId: activeSession?.tmuxWindowId,
             env: { [RELIX_TAB_ENV]: shellTabId(sessionId) },
           });
@@ -347,7 +347,7 @@ export function useShells(options: UseShellsOptions = {}) {
                 sessionsByWorkspace[workspaceId] ?? [],
                 baseTitle,
               ),
-            cwd,
+            cwd: requestedCwd,
             tmuxWindowId: window.id,
             tmuxSession,
           };
@@ -372,7 +372,7 @@ export function useShells(options: UseShellsOptions = {}) {
         const sessionId = crypto.randomUUID();
         const { sessionId: channelId } = await sshOpenShell(hostId, {
           command: launch.command,
-          cwd,
+          cwd: requestedCwd,
           env: { [RELIX_TAB_ENV]: shellTabId(sessionId) },
         });
         setSessionsByWorkspace((current) => {
@@ -382,7 +382,7 @@ export function useShells(options: UseShellsOptions = {}) {
             hostId,
             workspaceId,
             title: nextSessionTitle(existing, baseTitle),
-            cwd,
+            cwd: requestedCwd,
             channelId,
           };
           return { ...current, [workspaceId]: [...existing, next] };
