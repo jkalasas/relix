@@ -321,6 +321,9 @@ export function ensureTmuxConfSnippet(): string {
     "unbind C-b",
     "set -g status off",
     "set -g set-titles off",
+    // Touch drags arrive as wheel events; mouse mode lets tmux scroll the
+    // pane (copy-mode) instead of leaving the xterm viewport static.
+    "set -g mouse on",
   ]
     .map((line) => `'${line}'`)
     .join(" ");
@@ -337,6 +340,7 @@ export function tmuxAttachCommand(session: string, windowId: string): string {
   const script = [
     ensureTmuxConfSnippet(),
     `${tm} has-session -t ${clientQ} 2>/dev/null || ${tm} new-session -d -s ${clientQ} -t ${baseQ}`,
+    `${tm} set-option -g mouse on`,
     `${tm} set-option -t ${clientQ} status off`,
     `${tm} set-option -t ${baseQ} status off`,
     `${tm} set-option -t ${clientQ} set-titles off`,

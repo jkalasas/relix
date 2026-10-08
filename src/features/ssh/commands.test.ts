@@ -55,6 +55,7 @@ describe("tmuxAttachCommand", () => {
     expect(snippet).toContain("mkdir -p");
     expect(snippet).toContain("set -g prefix None");
     expect(snippet).toContain("unbind C-b");
+    expect(snippet).toContain("set -g mouse on");
     const cmd = tmuxAttachCommand("relix", "@3");
     expect(cmd).toContain("-L relix");
     expect(cmd).toContain(".config/relix/tmux.conf");

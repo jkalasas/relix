@@ -10,11 +10,14 @@ const DEFAULT_SESSION: &str = "relix";
 const RELIX_TMUX_SOCKET: &str = "relix";
 const RELIX_TMUX_CONF_FILE: &str = "$HOME/.config/relix/tmux.conf";
 
-const RELIX_TMUX_CONF_BODY: [&str; 4] = [
+const RELIX_TMUX_CONF_BODY: [&str; 5] = [
     "set -g prefix None",
     "unbind C-b",
     "set -g status off",
     "set -g set-titles off",
+    // Touch drags arrive as wheel events; mouse mode lets tmux scroll the
+    // pane (copy-mode) instead of leaving the xterm viewport static.
+    "set -g mouse on",
 ];
 
 /// All Relix tmux traffic runs on a dedicated socket with a managed config,
@@ -94,8 +97,10 @@ pub(crate) fn attach_command(session: &str, window_id: &str) -> String {
     let tm = tmux_base();
     let conf = ensure_conf_snippet();
     // Client sessions are separate from the base and default to status on.
+    // `mouse on` is global: re-assert it for servers started before the
+    // managed config gained it (`-f` only applies at server start).
     let script = format!(
-        "{conf}; {tm} has-session -t {client_q} 2>/dev/null || {tm} new-session -d -s {client_q} -t {base_q}; {tm} set-option -t {client_q} status off; {tm} set-option -t {base_q} status off; {tm} set-option -t {client_q} set-titles off; {tm} select-window -t {client_q}:{window_id}; exec {tm} attach-session -t {client_q}"
+        "{conf}; {tm} has-session -t {client_q} 2>/dev/null || {tm} new-session -d -s {client_q} -t {base_q}; {tm} set-option -g mouse on; {tm} set-option -t {client_q} status off; {tm} set-option -t {base_q} status off; {tm} set-option -t {client_q} set-titles off; {tm} select-window -t {client_q}:{window_id}; exec {tm} attach-session -t {client_q}"
     );
     format!("bash -lc {}", sh_single_quote(&script))
 }
@@ -133,7 +138,7 @@ fn configure_session_command(session: &str) -> String {
     let quoted = sh_single_quote(session);
     let tm = tmux_base();
     format!(
-        "{tm} set-option -t {quoted} status off ; {tm} set-option -t {quoted} set-titles off"
+        "{tm} set-option -t {quoted} status off ; {tm} set-option -t {quoted} set-titles off ; {tm} set-option -g mouse on"
     )
 }
 
@@ -758,6 +763,7 @@ mod tests {
             "unbind C-b",
             "set -g status off",
             "set -g set-titles off",
+            "set -g mouse on",
         ] {
             assert!(snippet.contains(line), "missing {line}");
         }

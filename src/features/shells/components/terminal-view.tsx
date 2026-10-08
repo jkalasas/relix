@@ -17,7 +17,7 @@ import {
   hasStickyMods,
   type StickyMods,
 } from "@/features/shells/lib/terminal-keys";
-import { isMobileOs } from "@/features/shells/lib/mobile-os";
+import { isTouchUi, shouldAttachTouchScroll } from "@/features/shells/lib/mobile-os";
 import { sshResize, sshWrite } from "@/features/ssh";
 import {
   isCloseTabShortcut,
@@ -40,14 +40,6 @@ type TerminalViewProps = {
   onReady?: (api: TerminalSessionApi) => void | (() => void);
   onCwdChange?: (cwd: string) => void;
 };
-
-function isTouchUi(): boolean {
-  if (typeof window === "undefined") return false;
-  if (window.matchMedia("(hover: none) and (pointer: coarse)").matches) {
-    return true;
-  }
-  return isMobileOs();
-}
 
 function attachWebgl(
   term: Terminal,
@@ -203,7 +195,11 @@ function attachMobileScroll(
   shouldForceFocus: () => boolean,
   clearForceFocus: () => void,
 ): () => void {
-  if (!isTouchUi()) return () => {};
+  // Attach for touch-driven UI, not just mobile UAs: a narrow desktop
+  // browser shows the mobile layout but fails the UA sniff. Coarse
+  // pointer (not mere touch capability) so touch-laptops using a mouse
+  // keep native text selection instead of hitting the overlay.
+  if (!shouldAttachTouchScroll()) return () => {};
 
   const layer = document.createElement("div");
   layer.className = "xterm-mobile-scroll";
@@ -224,8 +220,6 @@ function attachMobileScroll(
   let flingFrame = 0;
   let flingVelocity = 0;
   let lastFlingTime = 0;
-  let stuckFrames = 0;
-  let lastViewportY: number | null = null;
   let samples: Array<{ y: number; t: number }> = [];
 
   let pinching = false;
@@ -242,17 +236,69 @@ function attachMobileScroll(
     }
   };
 
-  const applyLines = (deltaY: number): boolean => {
+  /**
+   * Forward a drag as a wheel event so mouse-aware apps (tmux with
+   * `mouse on`, vim, less) scroll their own viewport. Direct
+   * `scrollLines` cannot move those: tmux owns the scrollback and the
+   * xterm viewport stays put.
+   */
+  const dispatchWheelFallback = (deltaYPx: number) => {
+    const scrollTarget =
+      term.element?.querySelector(".xterm-scrollable-element") ??
+      term.element;
+    if (!scrollTarget) return;
+    scrollTarget.dispatchEvent(
+      new WheelEvent("wheel", {
+        deltaY: -deltaYPx,
+        deltaMode: WheelEvent.DOM_DELTA_PIXEL,
+        bubbles: true,
+        cancelable: true,
+      }),
+    );
+  };
+
+  /**
+   * Replay a tap as a mouse click at the tap point so mouse-aware apps
+   * (tmux panes, TUI buttons, vim) receive it. The overlay shields xterm
+   * from real events, so a synthetic down/up pair is dispatched straight
+   * at the xterm element. Skipped when text is selected so a focus tap
+   * never wipes a selection the user wants to copy.
+   */
+  const forwardTapAsClick = (clientX: number, clientY: number) => {
+    if (term.getSelection()) return;
+    const target = term.element;
+    if (!target) return;
+    const init: MouseEventInit = {
+      bubbles: true,
+      cancelable: true,
+      clientX,
+      clientY,
+      button: 0,
+    };
+    target.dispatchEvent(new MouseEvent("mousedown", { ...init, buttons: 1 }));
+    target.dispatchEvent(new MouseEvent("mouseup", { ...init, buttons: 0 }));
+  };
+
+  let lastTapForwardMs = 0;
+
+  const applyLines = (deltaY: number) => {
     const linePx = cellHeightPx(term, container);
     remainder += deltaY;
     const lines = Math.trunc(remainder / linePx);
-    if (lines === 0) return true;
+    if (lines === 0) return;
     remainder -= lines * linePx;
     const before = readViewportY();
     term.scrollLines(-lines);
     const after = readViewportY();
-    if (before != null && after != null && before === after) return false;
-    return true;
+    if (before == null || after == null || before !== after) return;
+    // tmux/fullscreen: the xterm viewport is static, so replay one wheel
+    // tick per line of finger travel. Mouse protocol counts ticks and
+    // ignores pixel magnitude — a single tick per frame crawls.
+    const ticks = Math.min(100, Math.abs(lines));
+    const tickDelta = Math.sign(deltaY) * linePx;
+    for (let i = 0; i < ticks; i += 1) {
+      dispatchWheelFallback(tickDelta);
+    }
   };
 
   const flushPending = () => {
@@ -272,8 +318,6 @@ function attachMobileScroll(
     cancelAnimationFrame(flingFrame);
     flingFrame = 0;
     flingVelocity = 0;
-    stuckFrames = 0;
-    lastViewportY = null;
   };
 
   const stepFling = (now: number) => {
@@ -286,18 +330,11 @@ function attachMobileScroll(
       cancelFling();
       return;
     }
-    const moved = applyLines(dy);
-    const currentY = readViewportY();
-    if (!moved || (currentY != null && currentY === lastViewportY)) {
-      stuckFrames += 1;
-      if (stuckFrames >= 2) {
-        cancelFling();
-        return;
-      }
-    } else {
-      stuckFrames = 0;
-    }
-    lastViewportY = currentY;
+    // Wheel fallback (tmux copy-mode, vim, less) keeps consuming the fling
+    // even when the xterm viewport is static, so fling ends on velocity
+    // decay rather than viewport-stuck. Extra events at buffer limits
+    // are harmless no-ops.
+    applyLines(dy);
     flingFrame = requestAnimationFrame(stepFling);
   };
 
@@ -313,8 +350,6 @@ function attachMobileScroll(
     }
     flingVelocity = velocity;
     lastFlingTime = performance.now();
-    lastViewportY = readViewportY();
-    stuckFrames = 0;
     flingFrame = requestAnimationFrame(stepFling);
   };
 
@@ -435,12 +470,25 @@ function attachMobileScroll(
     }
     samples = [];
 
+    if (event.type === "touchend") {
+      const touch = event.changedTouches[0];
+      if (touch) {
+        forwardTapAsClick(touch.clientX, touch.clientY);
+        lastTapForwardMs = performance.now();
+      }
+    }
     const force = shouldForceFocus();
     focusTerminal(term, { force });
     clearForceFocus();
   };
 
-  const onClick = () => {
+  const onClick = (event: MouseEvent) => {
+    // A real mouse click (e.g. bluetooth mouse) also needs forwarding,
+    // but skip the browser-synthesized click that follows a touch tap —
+    // it would double-send the click into the TUI.
+    if (performance.now() - lastTapForwardMs > 500) {
+      forwardTapAsClick(event.clientX, event.clientY);
+    }
     const force = shouldForceFocus();
     focusTerminal(term, { force });
     clearForceFocus();
