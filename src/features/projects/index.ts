@@ -9,9 +9,12 @@ export {
   adhocWorkspaceId,
   hostIdFromWorkspaceId,
   isWorkspaceForHost,
+  isWorkspaceForProject,
+  normalizeWorktreePath,
   parseWorkspaceId,
   projectWorkspaceId,
   scopeLabel,
+  scopeWorktreePath,
   toWorkspaceId,
 } from "@/features/projects/lib/workspace-id";
 export {
@@ -33,3 +36,4 @@ export { ProjectsPage } from "@/features/projects/components/projects-page";
 export { ProjectForm } from "@/features/projects/components/project-form";
 export { WorkspaceRecents } from "@/features/projects/components/workspace-recents";
 export { WorktreeSwitcher } from "@/features/projects/components/worktree-switcher";
+export { ProjectWorktreeTree } from "@/features/projects/components/project-worktree-tree";

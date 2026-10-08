@@ -9,29 +9,18 @@ import {
   SessionHeader,
   type Host,
 } from "@/features/hosts";
-import {
-  FileTreeSidebar,
-  FileWorkspace,
-  FilesWorkspace,
-  type FilesController,
-} from "@/features/files";
+import { FileWorkspace } from "@/features/files";
 import {
   ForwardForm,
-  ForwardsPanel,
   type PortForward,
   type PortForwardConfig,
 } from "@/features/forwards";
-import {
-  GitPanel,
-  type GitController,
-  type GitWorktreesController,
-} from "@/features/git";
+import type { GitWorktreesController } from "@/features/git";
 import {
   WorkspaceRecents,
-  WorktreeSwitcher,
+  ProjectWorktreeTree,
   parseWorkspaceId,
   pathsMatch,
-  projectActiveRoot,
   type ProjectConfig,
   type WorkspaceId,
   type WorkspaceRef,
@@ -43,7 +32,6 @@ import {
   type ShellLaunchId,
   type ShellSession,
 } from "@/features/shells";
-import type { FsEntry } from "@/features/ssh";
 
 type SidebarWidth = {
   widthPx: number;
@@ -55,7 +43,6 @@ type SidebarWidth = {
 type WorkspaceChromeProps = {
   selectedHost: Host | null;
   useTitlebarSessionChrome: boolean;
-  activeProject: ProjectConfig | null;
   activeScopeLabel: string;
   canSaveAdhocProject: boolean;
   activeShellCwd: string | null;
@@ -72,12 +59,13 @@ type WorkspaceChromeProps = {
   hosts: Host[];
   projectsByHost: Record<string, ProjectConfig[]>;
   gitWorktrees: GitWorktreesController | null;
+  activeScopeWorktreePath: string | null;
+  projectRootPath: string | null;
   onConnect: (hostId: string) => void;
   onDisconnect: (host: Host) => void;
   onEditHost: (hostId: string) => void;
   onBack: () => void;
   onSaveProject?: () => void;
-  onSetProjectWorktree?: (worktreePath: string | null) => void;
   onOpenRecent: (ref: WorkspaceRef) => void;
   onReorderRecents: (orderedIds: string[]) => void;
   onSelectTab: (tabId: string) => void;
@@ -95,7 +83,6 @@ type WorkspaceChromeProps = {
 export function createWorkspaceSessionChrome({
   selectedHost,
   useTitlebarSessionChrome,
-  activeProject,
   activeScopeLabel,
   canSaveAdhocProject,
   activeShellCwd,
@@ -112,12 +99,13 @@ export function createWorkspaceSessionChrome({
   hosts,
   projectsByHost,
   gitWorktrees,
+  activeScopeWorktreePath,
+  projectRootPath,
   onConnect,
   onDisconnect,
   onEditHost,
   onBack,
   onSaveProject,
-  onSetProjectWorktree,
   onOpenRecent,
   onReorderRecents,
   onSelectTab,
@@ -165,26 +153,13 @@ export function createWorkspaceSessionChrome({
         onSelect={onOpenRecent}
         onReorder={onReorderRecents}
       />
-      {activeProject && gitWorktrees && onSetProjectWorktree ? (
-        <WorktreeSwitcher
-          project={activeProject}
-          worktrees={gitWorktrees}
-          connected={
-            selectedHost != null &&
-            (selectedIsLocal || selectedHost.status === "connected")
-          }
-          onSelect={onSetProjectWorktree}
-        />
-      ) : null}
       {notificationCenter ? (
         <NotificationBell {...notificationCenter} />
       ) : null}
     </div>
   );
 
-  const hasMenuContent =
-    recents.length > 0 ||
-    Boolean(activeProject && gitWorktrees && onSetProjectWorktree);
+  const hasMenuContent = recents.length > 0;
   const sessionMenuControls =
     useTitlebarSessionChrome && hasMenuContent ? (
       <div className="flex flex-col items-stretch gap-0.5">
@@ -197,26 +172,14 @@ export function createWorkspaceSessionChrome({
           onReorder={onReorderRecents}
           className="h-9 w-full justify-start px-2 text-[13px]"
         />
-        {activeProject && gitWorktrees && onSetProjectWorktree ? (
-          <WorktreeSwitcher
-            project={activeProject}
-            worktrees={gitWorktrees}
-            connected={
-              selectedHost != null &&
-              (selectedIsLocal || selectedHost.status === "connected")
-            }
-            onSelect={onSetProjectWorktree}
-            className="h-9 w-full justify-start px-2 text-[13px]"
-          />
-        ) : null}
       </div>
     ) : undefined;
 
-  const activeRoot = activeProject ? projectActiveRoot(activeProject) : null;
+  const activeRoot = projectRootPath ?? null;
   const currentWorktree =
-    activeRoot && gitWorktrees
+    activeScopeWorktreePath && gitWorktrees
       ? (gitWorktrees.worktrees.find((entry) =>
-          pathsMatch(entry.path, activeRoot),
+          pathsMatch(entry.path, activeScopeWorktreePath),
         ) ?? null)
       : null;
   const scopeHint = currentWorktree
@@ -251,42 +214,64 @@ export function createWorkspaceSessionChrome({
   return { sessionHeader, sessionTabBar };
 }
 
-type WorkspaceFileRailProps = {
+type WorkspaceProjectRailProps = {
   selectedHost: Host;
-  showFileRail: boolean;
+  showRail: boolean;
   sidebarWidth: SidebarWidth;
-  activeProject: ProjectConfig | null;
-  files: FilesController;
-  selectedPath: string | null;
+  projects: ProjectConfig[];
+  activeProjectId: string | null;
+  activeWorktreePath: string | null;
+  adhocActive: boolean;
+  connected: boolean;
+  openWorkspaceIds: Set<string>;
   onShowHosts: () => void;
-  onOpenFile: (entry: FsEntry) => void;
+  onOpenAdhoc: () => void;
+  onSelectWorktree: (projectId: string, worktreePath: string | null) => void;
+  onAddProject: () => void;
+  onEditProject: (projectId: string) => void;
+  onSetWorktree: (projectId: string, worktreePath: string | null) => void;
 };
 
-export function WorkspaceFileRail({
+export function WorkspaceProjectRail({
   selectedHost,
-  showFileRail,
+  showRail,
   sidebarWidth,
-  activeProject,
-  files,
-  selectedPath,
+  projects,
+  activeProjectId,
+  activeWorktreePath,
+  adhocActive,
+  connected,
+  openWorkspaceIds,
   onShowHosts,
-  onOpenFile,
-}: WorkspaceFileRailProps) {
-  if (!showFileRail) return null;
+  onOpenAdhoc,
+  onSelectWorktree,
+  onAddProject,
+  onEditProject,
+  onSetWorktree,
+}: WorkspaceProjectRailProps) {
+  if (!showRail) return null;
   return (
     <AppSidebar
       widthPx={sidebarWidth.widthPx}
       onWidthChange={sidebarWidth.setWidthPx}
       onResizeStart={sidebarWidth.beginResize}
       onResizeEnd={sidebarWidth.endResize}
-      rootLabel={activeProject?.name ?? selectedHost.name}
+      rootLabel={selectedHost.name}
       onShowHosts={onShowHosts}
     >
-      <FileTreeSidebar
-        files={files}
-        rootLabel={activeProject?.name ?? selectedHost.name}
-        selectedPath={selectedPath}
-        onOpenFile={onOpenFile}
+      <ProjectWorktreeTree
+        hostId={selectedHost.id}
+        projects={projects}
+        activeProjectId={activeProjectId}
+        activeWorktreePath={activeWorktreePath}
+        adhocActive={adhocActive}
+        connected={connected}
+        openWorkspaceIds={openWorkspaceIds}
+        onOpenAdhoc={onOpenAdhoc}
+        onSelectWorktree={onSelectWorktree}
+        onAddProject={onAddProject}
+        onEditProject={onEditProject}
+        onSetWorktree={onSetWorktree}
       />
     </AppSidebar>
   );
@@ -300,28 +285,17 @@ type WorkspaceMainProps = {
   useTitlebarSessionChrome: boolean;
   sessionHeader: ReactNode;
   sessionTabBar: ReactNode;
-  portsChromeOpen: boolean;
-  gitChromeOpen: boolean;
-  explorerChromeOpen: boolean;
-  selectedForwards: PortForward[];
-  files: FilesController;
-  git: GitController;
+  editorOpen: boolean;
   activeTab: SessionTab | null;
   openFileTabs: Extract<SessionTab, { kind: "file" }>[];
   selectedFiles: Record<string, OpenFileState>;
-  onConnect: (hostId: string) => void;
-  onAddForward: () => void;
-  onEditForward: (id: string) => void;
-  onStartForward: (hostId: string, forward: PortForward) => void;
-  onStopForward: (hostId: string, id: string) => void;
   onDeleteForward: (id: string) => void;
   onSaveForward: (config: PortForwardConfig) => void;
   onCloseForwardForm: () => void;
-  onOpenFile: (entry: FsEntry) => void;
   onChangeFileText: (path: string, text: string) => void;
   onSaveFile: (path: string) => void | Promise<void>;
   onDownloadFile: (path: string) => void;
-  onOpenFiles: () => void;
+  onRevealFiles: () => void;
 };
 
 export function WorkspaceMain({
@@ -332,28 +306,17 @@ export function WorkspaceMain({
   useTitlebarSessionChrome,
   sessionHeader,
   sessionTabBar,
-  portsChromeOpen,
-  gitChromeOpen,
-  explorerChromeOpen,
-  selectedForwards,
-  files,
-  git,
+  editorOpen,
   activeTab,
   openFileTabs,
   selectedFiles,
-  onConnect,
-  onAddForward,
-  onEditForward,
-  onStartForward,
-  onStopForward,
   onDeleteForward,
   onSaveForward,
   onCloseForwardForm,
-  onOpenFile,
   onChangeFileText,
   onSaveFile,
   onDownloadFile,
-  onOpenFiles,
+  onRevealFiles,
 }: WorkspaceMainProps) {
   if (!pageIsWorkspace) return null;
 
@@ -385,68 +348,33 @@ export function WorkspaceMain({
       {useTitlebarSessionChrome ? null : sessionHeader}
       {useTitlebarSessionChrome ? null : sessionTabBar}
 
-      {portsChromeOpen ? (
-        <ForwardsPanel
-          host={selectedHost}
-          forwards={selectedForwards}
-          onConnect={() => onConnect(selectedHost.id)}
-          onAddForward={onAddForward}
-          onStartForward={(id) => {
-            const forward = selectedForwards.find((item) => item.id === id);
-            if (forward) onStartForward(selectedHost.id, forward);
-          }}
-          onStopForward={(id) => onStopForward(selectedHost.id, id)}
-          onEditForward={onEditForward}
-          onDeleteForward={(id) => void onDeleteForward(id)}
-        />
-      ) : null}
-
-      {gitChromeOpen ? (
-        <GitPanel
-          host={selectedHost}
-          git={git}
-          onConnect={() => onConnect(selectedHost.id)}
-        />
-      ) : null}
-
       <div
-        className={
-          explorerChromeOpen ? "flex min-h-0 flex-1 flex-col" : "hidden"
-        }
-        aria-hidden={!explorerChromeOpen}
+        className={editorOpen ? "flex min-h-0 flex-1 flex-col" : "hidden"}
+        aria-hidden={!editorOpen}
       >
-        <FilesWorkspace
-          host={selectedHost}
-          files={files}
-          activeKind={activeTab?.kind === "file" ? "file" : "files"}
-          onConnect={() => onConnect(selectedHost.id)}
-          onOpenFile={onOpenFile}
-          fileSlot={openFileTabs.map((tab) => {
-            const state = selectedFiles[tab.path];
-            if (!state) return null;
-            const active =
-              activeTab?.kind === "file" && activeTab.path === tab.path;
-            return (
-              <div
-                key={tab.id}
-                className={
-                  active ? "flex min-h-0 flex-1 flex-col" : "hidden"
-                }
-                aria-hidden={!active}
-              >
-                <FileWorkspace
-                  state={state}
-                  onChangeText={(text) => onChangeFileText(tab.path, text)}
-                  onSave={async () => {
-                    await onSaveFile(tab.path);
-                  }}
-                  onDownload={() => void onDownloadFile(tab.path)}
-                  onRevealFiles={onOpenFiles}
-                />
-              </div>
-            );
-          })}
-        />
+        {openFileTabs.map((tab) => {
+          const state = selectedFiles[tab.path];
+          if (!state) return null;
+          const active =
+            activeTab?.kind === "file" && activeTab.path === tab.path;
+          return (
+            <div
+              key={tab.id}
+              className={active ? "flex min-h-0 flex-1 flex-col" : "hidden"}
+              aria-hidden={!active}
+            >
+              <FileWorkspace
+                state={state}
+                onChangeText={(text) => onChangeFileText(tab.path, text)}
+                onSave={async () => {
+                  await onSaveFile(tab.path);
+                }}
+                onDownload={() => void onDownloadFile(tab.path)}
+                onRevealFiles={onRevealFiles}
+              />
+            </div>
+          );
+        })}
       </div>
     </>
   );
@@ -468,7 +396,11 @@ type WorkspaceTerminalProps = {
     cwd?: string,
   ) => void | Promise<void>;
   onSessionCwd: (sessionId: string, cwd: string) => void;
-  getProjectPath: (hostId: string, projectId: string) => string | undefined;
+  getProjectPath: (
+    hostId: string,
+    projectId: string,
+    worktreePath?: string | null,
+  ) => string | undefined;
 };
 
 export function WorkspaceTerminal({
@@ -498,7 +430,11 @@ export function WorkspaceTerminal({
         const parsed = parseWorkspaceId(workspaceId);
         const root =
           parsed?.scope.kind === "project"
-            ? getProjectPath(hostId, parsed.scope.projectId)
+            ? getProjectPath(
+                hostId,
+                parsed.scope.projectId,
+                parsed.scope.worktreePath ?? undefined,
+              )
             : (projectRootPath ?? undefined);
         void onOpenShell(workspaceId, hostId, launchId, root);
       }}

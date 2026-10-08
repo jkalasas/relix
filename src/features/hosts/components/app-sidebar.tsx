@@ -30,7 +30,7 @@ export function AppSidebar({
   return (
     <Sidebar
       collapsible="icon"
-      className="!top-[var(--titlebar-height,0px)] !bottom-0 !h-auto"
+      className="!top-0 !bottom-0 !h-auto"
     >
       <SidebarHeader className="gap-0 border-b border-sidebar-border p-0">
         <div className="flex h-10 items-center gap-2 px-3 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-2">

@@ -145,7 +145,7 @@ On mobile, prefer the upper end of body sizes for scanability; do not shrink mon
 | Mode | Viewport | Shell |
 |---|---|---|
 | **Mobile** | `< md` (~768px) | Page stack — one primary surface at a time |
-| **Desktop** | `≥ md` | Same page stack; file tree rail only inside a connected workspace |
+| **Desktop** | `≥ md` | Same page stack; project rail + side panel inside the workspace |
 
 Do not “squeeze” a multi-pane desktop chrome below `md`. Switch density, not structure.
 
@@ -164,7 +164,7 @@ Hosts page  →  Projects page  →  Workspace
 | **Workspace** | Session for one host + scope (Ad hoc or project). Tabs, shells, files, host-level ports, git status |
 
 **Ad hoc** — no saved project. Files and git follow the active shell cwd (OSC7 / tmux path).
-**Project** — saved name + home directory on that host. Optional `activeWorktreePath` selects a git worktree; shells open at the effective root (worktree or home); files and git stay rooted there. Switch / add / remove worktrees from the workspace header. Project registry is **host-side** (`~/.config/relix/projects.json`); clients cache the list for offline browsing and refresh on connect.
+**Project** — saved name + home directory on that host. Each worktree is its own workspace: shells, tabs, and open files are scoped by worktree path and restored on switch; new shells open at the effective root (worktree or home); files and git stay rooted there. Switch / add / remove worktrees from the left project rail. `activeWorktreePath` persists the last-opened worktree per project. Project registry is **host-side** (`~/.config/relix/projects.json`); clients cache the list for offline browsing and refresh on connect.
 
 Open workspaces stay alive in the background. Jump via **Recents** (header / title bar). Back: workspace → projects → hosts.
 
@@ -176,21 +176,25 @@ Connections are **one SSH session per host**, shared by every project/Ad hoc on 
 Hosts / Projects — full-width pages (no host rail)
 
 Workspace (connected):
-┌─────────────────────────────────────────────────────────────┐
-│ titlebar: tabs · session button · win ctrls                 │
-├────────────┬────────────────────────────────────────────────┤
-│ file tree  │ shell / editor / files / ports / git           │
-│ (optional) │                                                │
-└────────────┴────────────────────────────────────────────────┘
+┌────────────┬──────────────────────────────────────────────┐
+│            │ window stuff: drag · toggles · win ctrls     │
+│  projects +├──────────────────────────────────┬───────────┤
+│  worktrees │ session header (host · scope)    │ Files ·   │
+│            ├──────────────────────────────────┤ Git ·     │
+│  full      │ session tabs (shells · files)    │ Ports     │
+│  height    ├──────────────────────────────────┤ (tabs)    │
+│            │ terminal / open file editors     │           │
+└────────────┴──────────────────────────────────┴───────────┘
 ```
 
 | Region | Size | Notes |
 |---|---|---|
-| Title bar | 40px (`2.5rem`) | Frameless window. Tabs + session header + window controls when in workspace. Drag via `data-tauri-drag-region` |
-| File tree rail | ~240px default, drag-resizable (180–480px); collapsible | Only on **connected workspace**. Not a host catalog. Hosts link returns to hosts page |
-| Session header | 40px desktop / 48px mobile | Host · scope label; desktop titlebar collapses to one session button + popover card, otherwise chip + connect (desktop inline / mobile More drawer); back to projects; recents + worktree trailing on mobile |
-| Session tabs | title bar (desktop) / below header (mobile) | Desktop: document strip (shells, files, tools). Mobile: active session chip → sessions drawer |
-| Workspace body | flex-1 | Active tab panel (`SidebarInset`) |
+| Title bar | 40px (`2.5rem`) | Frameless window. One strip over content + right panel: sidebar toggle + side-panel toggle + drag region + window controls (always top-right of the window). Left rail runs full window height beneath it |
+| Project rail | ~240px default, drag-resizable (180–480px); collapsible | Workspace only (connected or not). Ad hoc + projects with worktree children; clicking a worktree switches workspace (tabs follow the worktree). Hosts link returns to hosts page |
+| Side panel | ~320px default, drag-resizable (180–480px); toggle lives in the titlebar strip | Workspace only, desktop only. Tabbed Files · Git · Ports below the shared window strip |
+| Session header | 40px desktop / 48px mobile | Host · scope label; desktop titlebar collapses to one session button + popover card, otherwise chip + connect (desktop inline / mobile More drawer); back to projects; recents trailing |
+| Session tabs | below the session header, center column | Shell + open-file tabs only. Trailing Files / Git / Ports buttons select the side panel (desktop) or open full-screen tool pages (mobile). Mobile: active session chip → sessions drawer |
+| Workspace body | flex-1 | Terminal when no file editor is active; open file editors otherwise (`SidebarInset`) |
 
 **Desktop window (Tauri):** frameless, default 1180×740, min ~360×560 (below `md`, mobile shell still applies if the window is narrow).
 
@@ -212,9 +216,9 @@ Hosts                        Projects                     Workspace
 | Open host | Pushes projects page |
 | Open Ad hoc / project | Pushes workspace full-screen |
 | Back | Workspace → projects → hosts; Esc / Android back same stack |
-| Workspace header | Single row: back · host · scope · trailing icons (recents, worktree, more). Title `flex-1` + truncate. Worktree is icon-only; Edit / Disconnect / Save project live in a More drawer. Secondary line is branch or short path — never a full absolute path mid-truncation |
+| Workspace header | Single row: back · host · scope · trailing icons (recents, more). Title `flex-1` + truncate. Edit / Disconnect / Save project live in a More drawer. Secondary line is branch or short path — never a full absolute path mid-truncation |
 | Tabs | Active session chip (≥44px) opens sessions drawer; tools stay trailing |
-| Tools | Trailing Files / Ports / Git open or focus singleton tool tabs |
+| Tools | Trailing Files / Ports / Git open full-screen tool pages (Back returns to terminal) |
 | Primary actions | Thumb zone when possible |
 | Safe areas | `env(safe-area-inset-*)` on notch/home-indicator devices |
 | Sheets / forms | Full-screen or bottom sheet — not tiny centered modals |
@@ -223,8 +227,8 @@ Hosts                        Projects                     Workspace
 
 1. **SSH / Terminal** — session readiness and PTY. Disconnected/error states explain next step and offer Connect / Retry. On mobile, terminal is full-bleed; soft keyboard must not permanently bury the prompt (scroll + visual viewport). Mobile OS (Android/iOS) shows a bottom accessory key bar (Esc, Ctrl, Alt, Shift, Tab, arrows) with sticky modifiers for the next soft-keyboard key.
 2. **Port forwards** — **host-level** (shared across Ad hoc + projects). Desktop: multi-column mono row. Mobile: stacked row. L / R / D as before. Cyan on active only.
-3. **Files** — path in mono. **Ad hoc:** browser follows shell cwd. **Project:** rooted at project path. Desktop: file tree in left rail while workspace is connected; main pane is shell/editor/Files empty. Mobile: single-pane list + transfer sheet. Local host and remote hosts share the same Files surface.
-4. **Git** — workspace-scoped status panel (local + remote). Same cwd rules as Files. Branch + ahead/behind, worktree path, changed files, stage / unstage / discard, commit, fetch / pull ff-only / push. Unified diff drill-in: per-file from a row, or the Staged / Changes section label for the full patch in that scope (Back returns to the list). Untracked files are omitted from working-tree patches until staged. Project worktrees are managed from the workspace header (list / switch / add / remove), not inside the panel. No new status hues — mono paths and labels; diff `+`/`-` reuse connected/destructive.
+3. **Files** — path in mono. **Ad hoc:** browser follows shell cwd. **Project/worktree:** rooted at the active worktree path. Desktop: file tree in the right side panel; center is terminal + open file editors. Mobile: full-screen list page + transfer sheet. Local host and remote hosts share the same Files surface.
+4. **Git** — workspace-scoped status panel (local + remote). Same cwd rules as Files. Branch + ahead/behind, worktree path, changed files, stage / unstage / discard, commit, fetch / pull ff-only / push. Unified diff drill-in: per-file from a row, or the Staged / Changes section label for the full patch in that scope (Back returns to the list). Untracked files are omitted from working-tree patches until staged. Project worktrees are managed from the left project rail (switch / add / remove), not inside the panel. No new status hues — mono paths and labels; diff `+`/`-` reuse connected/destructive.
 
 ### Empty states
 
@@ -247,12 +251,15 @@ Task-specific, one primary action, no fake metrics. Icon in a quiet bordered til
 | `ProjectsPage` | `features/projects/components/projects-page.tsx` | Per-host Ad hoc + project list |
 | `ProjectForm` | `features/projects/components/project-form.tsx` | Create / edit project directory |
 | `WorkspaceRecents` | `features/projects/components/workspace-recents.tsx` | Jump between open workspaces |
-| `AppSidebar` | `features/hosts/components/app-sidebar.tsx` | Desktop file-tree rail (workspace only) |
+| `ProjectWorktreeTree` | `features/projects/components/project-worktree-tree.tsx` | Left rail: Ad hoc + projects with worktree children; status dot = live sessions, `primary` = main worktree |
+| `WorkspaceSidePanel` | `app/components/workspace-side-panel.tsx` | Desktop right panel: tabbed Files · Git · Ports |
+| `WorkspaceMobileTool` | `app/components/workspace-mobile-tool.tsx` | Mobile full-screen Files / Git / Ports pages |
+| `AppSidebar` | `features/hosts/components/app-sidebar.tsx` | Desktop left rail shell (workspace only) |
 | `SessionHeader` | `features/hosts/components/session-header.tsx` | Host · scope + status + connect; back to projects; titlebar collapses to session button + popover |
-| `SessionTabBar` | `components/workspace/session-tab-bar.tsx` | Document tabs: shells · open files · Files · Ports · Git |
+| `SessionTabBar` | `components/workspace/session-tab-bar.tsx` | Document tabs: shells · open files (tools live in the side panel, not the strip) |
 | `TerminalPanel` | `features/shells/components/terminal-panel.tsx` | Shell workspace |
 | `FilesPanel` | `features/files/components/files-panel.tsx` | Mobile file list browser / transfer |
-| `FileTreeSidebar` | `features/files/components/file-tree-sidebar.tsx` | Desktop file tree content inside `AppSidebar` |
+| `FileTreeSidebar` | `features/files/components/file-tree-sidebar.tsx` | File tree content (right side panel on desktop) |
 | `FilesWorkspace` | `features/files/components/files-workspace.tsx` | Files empty pane + open file slot; mobile list host |
 | `FileWorkspace` | `features/files/components/file-workspace.tsx` | Open file editor / preview tab |
 | `ForwardsPanel` | `features/forwards/components/forwards-panel.tsx` | Tunnel list / empty (host-level) |

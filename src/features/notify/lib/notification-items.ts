@@ -41,9 +41,7 @@ export function describeTab(
     return session ? sessionDisplayTitle(session) : tabId;
   }
   if (tab.kind === "file") return tab.name;
-  if (tab.kind === "files") return "Files";
-  if (tab.kind === "ports") return "Ports";
-  return "Git";
+  return tabId;
 }
 
 /**

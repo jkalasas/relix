@@ -161,12 +161,6 @@ function tabIcon(tab: SessionTab): ComponentType<{ className?: string }> {
       return TerminalSquare;
     case "file":
       return FileText;
-    case "files":
-      return Folder;
-    case "ports":
-      return Network;
-    case "git":
-      return GitBranch;
   }
 }
 
@@ -184,12 +178,6 @@ function tabLabel(
       const file = files[tab.path];
       return file?.name ?? tab.name;
     }
-    case "files":
-      return "Files";
-    case "ports":
-      return "Ports";
-    case "git":
-      return "Git";
   }
 }
 
@@ -782,18 +770,19 @@ export function SessionTabBar({
               <LaunchItem id="pi" onSelect={onNewShell} />
             </DropdownMenuContent>
           </DropdownMenu>
-          {!isDesktop ? (
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon-sm"
-              aria-label="Files"
-              className="size-9 text-muted-foreground hover:text-foreground"
-              onClick={onOpenFiles}
-            >
-              <Folder className="size-3.5" />
-            </Button>
-          ) : null}
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            aria-label="Files"
+            className={cn(
+              "text-muted-foreground hover:text-foreground",
+              titlebar ? "size-7" : "size-9 md:size-7",
+            )}
+            onClick={onOpenFiles}
+          >
+            <Folder className="size-3.5" />
+          </Button>
           {showPorts ? (
             <Button
               type="button"

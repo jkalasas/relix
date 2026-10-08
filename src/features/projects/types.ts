@@ -11,7 +11,7 @@ export type ProjectConfig = HostProjectEntry & {
 
 export type WorkspaceScope =
   | { kind: "adhoc" }
-  | { kind: "project"; projectId: string };
+  | { kind: "project"; projectId: string; worktreePath?: string | null };
 
 export type WorkspaceRef = {
   hostId: string;

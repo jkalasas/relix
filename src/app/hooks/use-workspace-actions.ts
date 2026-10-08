@@ -9,6 +9,7 @@ import type {
 } from "@/features/projects";
 import {
   adhocWorkspaceId,
+  isWorkspaceForProject,
   pathsMatch,
   projectWorkspaceId,
 } from "@/features/projects";
@@ -18,10 +19,16 @@ import type { useShells } from "@/features/shells";
 type WorkspaceNav = {
   afterSaveHost: (hostId: string) => void;
   afterDeleteHost: (hostId: string) => void;
-  afterSaveProject: (hostId: string, projectId: string) => void;
+  afterSaveProject: (
+    hostId: string,
+    projectId: string,
+    worktreePath?: string | null,
+  ) => void;
   afterDeleteProject: (hostId: string, projectId: string) => void;
   afterSaveForward: () => void;
   closeForwardForm: () => void;
+  selectPanelTab: (tab: "files" | "git" | "ports") => void;
+  openMobileTool: (tab: "files" | "git" | "ports") => void;
   openAddProject: (
     hostId: string,
     options?: { initialPath?: string; migrateFromAdhoc?: boolean },
@@ -101,7 +108,15 @@ export function useWorkspaceActions({
         }
       }
 
-      workspace.afterSaveProject(config.hostId, config.id);
+      workspace.afterSaveProject(
+        config.hostId,
+        config.id,
+        page.name === "workspace" &&
+          page.scope.kind === "project" &&
+          page.scope.projectId === config.id
+          ? (page.scope.worktreePath ?? null)
+          : null,
+      );
     },
     [
       page,
@@ -160,21 +175,31 @@ export function useWorkspaceActions({
 
   const handleDeleteProject = useCallback(
     async (hostId: string, projectId: string) => {
-      const workspaceId = projectWorkspaceId(hostId, projectId);
-      const sessions = shells.sessionsByWorkspace[workspaceId] ?? [];
+      const matchingIds = new Set<string>();
+      for (const id of Object.keys(shells.sessionsByWorkspace)) {
+        if (isWorkspaceForProject(id, hostId, projectId)) matchingIds.add(id);
+      }
+      for (const id of Object.keys(sessionTabs.tabsByWorkspace)) {
+        if (isWorkspaceForProject(id, hostId, projectId)) matchingIds.add(id);
+      }
       await Promise.allSettled(
-        sessions.map((session) =>
-          shells.closeShell(workspaceId, hostId, session.id),
+        [...matchingIds].flatMap((workspaceId) =>
+          (shells.sessionsByWorkspace[workspaceId] ?? []).map((session) =>
+            shells.closeShell(workspaceId, hostId, session.id),
+          ),
         ),
       );
-      sessionTabs.removeWorkspace(workspaceId);
-      shells.removeWorkspaceShells(workspaceId);
+      for (const workspaceId of matchingIds) {
+        sessionTabs.removeWorkspace(workspaceId);
+        shells.removeWorkspaceShells(workspaceId);
+      }
       await projects.deleteProject(hostId, projectId);
       workspace.afterDeleteProject(hostId, projectId);
     },
     [
       projects.deleteProject,
       sessionTabs.removeWorkspace,
+      sessionTabs.tabsByWorkspace,
       shells.closeShell,
       shells.removeWorkspaceShells,
       shells.sessionsByWorkspace,
@@ -187,14 +212,16 @@ export function useWorkspaceActions({
       if (!selectedHost || !activeWorkspaceId) return;
       forwards.saveForward(selectedHost.id, config);
       workspace.afterSaveForward();
-      sessionTabs.openToolTab(activeWorkspaceId, "ports");
+      workspace.selectPanelTab("ports");
+      workspace.openMobileTool("ports");
     },
     [
       activeWorkspaceId,
       forwards.saveForward,
       selectedHost,
-      sessionTabs.openToolTab,
       workspace.afterSaveForward,
+      workspace.selectPanelTab,
+      workspace.openMobileTool,
     ],
   );
 

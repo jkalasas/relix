@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { isLocalHost, type Host } from "@/features/hosts";
+import type { Host } from "@/features/hosts";
 import type {
   useProjects,
   WorkspaceId,
@@ -61,13 +61,11 @@ export function useSessionBridge({
   const workspaceIdRef = useRef(workspaceId);
   const hostIdRef = useRef(hostId);
   const workspaceScopeRef = useRef(workspaceScope);
-  const hostsRef = useRef(hosts);
   const projectsRef = useRef(projects);
 
   workspaceIdRef.current = workspaceId;
   hostIdRef.current = hostId;
   workspaceScopeRef.current = workspaceScope;
-  hostsRef.current = hosts;
   projectsRef.current = projects;
 
   const openShell = useCallback(
@@ -352,34 +350,17 @@ export function useSessionBridge({
       scope?.kind === "project"
         ? projectsRef.current.getProject(currentHostId, scope.projectId)
         : null;
+    const cwd =
+      scope?.kind === "project"
+        ? (scope.worktreePath?.trim() || project?.path)
+        : undefined;
     void openShell(
       currentWorkspaceId,
       currentHostId,
       undefined,
-      project?.path,
+      cwd,
     );
   }, [openShell, selectShell]);
-
-  const onShortcutFiles = useCallback(() => {
-    const currentWorkspaceId = workspaceIdRef.current;
-    if (!currentWorkspaceId) return;
-    sessionTabsRef.current.openToolTab(currentWorkspaceId, "files");
-  }, []);
-
-  const onShortcutPorts = useCallback(() => {
-    const currentHostId = hostIdRef.current;
-    const currentWorkspaceId = workspaceIdRef.current;
-    if (!currentHostId || !currentWorkspaceId) return;
-    const host = hostsRef.current.find((item) => item.id === currentHostId);
-    if (!host || isLocalHost(host)) return;
-    sessionTabsRef.current.openToolTab(currentWorkspaceId, "ports");
-  }, []);
-
-  const onShortcutGit = useCallback(() => {
-    const currentWorkspaceId = workspaceIdRef.current;
-    if (!currentWorkspaceId) return;
-    sessionTabsRef.current.openToolTab(currentWorkspaceId, "git");
-  }, []);
 
   return {
     openShell,
@@ -395,8 +376,5 @@ export function useSessionBridge({
     handleOpenFile,
     handleOpenShell,
     onShortcutShell,
-    onShortcutFiles,
-    onShortcutPorts,
-    onShortcutGit,
   };
 }

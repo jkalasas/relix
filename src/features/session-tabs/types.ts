@@ -2,10 +2,7 @@ import type { OpenedFile } from "@/features/files";
 
 export type SessionTab =
   | { id: string; kind: "shell"; shellId: string }
-  | { id: string; kind: "file"; path: string; name: string }
-  | { id: string; kind: "files" }
-  | { id: string; kind: "ports" }
-  | { id: string; kind: "git" };
+  | { id: string; kind: "file"; path: string; name: string };
 
 export type SessionTabKind = SessionTab["kind"];
 
@@ -28,10 +25,6 @@ export function shellTabId(shellId: string): string {
 export function fileTabId(path: string): string {
   return `file:${path}`;
 }
-
-export const FILES_TAB_ID = "files";
-export const PORTS_TAB_ID = "ports";
-export const GIT_TAB_ID = "git";
 
 /** Env var exported into every shell PTY with the owning tab's id. */
 export const RELIX_TAB_ENV = "_RELIX_TAB_ID";

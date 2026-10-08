@@ -1,14 +1,18 @@
 import type { CSSProperties } from "react";
+import { PanelRight } from "lucide-react";
 import type { AppController } from "@/app/hooks/use-app-controller";
 import { NotificationBell } from "@/features/notify";
 import { AppDialogs } from "@/app/components/app-dialogs";
 import { PageStack } from "@/app/components/page-stack";
+import { WorkspaceMobileTool } from "@/app/components/workspace-mobile-tool";
+import { WorkspaceSidePanel } from "@/app/components/workspace-side-panel";
 import {
-  WorkspaceFileRail,
   WorkspaceMain,
+  WorkspaceProjectRail,
   WorkspaceTerminal,
 } from "@/app/components/workspace-shell";
 import { DesktopTitleBar } from "@/components/workspace/desktop-title-bar";
+import { Button } from "@/components/ui/button";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { Toaster } from "@/components/ui/toast";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -23,6 +27,7 @@ export function AppShell({ app }: AppShellProps) {
     showWindowChrome,
     useTitlebarSessionChrome,
     sidebarWidth,
+    sidePanelWidth,
     view,
     workspace,
     hosts,
@@ -46,6 +51,13 @@ export function AppShell({ app }: AppShellProps) {
 
   const { sessionHeader, sessionTabBar } = sessionChrome;
 
+  const inWorkspace = workspace.page.name === "workspace";
+  const sidePanelOpen =
+    isDesktop &&
+    !workspace.panelCollapsed &&
+    inWorkspace &&
+    view.selectedHost != null;
+
   return (
     <TooltipProvider>
       <SidebarProvider
@@ -59,39 +71,74 @@ export function AppShell({ app }: AppShellProps) {
         data-resizing={sidebarWidth.resizing ? "true" : undefined}
         onContextMenu={(event) => event.preventDefault()}
       >
-        {showWindowChrome ? (
-          <DesktopTitleBar
-            showSidebarTrigger={isDesktop && view.showFileRail}
-            trailing={
-              useTitlebarSessionChrome ? (
-                <>
-                  <NotificationBell {...notificationCenter} />
-                  {sessionHeader}
-                </>
-              ) : null
-            }
-          >
-            {useTitlebarSessionChrome ? sessionTabBar : null}
-          </DesktopTitleBar>
-        ) : null}
-
-        <div className="flex min-h-0 w-full flex-1 flex-row overflow-hidden">
+        <div className="relative flex min-h-0 w-full flex-1 flex-row overflow-hidden">
           {view.selectedHost ? (
-            <WorkspaceFileRail
+            <WorkspaceProjectRail
               selectedHost={view.selectedHost}
-              showFileRail={view.showFileRail}
+              showRail={view.showProjectRail}
               sidebarWidth={sidebarWidth}
-              activeProject={view.activeProject}
-              files={view.files}
-              selectedPath={
-                view.activeTab?.kind === "file" ? view.activeTab.path : null
+              projects={projects.projectsForHost(view.selectedHost.id)}
+              activeProjectId={view.activeProjectId}
+              activeWorktreePath={view.activeScopeWorktreePath}
+              adhocActive={
+                workspace.page.name === "workspace" &&
+                workspace.page.scope.kind === "adhoc"
               }
+              connected={
+                view.selectedHost.status === "connected" ||
+                view.selectedIsLocal
+              }
+              openWorkspaceIds={view.openWorkspaceIds}
               onShowHosts={workspace.openHosts}
-              onOpenFile={sessions.handleOpenFile}
+              onOpenAdhoc={() => workspace.openAdhoc(view.selectedHost!.id)}
+              onSelectWorktree={(projectId, worktreePath) =>
+                workspace.openProject(
+                  view.selectedHost!.id,
+                  projectId,
+                  worktreePath,
+                )
+              }
+              onAddProject={() =>
+                workspace.openAddProject(view.selectedHost!.id)
+              }
+              onEditProject={(projectId) =>
+                workspace.openEditProject(view.selectedHost!.id, projectId)
+              }
+              onSetWorktree={(projectId, worktreePath) => {
+                if (!view.selectedHost) return;
+                void actions.handleSetProjectWorktree(
+                  view.selectedHost.id,
+                  projectId,
+                  worktreePath,
+                );
+              }}
             />
           ) : null}
 
-          <SidebarInset className="min-h-0 min-w-0 flex-1 overflow-hidden">
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+            {showWindowChrome ? (
+              <DesktopTitleBar
+                showSidebarTrigger={isDesktop && view.showProjectRail}
+                trailing={
+                  isDesktop && view.selectedHost && inWorkspace ? (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon-sm"
+                      aria-label={sidePanelOpen ? "Hide side panel" : "Show side panel"}
+                      aria-expanded={sidePanelOpen}
+                      onClick={workspace.togglePanel}
+                      className="size-7 text-muted-foreground hover:text-foreground"
+                    >
+                      <PanelRight className="size-3.5" />
+                    </Button>
+                  ) : undefined
+                }
+              />
+            ) : null}
+            <div className="flex min-h-0 w-full flex-1 flex-row overflow-hidden">
+              <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+            <SidebarInset className="min-h-0 min-w-0 flex-1 overflow-hidden">
             <PageStack
               page={workspace.page}
               hosts={hosts.hosts}
@@ -110,7 +157,16 @@ export function AppShell({ app }: AppShellProps) {
               onAddHost={workspace.openAddHost}
               onOpenHosts={workspace.openHosts}
               onOpenAdhoc={workspace.openAdhoc}
-              onOpenProject={workspace.openProject}
+              onOpenProject={(hostId, projectId) => {
+                const project = projects
+                  .projectsForHost(hostId)
+                  .find((item) => item.id === projectId);
+                workspace.openProject(
+                  hostId,
+                  projectId,
+                  project?.activeWorktreePath ?? null,
+                );
+              }}
               onAddProject={workspace.openAddProject}
               onEditProject={workspace.openEditProject}
               onConnectHost={connectHost}
@@ -132,28 +188,17 @@ export function AppShell({ app }: AppShellProps) {
               useTitlebarSessionChrome={useTitlebarSessionChrome}
               sessionHeader={sessionHeader}
               sessionTabBar={sessionTabBar}
-              portsChromeOpen={view.portsChromeOpen}
-              gitChromeOpen={view.gitChromeOpen}
-              explorerChromeOpen={view.explorerChromeOpen}
-              selectedForwards={view.selectedForwards}
-              files={view.files}
-              git={view.git}
+              editorOpen={view.editorOpen}
               activeTab={view.activeTab}
               openFileTabs={view.openFileTabs}
               selectedFiles={view.selectedFiles}
-              onConnect={connectHost}
-              onAddForward={workspace.openAddForward}
-              onEditForward={workspace.openEditForward}
-              onStartForward={startForward}
-              onStopForward={stopForward}
               onDeleteForward={actions.handleDeleteForward}
               onSaveForward={actions.handleSaveForward}
               onCloseForwardForm={workspace.closeForwardForm}
-              onOpenFile={sessions.handleOpenFile}
               onChangeFileText={changeFileText}
               onSaveFile={saveFile}
               onDownloadFile={downloadFile}
-              onOpenFiles={openFilesTab}
+              onRevealFiles={openFilesTab}
             />
 
             <WorkspaceTerminal
@@ -161,7 +206,7 @@ export function AppShell({ app }: AppShellProps) {
               activeWorkspaceId={view.activeWorkspaceId}
               shellActiveSessionId={view.shellActiveSessionId}
               selectedSessions={view.selectedSessions}
-              shellChromeOpen={view.shellChromeOpen}
+              shellChromeOpen={view.shellVisible}
               selectedHost={view.selectedHost}
               projectRootPath={view.projectRootPath}
               onConnect={connectHost}
@@ -169,7 +214,76 @@ export function AppShell({ app }: AppShellProps) {
               onSessionCwd={shells.setSessionCwd}
               getProjectPath={getProjectPath}
             />
-          </SidebarInset>
+            </SidebarInset>
+              </div>
+
+          {view.selectedHost && workspace.page.name === "workspace" ? (
+            <WorkspaceSidePanel
+              host={view.selectedHost}
+              show
+              collapsed={!isDesktop || workspace.panelCollapsed}
+              activeTab={workspace.panelTab}
+              widthPx={sidePanelWidth.widthPx}
+              rootLabel={view.activeProject?.name ?? view.selectedHost.name}
+              files={view.files}
+              git={view.git}
+              forwards={view.selectedForwards}
+              selectedPath={
+                view.activeTab?.kind === "file" ? view.activeTab.path : null
+              }
+              showPorts={!view.selectedIsLocal}
+              onWidthChange={sidePanelWidth.setWidthPx}
+              onResizeStart={sidePanelWidth.beginResize}
+              onResizeEnd={sidePanelWidth.endResize}
+              onSelectTab={workspace.selectPanelTab}
+              onConnect={() => connectHost(view.selectedHost!.id)}
+              onOpenFile={sessions.handleOpenFile}
+              onAddForward={workspace.openAddForward}
+              onEditForward={workspace.openEditForward}
+              onStartForward={(id) => {
+                const forward = view.selectedForwards.find(
+                  (item) => item.id === id,
+                );
+                if (forward) startForward(view.selectedHost!.id, forward);
+              }}
+              onStopForward={(id) =>
+                stopForward(view.selectedHost!.id, id)
+              }
+              onDeleteForward={(id) => void actions.handleDeleteForward(id)}
+            />
+          ) : null}
+            </div>
+          </div>
+
+          {view.selectedHost &&
+          !isDesktop &&
+          workspace.mobileTool &&
+          workspace.page.name === "workspace" ? (
+            <WorkspaceMobileTool
+              host={view.selectedHost}
+              tool={workspace.mobileTool}
+              show
+              files={view.files}
+              git={view.git}
+              forwards={view.selectedForwards}
+              showPorts={!view.selectedIsLocal}
+              onClose={workspace.closeMobileTool}
+              onConnect={() => connectHost(view.selectedHost!.id)}
+              onOpenFile={sessions.handleOpenFile}
+              onAddForward={workspace.openAddForward}
+              onEditForward={workspace.openEditForward}
+              onStartForward={(id) => {
+                const forward = view.selectedForwards.find(
+                  (item) => item.id === id,
+                );
+                if (forward) startForward(view.selectedHost!.id, forward);
+              }}
+              onStopForward={(id) =>
+                stopForward(view.selectedHost!.id, id)
+              }
+              onDeleteForward={(id) => void actions.handleDeleteForward(id)}
+            />
+          ) : null}
         </div>
 
         <AppDialogs

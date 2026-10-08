@@ -64,8 +64,13 @@ function buildItems(
         ref,
         host,
         id,
-        label: scopeLabel(ref.scope, project?.name),
-        path: project?.path,
+        label:
+          ref.scope.kind === "project" && ref.scope.worktreePath?.trim()
+            ? `${scopeLabel(ref.scope, project?.name)} · ${ref.scope.worktreePath.trim().split("/").pop() || ref.scope.worktreePath.trim()}`
+            : scopeLabel(ref.scope, project?.name),
+        path:
+          (ref.scope.kind === "project" && ref.scope.worktreePath?.trim()) ||
+          project?.path,
         active: activeWorkspaceId === id,
       },
     ];
@@ -77,7 +82,13 @@ function selectRef(item: RecentItem): WorkspaceRef {
     hostId: item.ref.hostId,
     scope:
       item.ref.scope.kind === "project"
-        ? { kind: "project", projectId: item.ref.scope.projectId }
+        ? {
+            kind: "project",
+            projectId: item.ref.scope.projectId,
+            ...(item.ref.scope.worktreePath?.trim()
+              ? { worktreePath: item.ref.scope.worktreePath.trim() }
+              : {}),
+          }
         : { kind: "adhoc" },
   };
 }

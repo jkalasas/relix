@@ -33,17 +33,28 @@ describe("workspace ids", () => {
       hostId: "h1",
       scope: { kind: "project", projectId: "p1" },
     });
+    expect(parseWorkspaceId("h1::project::p1::worktree::%2Fsrv%2Fapp-wt")).toEqual({
+      hostId: "h1",
+      scope: { kind: "project", projectId: "p1", worktreePath: "/srv/app-wt" },
+    });
     expect(parseWorkspaceId("::adhoc")).toBeNull();
     expect(parseWorkspaceId("h1::project::")).toBeNull();
     expect(parseWorkspaceId("h1")).toBeNull();
     expect(parseWorkspaceId("::project::p1")).toBeNull();
+    expect(parseWorkspaceId("h1::project::p1::worktree::")).toBeNull();
+    expect(parseWorkspaceId("h1::project::p1::worktree::%ZZ")).toBeNull();
   });
 
   it("round-trips encode and parse", () => {
     const adhoc = adhocWorkspaceId("host-a");
     const project = projectWorkspaceId("host-a", "proj-1");
+    const worktree = projectWorkspaceId("host-a", "proj-1", "/srv/app-wt");
+    const spaced = projectWorkspaceId("host-a", "proj-1", "/srv/my wt");
     expect(toWorkspaceId(parseWorkspaceId(adhoc)!)).toBe(adhoc);
     expect(toWorkspaceId(parseWorkspaceId(project)!)).toBe(project);
+    expect(toWorkspaceId(parseWorkspaceId(worktree)!)).toBe(worktree);
+    expect(toWorkspaceId(parseWorkspaceId(spaced)!)).toBe(spaced);
+    expect(projectWorkspaceId("host-a", "proj-1", "  ")).toBe(project);
   });
 
   it("derives host id and host membership", () => {

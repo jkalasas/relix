@@ -12,9 +12,6 @@ import {
   workspaceIdsForHost,
 } from "@/features/session-tabs/lib/tab-ops";
 import {
-  FILES_TAB_ID,
-  GIT_TAB_ID,
-  PORTS_TAB_ID,
   fileTabId,
   shellTabId,
   type OpenFileState,
@@ -113,30 +110,6 @@ export function useSessionTabs() {
         return {
           ...current,
           [workspaceId]: [...existing, { id, kind: "shell", shellId }],
-        };
-      });
-      setActiveTabByWorkspace((current) => ({
-        ...current,
-        [workspaceId]: id,
-      }));
-    },
-    [],
-  );
-
-  const openToolTab = useCallback(
-    (workspaceId: string, kind: "files" | "ports" | "git") => {
-      const id =
-        kind === "files"
-          ? FILES_TAB_ID
-          : kind === "ports"
-            ? PORTS_TAB_ID
-            : GIT_TAB_ID;
-      setTabsByWorkspace((current) => {
-        const existing = current[workspaceId] ?? [];
-        if (existing.some((tab) => tab.id === id)) return current;
-        return {
-          ...current,
-          [workspaceId]: [...existing, { id, kind }],
         };
       });
       setActiveTabByWorkspace((current) => ({
@@ -509,7 +482,6 @@ export function useSessionTabs() {
     selectTab,
     syncShellTabs,
     activateShellTab,
-    openToolTab,
     openFileTab,
     setFileText,
     saveFile,

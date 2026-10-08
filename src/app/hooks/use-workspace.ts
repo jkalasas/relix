@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { AppPage, ForwardFormMode } from "@/app/types";
 import {
+  normalizeWorktreePath,
   parseWorkspaceId,
   toWorkspaceId,
   type WorkspaceId,
@@ -20,6 +21,29 @@ function pageWorkspaceId(page: AppPage): WorkspaceId | null {
   return toWorkspaceId({ hostId: page.hostId, scope: page.scope });
 }
 
+export type SidePanelTab = "files" | "git" | "ports";
+
+const PANEL_TAB_KEY = "relix.sidepanel-tab";
+const PANEL_COLLAPSED_KEY = "relix.sidepanel-collapsed";
+
+function readPanelTab(): SidePanelTab {
+  try {
+    const raw = localStorage.getItem(PANEL_TAB_KEY);
+    if (raw === "git" || raw === "ports" || raw === "files") return raw;
+  } catch {
+    // ignore
+  }
+  return "files";
+}
+
+function readPanelCollapsed(): boolean {
+  try {
+    return localStorage.getItem(PANEL_COLLAPSED_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
 export function useWorkspace({
   onShortcutFiles,
   onShortcutPorts,
@@ -29,6 +53,9 @@ export function useWorkspace({
   const [page, setPage] = useState<AppPage>({ name: "hosts" });
   const [forwardFormMode, setForwardFormMode] = useState<ForwardFormMode>(null);
   const [recents, setRecents] = useState<WorkspaceRef[]>([]);
+  const [panelTab, setPanelTabState] = useState<SidePanelTab>(readPanelTab);
+  const [panelCollapsed, setPanelCollapsedState] = useState(readPanelCollapsed);
+  const [mobileTool, setMobileTool] = useState<SidePanelTab | null>(null);
 
   const workspaceId = useMemo(() => pageWorkspaceId(page), [page]);
 
@@ -78,19 +105,26 @@ export function useWorkspace({
   const openHosts = useCallback(() => {
     setPage({ name: "hosts" });
     setForwardFormMode(null);
+    setMobileTool(null);
   }, []);
 
   const openProjects = useCallback((nextHostId: string) => {
     setPage({ name: "projects", hostId: nextHostId });
     setForwardFormMode(null);
+    setMobileTool(null);
   }, []);
 
   const openWorkspace = useCallback(
     (nextHostId: string, scope: WorkspaceScope) => {
-      const nextScope: WorkspaceScope =
-        scope.kind === "project"
-          ? { kind: "project", projectId: scope.projectId }
-          : { kind: "adhoc" };
+      let nextScope: WorkspaceScope;
+      if (scope.kind === "project") {
+        const worktree = normalizeWorktreePath(scope.worktreePath);
+        nextScope = worktree
+          ? { kind: "project", projectId: scope.projectId, worktreePath: worktree }
+          : { kind: "project", projectId: scope.projectId };
+      } else {
+        nextScope = { kind: "adhoc" };
+      }
       const ref = { hostId: nextHostId, scope: nextScope };
       rememberWorkspace(ref);
       setPage({
@@ -99,6 +133,7 @@ export function useWorkspace({
         scope: nextScope,
       });
       setForwardFormMode(null);
+      setMobileTool(null);
     },
     [rememberWorkspace],
   );
@@ -111,8 +146,8 @@ export function useWorkspace({
   );
 
   const openProject = useCallback(
-    (nextHostId: string, projectId: string) => {
-      openWorkspace(nextHostId, { kind: "project", projectId });
+    (nextHostId: string, projectId: string, worktreePath?: string | null) => {
+      openWorkspace(nextHostId, { kind: "project", projectId, worktreePath });
     },
     [openWorkspace],
   );
@@ -214,20 +249,20 @@ export function useWorkspace({
   }, []);
 
   const afterSaveProject = useCallback(
-    (nextHostId: string, projectId: string) => {
-      openProject(nextHostId, projectId);
+    (nextHostId: string, projectId: string, worktreePath?: string | null) => {
+      openProject(nextHostId, projectId, worktreePath);
     },
     [openProject],
   );
 
   const afterDeleteProject = useCallback(
     (nextHostId: string, projectId: string) => {
-      const workspaceId = toWorkspaceId({
-        hostId: nextHostId,
-        scope: { kind: "project", projectId },
-      });
+      const prefix = `${nextHostId}::project::${projectId}`;
       setRecents((current) =>
-        current.filter((item) => toWorkspaceId(item) !== workspaceId),
+        current.filter((item) => {
+          const id = toWorkspaceId(item);
+          return id !== prefix && !id.startsWith(`${prefix}::worktree::`);
+        }),
       );
       setPage({ name: "projects", hostId: nextHostId });
       setForwardFormMode(null);
@@ -240,6 +275,10 @@ export function useWorkspace({
   }, []);
 
   const handleBack = useCallback(() => {
+    if (mobileTool) {
+      setMobileTool(null);
+      return true;
+    }
     if (forwardFormMode) {
       setForwardFormMode(null);
       return true;
@@ -266,7 +305,13 @@ export function useWorkspace({
     }
 
     return false;
-  }, [closeHostForm, closeProjectForm, forwardFormMode, page]);
+  }, [
+    closeHostForm,
+    closeProjectForm,
+    forwardFormMode,
+    mobileTool,
+    page,
+  ]);
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
@@ -317,6 +362,36 @@ export function useWorkspace({
     page.name,
   ]);
 
+  const selectPanelTab = useCallback((tab: SidePanelTab) => {
+    setPanelTabState(tab);
+    setPanelCollapsedState(false);
+    try {
+      localStorage.setItem(PANEL_TAB_KEY, tab);
+      localStorage.setItem(PANEL_COLLAPSED_KEY, "0");
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  const togglePanel = useCallback(() => {
+    setPanelCollapsedState((current) => {
+      try {
+        localStorage.setItem(PANEL_COLLAPSED_KEY, current ? "0" : "1");
+      } catch {
+        // ignore
+      }
+      return !current;
+    });
+  }, []);
+
+  const openMobileTool = useCallback((tab: SidePanelTab) => {
+    setMobileTool(tab);
+  }, []);
+
+  const closeMobileTool = useCallback(() => {
+    setMobileTool(null);
+  }, []);
+
   const pruneRecents = useCallback((hostIds: Set<string>) => {
     setRecents((current) =>
       current.filter((item) => hostIds.has(item.hostId)),
@@ -344,6 +419,13 @@ export function useWorkspace({
     workspaceId,
     forwardFormMode,
     recents,
+    panelTab,
+    panelCollapsed,
+    selectPanelTab,
+    togglePanel,
+    mobileTool,
+    openMobileTool,
+    closeMobileTool,
     openHosts,
     openProjects,
     openWorkspace,

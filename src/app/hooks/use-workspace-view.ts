@@ -7,7 +7,7 @@ import { useFiles } from "@/features/files";
 import {
   parseWorkspaceId,
   pathsMatch,
-  projectActiveRoot,
+  scopeWorktreePath,
   scopeLabel,
   type useProjects,
   type WorkspaceId,
@@ -27,6 +27,9 @@ type UseWorkspaceViewOptions = {
   projects: ReturnType<typeof useProjects>;
   forwards: ReturnType<typeof useForwards>;
   isDesktop: boolean;
+  panelTab?: "files" | "git" | "ports";
+  panelOpen?: boolean;
+  mobileTool?: "files" | "git" | "ports" | null;
 };
 
 export function useWorkspaceView({
@@ -41,6 +44,9 @@ export function useWorkspaceView({
   projects,
   forwards,
   isDesktop,
+  panelTab = "files",
+  panelOpen = false,
+  mobileTool = null,
 }: UseWorkspaceViewOptions) {
   const selectedHost = useMemo(() => {
     if (!hostId) return null;
@@ -80,9 +86,14 @@ export function useWorkspaceView({
     return scopeLabel(page.scope, activeProject?.name);
   }, [activeProject?.name, page]);
 
+  const activeScopeWorktreePath =
+    page.name === "workspace" && page.scope.kind === "project"
+      ? (scopeWorktreePath(page.scope) ?? null)
+      : null;
+
   const projectRootPath =
     page.name === "workspace" && page.scope.kind === "project" && activeProject
-      ? projectActiveRoot(activeProject)
+      ? (activeScopeWorktreePath ?? activeProject.path.trim())
       : null;
 
   const selectedSessions = activeWorkspaceId
@@ -118,20 +129,9 @@ export function useWorkspaceView({
     selectedHost != null &&
     !forwardFormMode;
 
-  const explorerChromeOpen =
-    inWorkspace &&
-    (activeTab?.kind === "files" || activeTab?.kind === "file");
+  const editorOpen = inWorkspace && activeTab?.kind === "file";
 
-  const portsChromeOpen =
-    inWorkspace && !selectedIsLocal && activeTab?.kind === "ports";
-
-  const gitChromeOpen = inWorkspace && activeTab?.kind === "git";
-
-  const shellChromeOpen =
-    inWorkspace &&
-    !explorerChromeOpen &&
-    !portsChromeOpen &&
-    !gitChromeOpen;
+  const shellVisible = inWorkspace && !editorOpen;
 
   const gitCwd = projectRootPath ?? activeShellCwd;
 
@@ -154,7 +154,9 @@ export function useWorkspaceView({
   const git = useGit({
     hostId: selectedHost?.id ?? "__none__",
     connected: selectedHost?.status === "connected",
-    enabled: gitChromeOpen,
+    enabled:
+      (inWorkspace && panelOpen && panelTab === "git") ||
+      (inWorkspace && mobileTool === "git"),
     cwd: gitCwd,
   });
 
@@ -189,11 +191,15 @@ export function useWorkspaceView({
     projects.saveProject,
   ]);
 
-  const showFileRail =
-    isDesktop &&
-    inWorkspace &&
-    selectedHost != null &&
-    selectedHost.status === "connected";
+  const showProjectRail =
+    isDesktop && inWorkspace && selectedHost != null;
+
+  const activeProjectId =
+    page.name === "workspace" && page.scope.kind === "project"
+      ? page.scope.projectId
+      : null;
+  const adhocActive =
+    page.name === "workspace" && page.scope.kind === "adhoc";
 
   const liveTerminals = useMemo(() => {
     const list: LiveTerminal[] = [];
@@ -277,6 +283,7 @@ export function useWorkspaceView({
     activeWorkspaceId,
     activeProject,
     activeScopeLabel,
+    activeScopeWorktreePath,
     projectRootPath,
     selectedSessions,
     activeSessionId,
@@ -288,14 +295,14 @@ export function useWorkspaceView({
     trackedSession,
     activeShellCwd,
     inWorkspace,
-    explorerChromeOpen,
-    portsChromeOpen,
-    gitChromeOpen,
-    shellChromeOpen,
+    editorOpen,
+    shellVisible,
     files,
     git,
     gitWorktrees,
-    showFileRail,
+    showProjectRail,
+    activeProjectId,
+    adhocActive,
     liveTerminals,
     shellActiveSessionId,
     openWorkspaceIds,

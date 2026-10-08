@@ -25,29 +25,37 @@ describe("useSessionTabs", () => {
     vi.mocked(openFile).mockReset();
   });
 
-  it("opens tool tabs and activates them", () => {
+  it("opens file tabs and activates them", async () => {
+    vi.mocked(openFile).mockResolvedValue({
+      entry: {
+        name: "a.ts",
+        path: "/tmp/a.ts",
+        isDir: false,
+        size: 1,
+        mtime: null,
+      },
+      kind: "text",
+      text: "hello",
+      bytes: new Uint8Array([104, 101, 108, 108, 111]),
+    });
     const { result } = renderHook(() => useSessionTabs());
 
-    act(() => {
-      result.current.openToolTab(workspaceId, "files");
+    await act(async () => {
+      await result.current.openFileTab(workspaceId, hostId, {
+        name: "a.ts",
+        path: "/tmp/a.ts",
+        isDir: false,
+        size: 1,
+        mtime: null,
+      });
     });
 
     expect(result.current.tabsByWorkspace[workspaceId]).toEqual([
-      { id: "files", kind: "files" },
+      { id: fileTabId("/tmp/a.ts"), kind: "file", path: "/tmp/a.ts", name: "a.ts" },
     ]);
-    expect(result.current.activeTabByWorkspace[workspaceId]).toBe("files");
-
-    act(() => {
-      result.current.openToolTab(workspaceId, "ports");
-    });
-    act(() => {
-      result.current.openToolTab(workspaceId, "files");
-    });
-
-    expect(
-      result.current.tabsByWorkspace[workspaceId]?.map((tab) => tab.id),
-    ).toEqual(["files", "ports"]);
-    expect(result.current.activeTabByWorkspace[workspaceId]).toBe("files");
+    expect(result.current.activeTabByWorkspace[workspaceId]).toBe(
+      fileTabId("/tmp/a.ts"),
+    );
   });
 
   it("syncs shell tabs and falls back when active shell disappears", () => {
@@ -83,7 +91,6 @@ describe("useSessionTabs", () => {
 
     act(() => {
       result.current.syncShellTabs(workspaceId, ["a", "b"]);
-      result.current.openToolTab(workspaceId, "files");
       result.current.selectTab(workspaceId, shellTabId("a"));
     });
 
@@ -97,7 +104,7 @@ describe("useSessionTabs", () => {
 
     expect(
       result.current.tabsByWorkspace[workspaceId]?.map((tab) => tab.id),
-    ).toEqual([shellTabId("b"), "files"]);
+    ).toEqual([shellTabId("b")]);
     expect(result.current.activeTabByWorkspace[workspaceId]).toBe(
       shellTabId("b"),
     );
@@ -157,13 +164,12 @@ describe("useSessionTabs", () => {
     const { result } = renderHook(() => useSessionTabs());
 
     act(() => {
-      result.current.syncShellTabs(workspaceId, ["a", "b"]);
-      result.current.openToolTab(workspaceId, "files");
+      result.current.syncShellTabs(workspaceId, ["a", "b", "c"]);
     });
 
     act(() => {
       result.current.reorderTabs(workspaceId, [
-        "files",
+        shellTabId("c"),
         shellTabId("b"),
         shellTabId("a"),
       ]);
@@ -171,6 +177,6 @@ describe("useSessionTabs", () => {
 
     expect(
       result.current.tabsByWorkspace[workspaceId]?.map((tab) => tab.id),
-    ).toEqual(["files", shellTabId("b"), shellTabId("a")]);
+    ).toEqual([shellTabId("c"), shellTabId("b"), shellTabId("a")]);
   });
 });

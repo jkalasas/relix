@@ -22,7 +22,7 @@ import {
   type NotificationBellProps,
   type NotificationItem,
 } from "@/features/notify";
-import { projectActiveRoot, useProjects } from "@/features/projects";
+import { useProjects } from "@/features/projects";
 import { useSessionTabs } from "@/features/session-tabs";
 import { useIsMobileOs, useShells } from "@/features/shells";
 import { toastInfoWithAction } from "@/lib/toast";
@@ -33,8 +33,11 @@ export function useAppController() {
   const isDesktop = useMediaQuery("(min-width: 768px)");
   const isMobileOs = useIsMobileOs();
   const showWindowChrome = !isMobileOs;
-  const useTitlebarSessionChrome = showWindowChrome && isDesktop;
+  // Tabs live in the center column, not the title bar, so the left rail
+  // and right panel can run the full height of the window.
+  const useTitlebarSessionChrome = false;
   const sidebarWidth = useSidebarWidth();
+  const sidePanelWidth = useSidebarWidth("relix.sidepanel-width", 320);
 
   const forwards = useForwards();
   const shells = useShells();
@@ -73,6 +76,9 @@ export function useAppController() {
     projects,
     forwards,
     isDesktop,
+    panelTab: workspace.panelTab,
+    panelOpen: isDesktop && !workspace.panelCollapsed,
+    mobileTool: workspace.mobileTool,
   });
 
   const workspaceScope =
@@ -92,9 +98,6 @@ export function useAppController() {
   });
 
   shortcutShellRef.current = sessions.onShortcutShell;
-  shortcutFilesRef.current = sessions.onShortcutFiles;
-  shortcutPortsRef.current = sessions.onShortcutPorts;
-  shortcutGitRef.current = sessions.onShortcutGit;
 
   // Local host dials the relay directly (no SSH forward); remotes tunnel.
   const connectedHostIds = useMemo(
@@ -284,20 +287,39 @@ export function useAppController() {
     [hosts.connectHost],
   );
 
+  const openPanelOrMobile = useCallback(
+    (tab: "files" | "git" | "ports") => {
+      if (!view.activeWorkspaceId) return;
+      if (isDesktop) {
+        workspace.selectPanelTab(tab);
+        return;
+      }
+      workspace.openMobileTool(tab);
+    },
+    [
+      isDesktop,
+      view.activeWorkspaceId,
+      workspace.selectPanelTab,
+      workspace.openMobileTool,
+    ],
+  );
+
   const openFilesTab = useCallback(() => {
-    if (!view.activeWorkspaceId) return;
-    sessionTabs.openToolTab(view.activeWorkspaceId, "files");
-  }, [sessionTabs.openToolTab, view.activeWorkspaceId]);
+    openPanelOrMobile("files");
+  }, [openPanelOrMobile]);
 
   const openPortsTab = useCallback(() => {
-    if (!view.activeWorkspaceId) return;
-    sessionTabs.openToolTab(view.activeWorkspaceId, "ports");
-  }, [sessionTabs.openToolTab, view.activeWorkspaceId]);
+    if (!view.selectedHost || view.selectedIsLocal) return;
+    openPanelOrMobile("ports");
+  }, [openPanelOrMobile, view.selectedHost, view.selectedIsLocal]);
 
   const openGitTab = useCallback(() => {
-    if (!view.activeWorkspaceId) return;
-    sessionTabs.openToolTab(view.activeWorkspaceId, "git");
-  }, [sessionTabs.openToolTab, view.activeWorkspaceId]);
+    openPanelOrMobile("git");
+  }, [openPanelOrMobile]);
+
+  shortcutFilesRef.current = openFilesTab;
+  shortcutPortsRef.current = openPortsTab;
+  shortcutGitRef.current = openGitTab;
 
   const renameShell = useCallback(
     (shellId: string, name: string) => {
@@ -362,9 +384,12 @@ export function useAppController() {
   );
 
   const getProjectPath = useCallback(
-    (hostId: string, projectId: string) => {
+    (hostId: string, projectId: string, worktreePath?: string | null) => {
       const project = projects.getProject(hostId, projectId);
-      return project ? projectActiveRoot(project) : undefined;
+      if (!project) return undefined;
+      const override = worktreePath?.trim();
+      if (override) return override;
+      return project.path.trim() || undefined;
     },
     [projects.getProject],
   );
@@ -374,7 +399,6 @@ export function useAppController() {
       createWorkspaceSessionChrome({
         selectedHost: view.selectedHost,
         useTitlebarSessionChrome,
-        activeProject: view.activeProject,
         activeScopeLabel: view.activeScopeLabel,
         canSaveAdhocProject: view.canSaveAdhocProject,
         activeShellCwd: view.activeShellCwd,
@@ -393,6 +417,8 @@ export function useAppController() {
         hosts: hosts.hosts,
         projectsByHost: projects.projectsByHost,
         gitWorktrees: view.activeProject ? view.gitWorktrees : null,
+        activeScopeWorktreePath: view.activeScopeWorktreePath,
+        projectRootPath: view.projectRootPath,
         onConnect: connectHost,
         onDisconnect: hostLife.requestDisconnect,
         onEditHost: workspace.openEditHost,
@@ -400,16 +426,6 @@ export function useAppController() {
         onSaveProject: view.canSaveAdhocProject
           ? actions.handleSaveAdhocAsProject
           : undefined,
-        onSetProjectWorktree:
-          view.activeProject && view.selectedHost
-            ? (worktreePath) => {
-                void actions.handleSetProjectWorktree(
-                  view.selectedHost!.id,
-                  view.activeProject!.id,
-                  worktreePath,
-                );
-              }
-            : undefined,
         onOpenRecent: workspace.openRecent,
         onReorderRecents: workspace.reorderRecents,
         onSelectTab: sessions.selectSessionTab,
@@ -470,6 +486,7 @@ export function useAppController() {
     showWindowChrome,
     useTitlebarSessionChrome,
     sidebarWidth,
+    sidePanelWidth,
     view,
     workspace,
     hosts,
