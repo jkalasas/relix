@@ -275,19 +275,41 @@ function tmuxClientSession(session: string, windowId: string): string {
   return `${session}_w${id}`;
 }
 
+export const RELIX_TMUX_SOCKET = "relix";
+export const RELIX_TMUX_CONF = "$HOME/.config/relix/tmux.conf";
+
+export function tmuxBase(): string {
+  return `tmux -L ${RELIX_TMUX_SOCKET} -f "${RELIX_TMUX_CONF}"`;
+}
+
+/** Inline config ensure for single-shot scripts that can start the server. */
+export function ensureTmuxConfSnippet(): string {
+  const lines = [
+    "set -g prefix None",
+    "unbind C-b",
+    "set -g status off",
+    "set -g set-titles off",
+  ]
+    .map((line) => `'${line}'`)
+    .join(" ");
+  return `mkdir -p "$HOME/.config/relix" && printf '%s\\n' ${lines} > "${RELIX_TMUX_CONF}"`;
+}
+
 /** One grouped client session per window so tabs keep independent views. */
 export function tmuxAttachCommand(session: string, windowId: string): string {
   const client = tmuxClientSession(session, windowId);
   const clientQ = shSingleQuote(client);
   const baseQ = shSingleQuote(session);
   const win = windowId.trim();
+  const tm = tmuxBase();
   const script = [
-    `tmux has-session -t ${clientQ} 2>/dev/null || tmux new-session -d -s ${clientQ} -t ${baseQ}`,
-    `tmux set-option -t ${clientQ} status off`,
-    `tmux set-option -t ${baseQ} status off`,
-    `tmux set-option -t ${clientQ} set-titles off`,
-    `tmux select-window -t ${clientQ}:${win}`,
-    `exec tmux attach-session -t ${clientQ}`,
+    ensureTmuxConfSnippet(),
+    `${tm} has-session -t ${clientQ} 2>/dev/null || ${tm} new-session -d -s ${clientQ} -t ${baseQ}`,
+    `${tm} set-option -t ${clientQ} status off`,
+    `${tm} set-option -t ${baseQ} status off`,
+    `${tm} set-option -t ${clientQ} set-titles off`,
+    `${tm} select-window -t ${clientQ}:${win}`,
+    `exec ${tm} attach-session -t ${clientQ}`,
   ].join("; ");
   return `bash -lc ${shSingleQuote(script)}`;
 }

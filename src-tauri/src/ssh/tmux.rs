@@ -7,6 +7,42 @@ use super::manager::SshManager;
 
 const DEFAULT_SESSION: &str = "relix";
 
+const RELIX_TMUX_SOCKET: &str = "relix";
+const RELIX_TMUX_CONF_FILE: &str = "$HOME/.config/relix/tmux.conf";
+
+const RELIX_TMUX_CONF_BODY: [&str; 4] = [
+    "set -g prefix None",
+    "unbind C-b",
+    "set -g status off",
+    "set -g set-titles off",
+];
+
+/// All Relix tmux traffic runs on a dedicated socket with a managed config,
+/// so a host's `~/.tmux.conf` (custom prefix, `bind -n` keys, plugins)
+/// can never intercept keys inside Relix shells. `-f` only takes effect
+/// when the server starts, hence the separate socket: on the default
+/// socket a pre-existing server would silently ignore `-f`.
+fn tmux_base() -> String {
+    format!("tmux -L {RELIX_TMUX_SOCKET} -f \"{RELIX_TMUX_CONF_FILE}\"")
+}
+
+/// Idempotent rewrite of the managed config. Runs before any operation
+/// that can start the server; the file persists while the server is
+/// ephemeral, so later commands only reference it via `-f`.
+fn ensure_conf_snippet() -> String {
+    let mut lines = String::new();
+    for line in RELIX_TMUX_CONF_BODY {
+        lines.push_str(&format!(" '{line}'"));
+    }
+    format!(
+        "mkdir -p \"$HOME/.config/relix\" && printf '%s\\n'{lines} > \"$HOME/.config/relix/tmux.conf\""
+    )
+}
+
+fn ensure_conf_command() -> String {
+    format!("bash -lc {}", sh_single_quote(&ensure_conf_snippet()))
+}
+
 #[derive(Debug, Clone, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TmuxWindow {
@@ -55,15 +91,21 @@ pub(crate) fn attach_command(session: &str, window_id: &str) -> String {
     let client = client_session_name(session, window_id);
     let client_q = sh_single_quote(&client);
     let base_q = sh_single_quote(session);
+    let tm = tmux_base();
+    let conf = ensure_conf_snippet();
     // Client sessions are separate from the base and default to status on.
     let script = format!(
-        "tmux has-session -t {client_q} 2>/dev/null || tmux new-session -d -s {client_q} -t {base_q}; tmux set-option -t {client_q} status off; tmux set-option -t {base_q} status off; tmux set-option -t {client_q} set-titles off; tmux select-window -t {client_q}:{window_id}; exec tmux attach-session -t {client_q}"
+        "{conf}; {tm} has-session -t {client_q} 2>/dev/null || {tm} new-session -d -s {client_q} -t {base_q}; {tm} set-option -t {client_q} status off; {tm} set-option -t {base_q} status off; {tm} set-option -t {client_q} set-titles off; {tm} select-window -t {client_q}:{window_id}; exec {tm} attach-session -t {client_q}"
     );
     format!("bash -lc {}", sh_single_quote(&script))
 }
 
 fn has_session_command(session: &str) -> String {
-    format!("tmux has-session -t {} 2>/dev/null", sh_single_quote(session))
+    format!(
+        "{} has-session -t {} 2>/dev/null",
+        tmux_base(),
+        sh_single_quote(session)
+    )
 }
 
 fn ensure_session_command(
@@ -71,21 +113,23 @@ fn ensure_session_command(
     env: &std::collections::HashMap<String, String>,
 ) -> String {
     let quoted = sh_single_quote(session);
-    let mut create = format!("tmux new-session -d -s {quoted}");
+    let tm = tmux_base();
+    let mut create = format!("{tm} new-session -d -s {quoted}");
     let mut keys: Vec<&String> = env.keys().collect();
     keys.sort();
     for key in keys {
         let value = &env[key];
         create.push_str(&format!(" -e {}", sh_single_quote(&format!("{key}={value}"))));
     }
-    format!("tmux has-session -t {quoted} 2>/dev/null || {create}")
+    format!("{tm} has-session -t {quoted} 2>/dev/null || {create}")
 }
 
 /// Relix tabs are the window chrome — hide tmux's own status bar.
 fn configure_session_command(session: &str) -> String {
     let quoted = sh_single_quote(session);
+    let tm = tmux_base();
     format!(
-        "tmux set-option -t {quoted} status off ; tmux set-option -t {quoted} set-titles off"
+        "{tm} set-option -t {quoted} status off ; {tm} set-option -t {quoted} set-titles off"
     )
 }
 
@@ -93,8 +137,9 @@ fn kill_window_command(session: &str, window_id: &str) -> String {
     let window_id = window_id.trim();
     let client = client_session_name(session, window_id);
     let client_q = sh_single_quote(&client);
+    let tm = tmux_base();
     format!(
-        "tmux kill-window -t {}:{} ; tmux kill-session -t {} 2>/dev/null || true",
+        "{tm} kill-window -t {}:{} ; {tm} kill-session -t {} 2>/dev/null || true",
         session,
         window_id,
         client_q,
@@ -112,32 +157,33 @@ fn kill_session_command(session: &str) -> String {
         .replace('"', "\\\"")
         .replace('$', "\\$")
         .replace('`', "\\`");
+    let tm = tmux_base();
     let script = format!(
         "set +e; base=\"{session_escaped}\"; \
-for s in $(tmux list-sessions -F '#{{session_name}}' 2>/dev/null); do \
+for s in $({tm} list-sessions -F '#{{session_name}}' 2>/dev/null); do \
   case \"$s\" in \
-    \"${{base}}_w\"*) tmux kill-session -t \"$s\" 2>/dev/null ;; \
+    \"${{base}}_w\"*) {tm} kill-session -t \"$s\" 2>/dev/null ;; \
   esac; \
 done; \
-if tmux has-session -t \"$base\" 2>/dev/null; then \
-  for w in $(tmux list-windows -t \"$base\" -F '#{{window_id}}' 2>/dev/null); do \
-    tmux kill-window -t \"$base:$w\" 2>/dev/null; \
+if {tm} has-session -t \"$base\" 2>/dev/null; then \
+  for w in $({tm} list-windows -t \"$base\" -F '#{{window_id}}' 2>/dev/null); do \
+    {tm} kill-window -t \"$base:$w\" 2>/dev/null; \
   done; \
-  tmux kill-session -t \"$base\" 2>/dev/null; \
+  {tm} kill-session -t \"$base\" 2>/dev/null; \
 fi; \
-for s in $(tmux list-sessions -F '#{{session_name}}' 2>/dev/null); do \
+for s in $({tm} list-sessions -F '#{{session_name}}' 2>/dev/null); do \
   case \"$s\" in \
-    \"$base\"|\"${{base}}_w\"*) tmux kill-session -t \"$s\" 2>/dev/null ;; \
+    \"$base\"|\"${{base}}_w\"*) {tm} kill-session -t \"$s\" 2>/dev/null ;; \
   esac; \
 done; \
-if tmux has-session -t \"$base\" 2>/dev/null; then exit 1; fi; \
+if {tm} has-session -t \"$base\" 2>/dev/null; then exit 1; fi; \
 exit 0"
     );
     format!("bash -lc {}", sh_single_quote(&script))
 }
 
 fn list_sessions_command() -> String {
-    "tmux list-sessions -F '#{session_name}'".to_string()
+    format!("{} list-sessions -F '#{{session_name}}'", tmux_base())
 }
 
 fn is_client_session_name(name: &str) -> bool {
@@ -183,19 +229,22 @@ fn move_window_command(from_session: &str, window_id: &str, to_session: &str) ->
     let to_q = sh_single_quote(to_session);
     let client = client_session_name(from_session, window_id);
     let client_q = sh_single_quote(&client);
+    let tm = tmux_base();
+    let conf = ensure_conf_snippet();
     let script = format!(
-        "tmux has-session -t {to_q} 2>/dev/null || tmux new-session -d -s {to_q}; \
-tmux set-option -t {to_q} status off; \
-tmux set-option -t {to_q} set-titles off; \
-tmux move-window -s {from_q}:{window_id} -t {to_q}:; \
-tmux kill-session -t {client_q} 2>/dev/null || true"
+        "{conf}; {tm} has-session -t {to_q} 2>/dev/null || {tm} new-session -d -s {to_q}; \
+{tm} set-option -t {to_q} status off; \
+{tm} set-option -t {to_q} set-titles off; \
+{tm} move-window -s {from_q}:{window_id} -t {to_q}:; \
+{tm} kill-session -t {client_q} 2>/dev/null || true"
     );
     format!("bash -lc {}", sh_single_quote(&script))
 }
 
 fn list_windows_command(session: &str) -> String {
     format!(
-        "tmux list-windows -t {} -F '#{{window_id}}\t#{{window_index}}\t#{{window_name}}\t#{{window_active}}'",
+        "{} list-windows -t {} -F '#{{window_id}}\t#{{window_index}}\t#{{window_name}}\t#{{window_active}}'",
+        tmux_base(),
         sh_single_quote(session)
     )
 }
@@ -210,7 +259,8 @@ fn resolve_tmux_cwd(cwd: Option<String>, pane_path: Option<String>) -> Option<St
 
 fn pane_path_command(session: &str, window_id: &str) -> String {
     format!(
-        "tmux display-message -p -t {}:{} '#{{pane_current_path}}'",
+        "{} display-message -p -t {}:{} '#{{pane_current_path}}'",
+        tmux_base(),
         session,
         window_id.trim()
     )
@@ -223,8 +273,9 @@ fn new_window_command(
     cwd: Option<&str>,
     env: &std::collections::HashMap<String, String>,
 ) -> String {
+    let tm = tmux_base();
     let mut parts = vec![
-        "tmux new-window".to_string(),
+        format!("{tm} new-window"),
         format!("-t {}", sh_single_quote(session)),
         "-P".to_string(),
         "-F '#{window_id}\t#{window_index}\t#{window_name}\t#{window_active}'".to_string(),
@@ -437,6 +488,7 @@ impl SshManager {
         env: std::collections::HashMap<String, String>,
     ) -> Result<TmuxBootstrapResult, SshError> {
         let session = resolve_session(session)?;
+        self.tmux_exec(&host_id, &ensure_conf_command()).await?;
         let created = self
             .tmux_exec(&host_id, &has_session_command(&session))
             .await
@@ -498,6 +550,7 @@ impl SshManager {
         env: std::collections::HashMap<String, String>,
     ) -> Result<TmuxWindow, SshError> {
         let session = resolve_session(session)?;
+        self.tmux_exec(&host_id, &ensure_conf_command()).await?;
         self.tmux_exec(&host_id, &ensure_session_command(&session, &std::collections::HashMap::new()))
             .await?;
         let _ = self
@@ -662,11 +715,12 @@ impl SshManager {
 #[cfg(test)]
 mod tests {
     use super::{
-        attach_command, configure_session_command, ensure_session_command, is_client_session_name,
-        is_primary_for_base, kill_session_command, kill_window_command, list_windows_command,
-        move_window_command, new_window_command, pane_path_command, parse_session_names,
-        parse_window_line, parse_windows, parse_windows_stdout, primary_sessions_for_base,
-        resolve_session, resolve_tmux_cwd, sh_single_quote,
+        attach_command, configure_session_command, ensure_conf_command, ensure_conf_snippet,
+        ensure_session_command, is_client_session_name, is_primary_for_base, kill_session_command,
+        kill_window_command, list_windows_command, move_window_command, new_window_command,
+        pane_path_command, parse_session_names, parse_window_line, parse_windows,
+        parse_windows_stdout, primary_sessions_for_base, resolve_session, resolve_tmux_cwd,
+        sh_single_quote, tmux_base,
     };
 
     #[test]
@@ -683,11 +737,34 @@ mod tests {
     }
 
     #[test]
+    fn isolates_tmux_server_with_managed_config() {
+        assert_eq!(
+            tmux_base(),
+            "tmux -L relix -f \"$HOME/.config/relix/tmux.conf\""
+        );
+        let snippet = ensure_conf_snippet();
+        assert!(snippet.contains("mkdir -p"));
+        assert!(snippet.contains(".config/relix/tmux.conf"));
+        for line in [
+            "set -g prefix None",
+            "unbind C-b",
+            "set -g status off",
+            "set -g set-titles off",
+        ] {
+            assert!(snippet.contains(line), "missing {line}");
+        }
+        let conf = ensure_conf_command();
+        assert!(conf.starts_with("bash -lc "));
+        assert!(conf.contains("prefix None"));
+    }
+
+    #[test]
     fn builds_ensure_list_and_configure_commands() {
+        let base = tmux_base();
         let no_env = std::collections::HashMap::new();
         assert_eq!(
             ensure_session_command("relix", &no_env),
-            "tmux has-session -t 'relix' 2>/dev/null || tmux new-session -d -s 'relix'"
+            format!("{base} has-session -t 'relix' 2>/dev/null || {base} new-session -d -s 'relix'")
         );
         let tab_env = std::collections::HashMap::from([(
             "_RELIX_TAB_ID".to_string(),
@@ -695,14 +772,18 @@ mod tests {
         )]);
         assert_eq!(
             ensure_session_command("relix", &tab_env),
-            "tmux has-session -t 'relix' 2>/dev/null || tmux new-session -d -s 'relix' -e '_RELIX_TAB_ID=shell:abc'"
+            format!("{base} has-session -t 'relix' 2>/dev/null || {base} new-session -d -s 'relix' -e '_RELIX_TAB_ID=shell:abc'")
         );
+        assert!(list_windows_command("relix").contains("-L relix"));
         assert!(list_windows_command("relix").contains("list-windows -t 'relix'"));
+        assert!(configure_session_command("relix").contains("-L relix"));
         assert!(configure_session_command("relix").contains("status off"));
+        assert!(kill_window_command("relix", "@3").contains("-L relix"));
         assert!(kill_window_command("relix", "@3").contains("kill-window -t relix:@3"));
         assert!(kill_window_command("relix", "@3").contains("kill-session -t 'relix_w3'"));
         let kill = kill_session_command("relix");
         assert!(kill.starts_with("bash -lc "));
+        assert!(kill.contains("-L relix"));
         assert!(kill.contains("base=\"relix\""));
         assert!(kill.contains("kill-session"));
         assert!(kill.contains("#{session_name}"));
@@ -714,14 +795,15 @@ mod tests {
 
     #[test]
     fn builds_new_window_and_attach() {
+        let base = tmux_base();
         let no_env = std::collections::HashMap::new();
         assert_eq!(
             new_window_command("relix", Some("claude"), Some("claude"), Some("/home/u/proj"), &no_env),
-            "tmux new-window -t 'relix' -P -F '#{window_id}\t#{window_index}\t#{window_name}\t#{window_active}' -c '/home/u/proj' -n 'claude' claude"
+            format!("{base} new-window -t 'relix' -P -F '#{{window_id}}\t#{{window_index}}\t#{{window_name}}\t#{{window_active}}' -c '/home/u/proj' -n 'claude' claude")
         );
         assert_eq!(
             new_window_command("relix", Some("shell"), None, None, &no_env),
-            "tmux new-window -t 'relix' -P -F '#{window_id}\t#{window_index}\t#{window_name}\t#{window_active}' -n 'shell'"
+            format!("{base} new-window -t 'relix' -P -F '#{{window_id}}\t#{{window_index}}\t#{{window_name}}\t#{{window_active}}' -n 'shell'")
         );
         let tab_env = std::collections::HashMap::from([(
             "_RELIX_TAB_ID".to_string(),
@@ -729,10 +811,13 @@ mod tests {
         )]);
         assert_eq!(
             new_window_command("relix", Some("shell"), None, None, &tab_env),
-            "tmux new-window -t 'relix' -P -F '#{window_id}\t#{window_index}\t#{window_name}\t#{window_active}' -e '_RELIX_TAB_ID=shell:abc' -n 'shell'"
+            format!("{base} new-window -t 'relix' -P -F '#{{window_id}}\t#{{window_index}}\t#{{window_name}}\t#{{window_active}}' -e '_RELIX_TAB_ID=shell:abc' -n 'shell'")
         );
         let attach = attach_command("relix", "@3");
         assert!(attach.starts_with("bash -lc "));
+        assert!(attach.contains("-L relix"));
+        assert!(attach.contains("-f "));
+        assert!(attach.contains("prefix None"));
         assert!(attach.contains("relix_w3"));
         assert!(attach.contains("new-session -d -s"));
         assert!(attach.contains("status off"));
@@ -741,7 +826,7 @@ mod tests {
         assert!(attach.contains(":@3"));
         assert_eq!(
             pane_path_command("relix", "@3"),
-            "tmux display-message -p -t relix:@3 '#{pane_current_path}'"
+            format!("{base} display-message -p -t relix:@3 '#{{pane_current_path}}'")
         );
     }
 
@@ -820,6 +905,8 @@ mod tests {
             "relix_p_aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
         );
         assert!(command.starts_with("bash -lc "));
+        assert!(command.contains("-L relix"));
+        assert!(command.contains("prefix None"));
         assert!(command.contains("move-window -s"));
         assert!(command.contains("relix"));
         assert!(command.contains(":@3"));

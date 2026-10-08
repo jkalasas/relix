@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import type { HostConfig } from "@/features/hosts";
 import {
+  ensureTmuxConfSnippet,
   hostToConnectPayload,
   tmuxAttachCommand,
+  tmuxBase,
 } from "@/features/ssh/commands";
 
 const host: HostConfig = {
@@ -39,10 +41,25 @@ describe("tmuxAttachCommand", () => {
   it("builds an attach script for a window", () => {
     const cmd = tmuxAttachCommand("relix", "@3");
     expect(cmd.startsWith("bash -lc ")).toBe(true);
-    expect(cmd).toContain("tmux has-session");
+    expect(cmd).toContain("has-session");
     expect(cmd).toContain("relix_w3");
     expect(cmd).toContain("select-window");
     expect(cmd).toContain("attach-session");
+  });
+
+  it("isolates relix on a dedicated socket with a managed config", () => {
+    expect(tmuxBase()).toBe(
+      'tmux -L relix -f "$HOME/.config/relix/tmux.conf"',
+    );
+    const snippet = ensureTmuxConfSnippet();
+    expect(snippet).toContain("mkdir -p");
+    expect(snippet).toContain("set -g prefix None");
+    expect(snippet).toContain("unbind C-b");
+    const cmd = tmuxAttachCommand("relix", "@3");
+    expect(cmd).toContain("-L relix");
+    expect(cmd).toContain(".config/relix/tmux.conf");
+    expect(cmd).toContain("prefix None");
+    expect(cmd).toContain("exec tmux -L relix");
   });
 
   it("shell-quotes session names with apostrophes", () => {
