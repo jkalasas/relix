@@ -28,16 +28,13 @@ export function AppSidebar({
   children,
 }: AppSidebarProps) {
   return (
-    <Sidebar
-      collapsible="icon"
-      className="!top-0 !bottom-0 !h-auto"
-    >
+    <Sidebar collapsible="offcanvas" className="!top-0 !bottom-0 !h-auto">
       <SidebarHeader className="gap-0 border-b border-sidebar-border p-0">
-        <div className="flex h-10 items-center gap-2 px-3 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-2">
+        <div className="flex h-10 items-center gap-2 px-3">
           <div className="flex size-6 shrink-0 items-center justify-center rounded-md bg-primary/15 text-primary">
             <FolderTree className="size-3.5" aria-hidden />
           </div>
-          <span className="min-w-0 flex-1 truncate text-sm font-semibold tracking-tight group-data-[collapsible=icon]:hidden">
+          <span className="min-w-0 flex-1 truncate text-sm font-semibold tracking-tight">
             {rootLabel}
           </span>
           {onShowHosts ? (
@@ -46,7 +43,7 @@ export function AppSidebar({
               variant="ghost"
               size="sm"
               onClick={onShowHosts}
-              className="h-7 gap-1 px-2 text-[11px] text-muted-foreground hover:text-foreground group-data-[collapsible=icon]:hidden"
+              className="h-7 gap-1 px-2 text-[11px] text-muted-foreground hover:text-foreground"
             >
               <Server className="size-3" />
               Hosts

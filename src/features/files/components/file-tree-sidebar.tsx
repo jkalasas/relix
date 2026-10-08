@@ -281,7 +281,7 @@ export function FileTreeSidebar({
   }, [deleteTarget, files]);
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col group-data-[collapsible=icon]:hidden">
+    <div className="flex min-h-0 flex-1 flex-col">
       <div className="flex items-center gap-1 border-b border-sidebar-border px-2 py-1.5">
         <p
           className="min-w-0 flex-1 truncate px-1 font-mono text-[12px] font-medium text-foreground"
