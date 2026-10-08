@@ -207,6 +207,7 @@ export function useShells(options: UseShellsOptions = {}) {
       workspaceId: string,
       hostId: string,
       tmuxSession?: string,
+      cwd?: string,
     ): Promise<string | null> => {
       const inflight = bootstrapInflightRef.current.get(workspaceId);
       if (inflight) return inflight;
@@ -218,9 +219,15 @@ export function useShells(options: UseShellsOptions = {}) {
         );
         try {
           const freshId = crypto.randomUUID();
-          const result = await sshTmuxBootstrap(hostId, sessionName, {
-            [RELIX_TAB_ENV]: shellTabId(freshId),
-          });
+          const requestedCwd = cwd?.trim() || undefined;
+          const result = await sshTmuxBootstrap(
+            hostId,
+            sessionName,
+            {
+              [RELIX_TAB_ENV]: shellTabId(freshId),
+            },
+            requestedCwd,
+          );
           const existing = sessionsByWorkspaceRef.current[workspaceId] ?? [];
           const { sessions: merged, deadChannels } = mergeTmuxSessions(
             hostId,
@@ -234,7 +241,7 @@ export function useShells(options: UseShellsOptions = {}) {
           const sessions = result.created && initialWindowId
             ? merged.map((session) =>
                 session.tmuxWindowId === initialWindowId
-                  ? { ...session, id: freshId }
+                  ? { ...session, id: freshId, cwd: requestedCwd }
                   : session,
               )
             : merged;

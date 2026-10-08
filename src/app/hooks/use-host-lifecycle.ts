@@ -8,7 +8,7 @@ import {
   type HostConfig,
   useHosts,
 } from "@/features/hosts";
-import { adhocWorkspaceId, isWorkspaceForHost, type useProjects } from "@/features/projects";
+import { adhocWorkspaceId, isWorkspaceForHost, parseWorkspaceId, type useProjects } from "@/features/projects";
 import type { useSessionTabs } from "@/features/session-tabs";
 import { DEFAULT_TMUX_SESSION, type useShells } from "@/features/shells";
 import { appQuit, listenAppQuitRequested } from "@/features/ssh";
@@ -43,6 +43,9 @@ export function useHostLifecycle({
   const forwardsRef = useRef(forwards);
   forwardsRef.current = forwards;
 
+  const projectsRef = useRef(projects);
+  projectsRef.current = projects;
+
   const onConnected = useCallback(
     async (host: HostConfig) => {
       try {
@@ -55,9 +58,23 @@ export function useHostLifecycle({
         shellsRef.current.sessionsByWorkspace,
       ).filter((id) => isWorkspaceForHost(id, host.id));
       await Promise.allSettled(
-        workspaceIds.map((workspaceId) =>
-          shellsRef.current.bootstrapTmux(workspaceId, host.id),
-        ),
+        workspaceIds.map((workspaceId) => {
+          const scope = parseWorkspaceId(workspaceId)?.scope;
+          const cwd =
+            scope?.kind === "project"
+              ? (scope.worktreePath?.trim() ||
+                projectsRef.current
+                  .getProject(host.id, scope.projectId)
+                  ?.path?.trim() ||
+                undefined)
+              : undefined;
+          return shellsRef.current.bootstrapTmux(
+            workspaceId,
+            host.id,
+            host.tmuxSession,
+            cwd,
+          );
+        }),
       );
     },
     [projects.syncHostProjects],

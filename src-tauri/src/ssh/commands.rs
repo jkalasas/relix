@@ -205,8 +205,11 @@ pub async fn ssh_tmux_bootstrap(
     host_id: String,
     session: Option<String>,
     env: Option<std::collections::HashMap<String, String>>,
+    cwd: Option<String>,
 ) -> Result<TmuxBootstrapResult, SshError> {
-    state.tmux_bootstrap(host_id, session, env.unwrap_or_default()).await
+    state
+        .tmux_bootstrap(host_id, session, env.unwrap_or_default(), cwd)
+        .await
 }
 
 #[tauri::command]

@@ -143,6 +143,7 @@ export function useSessionBridge({
         targetWorkspaceId,
         targetHostId,
         selectedHost.tmuxSession,
+        projectRootPath ?? undefined,
       )
       .then((activeShellId) => {
         if (!activeShellId) return;
@@ -156,6 +157,7 @@ export function useSessionBridge({
         // workspace can still open shells later
       });
   }, [
+    projectRootPath,
     selectedHost?.id,
     selectedHost?.shellMode,
     selectedHost?.status,

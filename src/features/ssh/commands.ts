@@ -173,11 +173,13 @@ export async function sshTmuxBootstrap(
   hostId: string,
   session?: string,
   env?: SshShellEnv,
+  cwd?: string,
 ): Promise<TmuxBootstrapResult> {
   return invoke<TmuxBootstrapResult>("ssh_tmux_bootstrap", {
     hostId,
     session,
     env,
+    cwd,
   });
 }
 

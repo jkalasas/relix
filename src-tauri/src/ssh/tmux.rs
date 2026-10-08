@@ -111,10 +111,14 @@ fn has_session_command(session: &str) -> String {
 fn ensure_session_command(
     session: &str,
     env: &std::collections::HashMap<String, String>,
+    cwd: Option<&str>,
 ) -> String {
     let quoted = sh_single_quote(session);
     let tm = tmux_base();
     let mut create = format!("{tm} new-session -d -s {quoted}");
+    if let Some(dir) = cwd.map(str::trim).filter(|value| !value.is_empty()) {
+        create.push_str(&format!(" -c {}", sh_single_quote(dir)));
+    }
     let mut keys: Vec<&String> = env.keys().collect();
     keys.sort();
     for key in keys {
@@ -486,6 +490,7 @@ impl SshManager {
         host_id: String,
         session: Option<String>,
         env: std::collections::HashMap<String, String>,
+        cwd: Option<String>,
     ) -> Result<TmuxBootstrapResult, SshError> {
         let session = resolve_session(session)?;
         self.tmux_exec(&host_id, &ensure_conf_command()).await?;
@@ -493,8 +498,11 @@ impl SshManager {
             .tmux_exec(&host_id, &has_session_command(&session))
             .await
             .is_err();
-        self.tmux_exec(&host_id, &ensure_session_command(&session, &env))
-            .await?;
+        self.tmux_exec(
+            &host_id,
+            &ensure_session_command(&session, &env, cwd.as_deref()),
+        )
+        .await?;
         let _ = self
             .tmux_exec(&host_id, &configure_session_command(&session))
             .await;
@@ -551,7 +559,7 @@ impl SshManager {
     ) -> Result<TmuxWindow, SshError> {
         let session = resolve_session(session)?;
         self.tmux_exec(&host_id, &ensure_conf_command()).await?;
-        self.tmux_exec(&host_id, &ensure_session_command(&session, &std::collections::HashMap::new()))
+        self.tmux_exec(&host_id, &ensure_session_command(&session, &std::collections::HashMap::new(), None))
             .await?;
         let _ = self
             .tmux_exec(&host_id, &configure_session_command(&session))
@@ -763,7 +771,7 @@ mod tests {
         let base = tmux_base();
         let no_env = std::collections::HashMap::new();
         assert_eq!(
-            ensure_session_command("relix", &no_env),
+            ensure_session_command("relix", &no_env, None),
             format!("{base} has-session -t 'relix' 2>/dev/null || {base} new-session -d -s 'relix'")
         );
         let tab_env = std::collections::HashMap::from([(
@@ -771,8 +779,16 @@ mod tests {
             "shell:abc".to_string(),
         )]);
         assert_eq!(
-            ensure_session_command("relix", &tab_env),
+            ensure_session_command("relix", &tab_env, None),
             format!("{base} has-session -t 'relix' 2>/dev/null || {base} new-session -d -s 'relix' -e '_RELIX_TAB_ID=shell:abc'")
+        );
+        assert_eq!(
+            ensure_session_command("relix", &no_env, Some("/home/u/proj")),
+            format!("{base} has-session -t 'relix' 2>/dev/null || {base} new-session -d -s 'relix' -c '/home/u/proj'")
+        );
+        assert_eq!(
+            ensure_session_command("relix", &no_env, Some("   ")),
+            format!("{base} has-session -t 'relix' 2>/dev/null || {base} new-session -d -s 'relix'")
         );
         assert!(list_windows_command("relix").contains("-L relix"));
         assert!(list_windows_command("relix").contains("list-windows -t 'relix'"));
