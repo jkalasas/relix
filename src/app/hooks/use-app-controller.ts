@@ -9,6 +9,7 @@ import { useReconnect } from "@/app/hooks/use-reconnect";
 import { useSessionBridge } from "@/app/hooks/use-session-bridge";
 import { useSshLifecycle } from "@/app/hooks/use-ssh-lifecycle";
 import { useWorkspace } from "@/app/hooks/use-workspace";
+import { useWorktreeWindows } from "@/app/hooks/use-worktree-windows";
 import { useWorkspaceActions } from "@/app/hooks/use-workspace-actions";
 import { useWorkspaceView } from "@/app/hooks/use-workspace-view";
 import { useForwards } from "@/features/forwards";
@@ -25,7 +26,11 @@ import {
   type NotificationBellProps,
   type NotificationItem,
 } from "@/features/notify";
-import { useProjects } from "@/features/projects";
+import {
+  parseWorktreeHash,
+  useOtherWindowWorkspaces,
+  useProjects,
+} from "@/features/projects";
 import { useSessionTabs } from "@/features/session-tabs";
 import { useIsMobileOs, useShells } from "@/features/shells";
 import { toastInfoWithAction } from "@/lib/toast";
@@ -424,6 +429,66 @@ export function useAppController() {
     [projects.getProject],
   );
 
+  const worktreeWindows = useWorktreeWindows({
+    workspaceId: workspace.workspaceId,
+  });
+
+  const selectProjectWorktree = useCallback(
+    (hostId: string, projectId: string, worktreePath: string | null) => {
+      void worktreeWindows.selectWithRedirect(
+        hostId,
+        projectId,
+        worktreePath,
+        () => {
+          workspace.openProject(hostId, projectId, worktreePath);
+          void actions.handleSetProjectWorktree(
+            hostId,
+            projectId,
+            worktreePath,
+          );
+        },
+      );
+    },
+    [
+      actions.handleSetProjectWorktree,
+      workspace.openProject,
+      worktreeWindows.selectWithRedirect,
+    ],
+  );
+
+  const openWorktreeInNewWindow = useCallback(
+    (hostId: string, projectId: string, worktreePath: string | null) => {
+      void worktreeWindows.openInNewWindow(hostId, projectId, worktreePath);
+    },
+    [worktreeWindows.openInNewWindow],
+  );
+
+  const initialHashConsumed = useRef(false);  useEffect(() => {
+    if (hosts.booting || initialHashConsumed.current) return;
+    initialHashConsumed.current = true;
+    const parsed = parseWorktreeHash(window.location.hash);
+    if (!parsed) return;
+    if (!hosts.hosts.some((host) => host.id === parsed.hostId)) return;
+    if (!projects.getProject(parsed.hostId, parsed.projectId)) return;
+    selectProjectWorktree(
+      parsed.hostId,
+      parsed.projectId,
+      parsed.worktreePath,
+    );
+  }, [
+    hosts.booting,
+    hosts.hosts,
+    projects.getProject,
+    selectProjectWorktree,
+  ]);
+
+  const otherWindowWorkspaces = useOtherWindowWorkspaces();
+
+  const openWorkspaceIds = useMemo(() => {
+    if (otherWindowWorkspaces.size === 0) return view.openWorkspaceIds;
+    return new Set([...view.openWorkspaceIds, ...otherWindowWorkspaces]);
+  }, [view.openWorkspaceIds, otherWindowWorkspaces]);
+
   const sessionChrome = useMemo(
     () =>
       createWorkspaceSessionChrome({
@@ -528,6 +593,9 @@ export function useAppController() {
     startForward,
     stopForward,
     getProjectPath,
+    selectProjectWorktree,
+    openWorktreeInNewWindow,
+    openWorkspaceIds,
   };
 }
 

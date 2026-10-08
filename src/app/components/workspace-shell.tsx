@@ -207,7 +207,10 @@ export function WorkspaceProjectRail({
   onAddProject,
   onEditProject,
   onSetWorktree,
-}: WorkspaceProjectRailProps) {
+  onOpenInNewWindow,
+}: WorkspaceProjectRailProps & {
+  onOpenInNewWindow?: (projectId: string, worktreePath: string | null) => void;
+}) {
   if (!showRail) return null;
   return (
     <AppSidebar
@@ -231,6 +234,7 @@ export function WorkspaceProjectRail({
         onAddProject={onAddProject}
         onEditProject={onEditProject}
         onSetWorktree={onSetWorktree}
+        onOpenInNewWindow={onOpenInNewWindow}
       />
     </AppSidebar>
   );

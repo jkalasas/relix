@@ -47,6 +47,9 @@ export function AppShell({ app }: AppShellProps) {
     startForward,
     stopForward,
     getProjectPath,
+    selectProjectWorktree,
+    openWorktreeInNewWindow,
+    openWorkspaceIds,
   } = app;
 
   const { sessionHeader, sessionTabBar } = sessionChrome;
@@ -90,11 +93,11 @@ export function AppShell({ app }: AppShellProps) {
                 view.selectedHost.status === "connected" ||
                 view.selectedIsLocal
               }
-              openWorkspaceIds={view.openWorkspaceIds}
+              openWorkspaceIds={openWorkspaceIds}
               onShowHosts={workspace.openHosts}
               onOpenAdhoc={() => workspace.openAdhoc(view.selectedHost!.id)}
               onSelectWorktree={(projectId, worktreePath) =>
-                workspace.openProject(
+                selectProjectWorktree(
                   view.selectedHost!.id,
                   projectId,
                   worktreePath,
@@ -106,14 +109,14 @@ export function AppShell({ app }: AppShellProps) {
               onEditProject={(projectId) =>
                 workspace.openEditProject(view.selectedHost!.id, projectId)
               }
-              onSetWorktree={(projectId, worktreePath) => {
-                if (!view.selectedHost) return;
-                void actions.handleSetProjectWorktree(
-                  view.selectedHost.id,
+              onSetWorktree={() => {}}
+              onOpenInNewWindow={(projectId, worktreePath) =>
+                openWorktreeInNewWindow(
+                  view.selectedHost!.id,
                   projectId,
                   worktreePath,
-                );
-              }}
+                )
+              }
             />
           ) : null}
 
@@ -154,7 +157,7 @@ export function AppShell({ app }: AppShellProps) {
               editingHost={view.editingHost}
               editingProject={view.editingProject}
               connectingId={hosts.connectingId}
-              openWorkspaceIds={view.openWorkspaceIds}
+              openWorkspaceIds={openWorkspaceIds}
               onSelectHost={workspace.openProjects}
               onAddHost={workspace.openAddHost}
               onOpenHosts={workspace.openHosts}
@@ -163,22 +166,16 @@ export function AppShell({ app }: AppShellProps) {
                 const project = projects
                   .projectsForHost(hostId)
                   .find((item) => item.id === projectId);
-                workspace.openProject(
+                selectProjectWorktree(
                   hostId,
                   projectId,
                   project?.activeWorktreePath ?? null,
                 );
               }}
               onSelectProjectWorktree={(hostId, projectId, worktreePath) =>
-                workspace.openProject(hostId, projectId, worktreePath)
+                selectProjectWorktree(hostId, projectId, worktreePath)
               }
-              onSetProjectWorktree={(hostId, projectId, worktreePath) => {
-                void actions.handleSetProjectWorktree(
-                  hostId,
-                  projectId,
-                  worktreePath,
-                );
-              }}
+              onSetProjectWorktree={() => {}}
               onAddProject={workspace.openAddProject}
               onEditProject={workspace.openEditProject}
               onConnectHost={connectHost}

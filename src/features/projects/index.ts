@@ -30,6 +30,25 @@ export {
   pathsMatch,
   projectActiveRoot,
 } from "@/features/projects/lib/project-root";
+export {
+  advertiseWorktreeWindow,
+  buildWorktreeHash,
+  currentWindowLabel,
+  ensureWorktreeRegistry,
+  findWorktreeWindow,
+  focusWorktreeWindow,
+  getWorktreeOwners,
+  newWorktreeLabel,
+  openWorktreeWindow,
+  parseWorktreeHash,
+  subscribeWorktreeOwners,
+  worktreeWorkspaceId,
+} from "@/features/projects/lib/worktree-windows";
+export type {
+  OpenWorktreeResult,
+  WorktreeOwner,
+} from "@/features/projects/lib/worktree-windows";
+export { useOtherWindowWorkspaces } from "@/features/projects/hooks/use-other-window-workspaces";
 export { useProjects } from "@/features/projects/hooks/use-projects";
 export { HostsPage } from "@/features/projects/components/hosts-page";
 export { ProjectsPage } from "@/features/projects/components/projects-page";

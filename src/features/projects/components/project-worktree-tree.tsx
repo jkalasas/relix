@@ -23,7 +23,12 @@ import { useGitWorktrees, type GitWorktreeEntry } from "@/features/git";
 import { pathsMatch } from "@/features/projects/lib/project-root";
 import { projectWorkspaceId } from "@/features/projects/lib/workspace-id";
 import type { ProjectConfig } from "@/features/projects/types";
+import { useMediaQuery } from "@/hooks/use-media-query";
 import { cn } from "@/lib/utils";
+import {
+  WorktreeRowMenu,
+  type WorktreeRowMenuState,
+} from "@/features/projects/components/worktree-row-menu";
 
 function worktreeLabel(entry: GitWorktreeEntry): string {
   if (entry.branch) return entry.branch;
@@ -54,6 +59,7 @@ type ProjectWorktreeTreeProps = {
   onAddProject: () => void;
   onEditProject: (projectId: string) => void;
   onSetWorktree: (projectId: string, worktreePath: string | null) => void;
+  onOpenInNewWindow?: (projectId: string, worktreePath: string | null) => void;
 };
 
 function useExpandedProjects(hostId: string) {
@@ -208,6 +214,7 @@ function ProjectRow({
   onToggle,
   onSelect,
   onEdit,
+  onOpenInNewWindow,
 }: {
   hostId: string;
   project: ProjectConfig;
@@ -220,7 +227,13 @@ function ProjectRow({
   onToggle: () => void;
   onSelect: (worktreePath: string | null) => void;
   onEdit: () => void;
+  onOpenInNewWindow?: (projectId: string, worktreePath: string | null) => void;
 }) {
+  const isDesktop = useMediaQuery("(min-width: 768px)");
+  const canWindow = isDesktop && onOpenInNewWindow != null;
+  const [rowMenu, setRowMenu] = useState<
+    (WorktreeRowMenuState & { path: string | null }) | null
+  >(null);
   const [addOpen, setAddOpen] = useState(false);
   const [removeTarget, setRemoveTarget] = useState<GitWorktreeEntry | null>(
     null,
@@ -326,6 +339,21 @@ function ProjectRow({
             return (
               <li key={row.key}>
                 <div
+                  onContextMenu={
+                    canWindow
+                      ? (event) => {
+                          event.preventDefault();
+                          event.stopPropagation();
+                          setRowMenu({
+                            path: row.path,
+                            label: row.label,
+                            sub: row.sub,
+                            x: event.clientX,
+                            y: event.clientY,
+                          });
+                        }
+                      : undefined
+                  }
                   className={cn(
                     "group/row flex min-h-9 items-center gap-2 rounded-md px-2 py-1.5 pr-1.5",
                     selected
@@ -388,6 +416,15 @@ function ProjectRow({
         </ul>
       ) : null}
 
+      <WorktreeRowMenu
+        menu={rowMenu}
+        onClose={() => setRowMenu(null)}
+        onOpen={() => {
+          const target = rowMenu;
+          setRowMenu(null);
+          if (target) onOpenInNewWindow?.(project.id, target.path);
+        }}
+      />
       <AddWorktreeDialog
         project={project}
         open={addOpen}
@@ -468,6 +505,7 @@ export function ProjectWorktreeTree({
   onAddProject,
   onEditProject,
   onSetWorktree,
+  onOpenInNewWindow,
 }: ProjectWorktreeTreeProps) {
   const { isExpanded, toggle } = useExpandedProjects(hostId);
 
@@ -529,6 +567,7 @@ export function ProjectWorktreeTree({
               onSetWorktree(project.id, worktreePath);
             }}
             onEdit={() => onEditProject(project.id)}
+            onOpenInNewWindow={onOpenInNewWindow}
           />
         ))}
       </ul>
