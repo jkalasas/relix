@@ -1,16 +1,16 @@
 use std::sync::Arc;
 
-use tokio::io::AsyncWriteExt as _;
+use tokio::io::{AsyncSeekExt as _, AsyncWriteExt as _};
 
 use russh_sftp::client::SftpSession;
 use russh_sftp::client::error::Error as SftpError;
-use russh_sftp::protocol::StatusCode;
+use russh_sftp::protocol::{OpenFlags, StatusCode};
 
 use super::connection::handle_is_closed;
 use super::error::{SshError, SshErrorCode};
 use super::host_fs::{
     FsEntry, FsListConfig, FsListResult, FsMkdirConfig, FsReadConfig, FsRemoveConfig,
-    FsRenameConfig, FsWriteConfig,
+    FsRenameConfig, FsWriteChunkConfig, FsWriteConfig,
 };
 use super::manager::SshManager;
 
@@ -261,6 +261,41 @@ pub(crate) async fn remote_write(
                 format!("Could not write {}: {e}", config.path),
             )
         })
+}
+
+pub(crate) async fn remote_write_chunk(
+    manager: &SshManager,
+    config: FsWriteChunkConfig,
+) -> Result<(), SshError> {
+    let session = manager.ensure_sftp(&config.host_id).await?;
+    let mut flags = OpenFlags::WRITE | OpenFlags::CREATE;
+    if config.truncate {
+        flags |= OpenFlags::TRUNCATE;
+    }
+    let mut file = session
+        .open_with_flags(&config.path, flags)
+        .await
+        .map_err(|e| map_sftp_err_path(e, &config.path))?;
+    file.seek(std::io::SeekFrom::Start(config.offset))
+        .await
+        .map_err(|e| {
+            SshError::new(
+                SshErrorCode::TransferFailed,
+                format!("Could not write {}: {e}", config.path),
+            )
+        })?;
+    file.write_all(&config.data).await.map_err(|e| {
+        SshError::new(
+            SshErrorCode::TransferFailed,
+            format!("Could not write {}: {e}", config.path),
+        )
+    })?;
+    file.flush().await.map_err(|e| {
+        SshError::new(
+            SshErrorCode::TransferFailed,
+            format!("Could not write {}: {e}", config.path),
+        )
+    })
 }
 
 pub(crate) async fn remote_mkdir(

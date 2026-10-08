@@ -37,6 +37,18 @@ export async function localShellAvailable(): Promise<boolean> {
   }
 }
 
+/**
+ * Read file paths copied in Explorer/Finder from the OS clipboard.
+ * Returns an empty list when the clipboard holds no files.
+ */
+export async function readClipboardFilePaths(): Promise<string[]> {
+  try {
+    return await invoke<string[]>("clipboard_file_paths");
+  } catch {
+    return [];
+  }
+}
+
 export async function appQuit(): Promise<void> {
   await invoke("app_quit");
 }
@@ -142,6 +154,24 @@ export async function hostFsWrite(
       hostId,
       path,
       data: Array.from(data),
+    },
+  });
+}
+
+export async function hostFsWriteChunk(
+  hostId: string,
+  path: string,
+  data: Uint8Array,
+  offset: number,
+  truncate: boolean,
+): Promise<void> {
+  await invoke("host_fs_write_chunk", {
+    config: {
+      hostId,
+      path,
+      data: Array.from(data),
+      offset,
+      truncate,
     },
   });
 }

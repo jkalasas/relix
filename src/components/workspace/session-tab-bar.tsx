@@ -17,6 +17,7 @@ import {
   GitBranch,
   GripVertical,
   Network,
+  Paperclip,
   Plus,
   Sparkles,
   TerminalSquare,
@@ -71,6 +72,7 @@ type SessionTabBarProps = {
   onRenameShell: (shellId: string, name: string) => void;
   onReorder: (orderedIds: string[]) => void;
   onNewShell: (launchId?: ShellLaunchId) => void;
+  onAttach?: () => void;
   onOpenFiles: () => void;
   onOpenPorts: () => void;
   onOpenGit: () => void;
@@ -205,6 +207,7 @@ export function SessionTabBar({
   onRenameShell,
   onReorder,
   onNewShell,
+  onAttach,
   onOpenFiles,
   onOpenPorts,
   onOpenGit,
@@ -770,6 +773,22 @@ export function SessionTabBar({
               <LaunchItem id="pi" onSelect={onNewShell} />
             </DropdownMenuContent>
           </DropdownMenu>
+          {onAttach ? (
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              aria-label="Attach files"
+              title="Attach files"
+              className={cn(
+                "text-muted-foreground hover:text-foreground",
+                titlebar ? "size-7" : "size-9 md:size-7",
+              )}
+              onClick={onAttach}
+            >
+              <Paperclip className="size-3.5" />
+            </Button>
+          ) : null}
           <Button
             type="button"
             variant="ghost"

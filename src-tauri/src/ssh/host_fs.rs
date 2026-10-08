@@ -8,6 +8,7 @@ use super::manager::SshManager;
 use super::sftp;
 
 const MAX_TRANSFER_BYTES: usize = 32 * 1024 * 1024;
+const MAX_CHUNK_BYTES: usize = 1024 * 1024;
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -46,6 +47,16 @@ pub struct FsWriteConfig {
     pub host_id: String,
     pub path: String,
     pub data: Vec<u8>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FsWriteChunkConfig {
+    pub host_id: String,
+    pub path: String,
+    pub data: Vec<u8>,
+    pub offset: u64,
+    pub truncate: bool,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -113,6 +124,27 @@ impl SshManager {
             ));
         }
         sftp::remote_write(self, config).await
+    }
+
+    pub async fn fs_write_chunk(
+        &self,
+        _app: &AppHandle,
+        config: FsWriteChunkConfig,
+    ) -> Result<(), SshError> {
+        if config.data.len() > MAX_CHUNK_BYTES {
+            return Err(SshError::new(
+                SshErrorCode::TransferFailed,
+                format!(
+                    "Upload chunk is too large ({} bytes; max {} bytes)",
+                    config.data.len(),
+                    MAX_CHUNK_BYTES
+                ),
+            ));
+        }
+        if is_local_host_id(&config.host_id) {
+            return local_fs::write_chunk(config).await;
+        }
+        sftp::remote_write_chunk(self, config).await
     }
 
     pub async fn fs_mkdir(

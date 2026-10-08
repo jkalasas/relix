@@ -4,7 +4,7 @@ use std::time::SystemTime;
 use super::error::{SshError, SshErrorCode};
 use super::host_fs::{
     FsEntry, FsListConfig, FsListResult, FsMkdirConfig, FsReadConfig, FsRemoveConfig,
-    FsRenameConfig, FsWriteConfig,
+    FsRenameConfig, FsWriteChunkConfig, FsWriteConfig,
 };
 use super::local_shell::is_local_host_id;
 
@@ -170,6 +170,32 @@ fn write_blocking(config: FsWriteConfig) -> Result<(), SshError> {
     std::fs::write(&path, &config.data).map_err(map_io_err)
 }
 
+pub async fn write_chunk(config: FsWriteChunkConfig) -> Result<(), SshError> {
+    ensure_local_host(&config.host_id)?;
+    tokio::task::spawn_blocking(move || write_chunk_blocking(config))
+        .await
+        .map_err(|err| SshError::new(SshErrorCode::Internal, err.to_string()))?
+}
+
+fn write_chunk_blocking(config: FsWriteChunkConfig) -> Result<(), SshError> {
+    use std::io::{Seek, SeekFrom, Write};
+    let path = resolve_path(&config.path)?;
+    if let Some(parent) = path.parent() {
+        if !parent.as_os_str().is_empty() && !parent.exists() {
+            std::fs::create_dir_all(parent).map_err(map_io_err)?;
+        }
+    }
+    let mut file = std::fs::OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(config.truncate)
+        .open(&path)
+        .map_err(map_io_err)?;
+    file.seek(SeekFrom::Start(config.offset))
+        .map_err(map_io_err)?;
+    file.write_all(&config.data).map_err(map_io_err)
+}
+
 pub async fn mkdir(config: FsMkdirConfig) -> Result<(), SshError> {
     ensure_local_host(&config.host_id)?;
     tokio::task::spawn_blocking(move || mkdir_blocking(config))
@@ -220,6 +246,37 @@ mod tests {
     fn rejects_non_local_host() {
         let err = ensure_local_host("remote").unwrap_err();
         assert!(matches!(err.code, SshErrorCode::Internal));
+    }
+
+    use super::super::host_fs::FsWriteChunkConfig;
+
+    #[tokio::test]
+    async fn write_chunk_truncates_then_appends() {
+        if cfg!(mobile) {
+            return;
+        }
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir
+            .path()
+            .join("chunk.bin")
+            .to_string_lossy()
+            .into_owned();
+        let chunk = |data: &[u8], offset: u64, truncate: bool| FsWriteChunkConfig {
+            host_id: LOCAL_HOST_ID.to_string(),
+            path: path.clone(),
+            data: data.to_vec(),
+            offset,
+            truncate,
+        };
+        write_chunk(chunk(b"hello ", 0, true)).await.unwrap();
+        write_chunk(chunk(b"world", 6, false)).await.unwrap();
+        let out = read(FsReadConfig {
+            host_id: LOCAL_HOST_ID.to_string(),
+            path,
+        })
+        .await
+        .unwrap();
+        assert_eq!(out, b"hello world");
     }
 
     #[test]

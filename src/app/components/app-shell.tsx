@@ -36,6 +36,7 @@ export function AppShell({ app }: AppShellProps) {
     actions,
     projects,
     shells,
+    clipboard,
     androidBackground,
     sessionChrome,
     notificationCenter,
@@ -221,6 +222,7 @@ export function AppShell({ app }: AppShellProps) {
               onConnect={connectHost}
               onOpenShell={sessions.openShell}
               onSessionCwd={shells.setSessionCwd}
+              clipboard={clipboard}
               getProjectPath={getProjectPath}
             />
             </SidebarInset>

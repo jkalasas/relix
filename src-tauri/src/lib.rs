@@ -1,3 +1,4 @@
+mod clipboard_files;
 mod ssh;
 pub mod git;
 
@@ -12,12 +13,14 @@ use git::commands::{
 };
 use ssh::commands::{
     host_fs_list, host_fs_mkdir, host_fs_read, host_fs_remove, host_fs_rename, host_fs_write,
+    host_fs_write_chunk,
     local_shell_available, ssh_cancel_connect, ssh_close_shell, ssh_connect, ssh_disconnect,
     ssh_open_shell, ssh_resize, ssh_start_dynamic_forward, ssh_start_local_forward,
     ssh_start_remote_forward, ssh_stop_forward, ssh_tmux_bootstrap, ssh_tmux_kill_base_tree,
     ssh_tmux_kill_session, ssh_tmux_kill_window, ssh_tmux_list_windows, ssh_tmux_move_window,
     ssh_tmux_new_window, ssh_tmux_window_path, ssh_trust_host_key, ssh_write,
 };
+use clipboard_files::clipboard_file_paths;
 use ssh::manager::SshManager;
 use tauri::AppHandle;
 
@@ -53,6 +56,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             app_quit,
+            clipboard_file_paths,
             local_shell_available,
             ssh_connect,
             ssh_disconnect,
@@ -69,6 +73,7 @@ pub fn run() {
             host_fs_list,
             host_fs_read,
             host_fs_write,
+            host_fs_write_chunk,
             host_fs_mkdir,
             host_fs_remove,
             host_fs_rename,

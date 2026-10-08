@@ -8,7 +8,7 @@ use super::manager::{
 };
 use super::host_fs::{
     FsListConfig, FsListResult, FsMkdirConfig, FsReadConfig, FsRemoveConfig, FsRenameConfig,
-    FsWriteConfig,
+    FsWriteChunkConfig, FsWriteConfig,
 };
 use super::tmux::{TmuxBootstrapResult, TmuxWindow};
 
@@ -170,6 +170,15 @@ pub async fn host_fs_write(
     config: FsWriteConfig,
 ) -> Result<(), SshError> {
     state.fs_write(&app, config).await
+}
+
+#[tauri::command]
+pub async fn host_fs_write_chunk(
+    app: AppHandle,
+    state: State<'_, SshManager>,
+    config: FsWriteChunkConfig,
+) -> Result<(), SshError> {
+    state.fs_write_chunk(&app, config).await
 }
 
 #[tauri::command]

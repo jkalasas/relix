@@ -1,4 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { ClipboardEvent } from "react";
+import { getCurrentWebview, type DragDropEvent } from "@tauri-apps/api/webview";
+import type { Event as TauriEvent } from "@tauri-apps/api/event";
 import { EmptyTerminal } from "@/features/shells/components/empty-terminal";
 import { TerminalKeyBar } from "@/features/shells/components/terminal-key-bar";
 import {
@@ -16,8 +19,14 @@ import {
   type StickyMods,
 } from "@/features/shells/lib/terminal-keys";
 import type { ShellSession } from "@/features/shells/types";
+import {
+  basenameOf,
+  ClipboardUploadDialog,
+  type ClipboardController,
+  type ClipboardSource,
+} from "@/features/clipboard";
 import { isLocalHost, type Host } from "@/features/hosts";
-import { decodeSshData, listenSshData } from "@/features/ssh";
+import { decodeSshData, listenSshData, readClipboardFilePaths } from "@/features/ssh";
 
 export type LiveTerminal = {
   workspaceId: string;
@@ -41,6 +50,7 @@ type TerminalHostProps = {
   /** Host for empty-state when active workspace has no live channels yet. */
   emptyHost?: Host | null;
   emptyWorkspaceId?: string | null;
+  clipboard: ClipboardController;
 };
 
 const MAX_PENDING_CHUNKS = 200;
@@ -73,8 +83,20 @@ export function TerminalHost({
   onSessionCwd,
   emptyHost = null,
   emptyWorkspaceId = null,
+  clipboard,
 }: TerminalHostProps) {
+  const {
+    setTarget: setClipboardTarget,
+    stageSources: stageClipboardSources,
+    stageBlobs: stageClipboardBlobs,
+    upload: clipboardUpload,
+    cancel: cancelClipboardUpload,
+    dismiss: dismissClipboardUpload,
+    pickAndStage: pickClipboardFiles,
+  } = clipboard;
   const isMobileOs = useIsMobileOs();
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const [dragOver, setDragOver] = useState(false);
   const writersRef = useRef<Map<string, TerminalSessionApi>>(new Map());
   const pendingDataRef = useRef<Map<string, Uint8Array[]>>(new Map());
   const [stickyMods, setStickyMods] = useState<StickyMods>(EMPTY_STICKY_MODS);
@@ -127,6 +149,180 @@ export function TerminalHost({
       ) ?? null
     );
   }, [activeSessionId, activeWorkspaceId, terminals]);
+
+  useEffect(() => {
+    const channelId = activeLive?.session.channelId;
+    if (!surfaceOpen || !activeLive || !channelId) {
+      setClipboardTarget(null);
+      return;
+    }
+    const hostId = activeLive.host.id;
+    const local = isLocalHost(activeLive.host);
+    setClipboardTarget({
+      hostId,
+      local,
+      send: (text) => {
+        writersRef.current.get(channelId)?.send(text);
+      },
+    });
+    return () => setClipboardTarget(null);
+  }, [activeLive, surfaceOpen, setClipboardTarget]);
+
+  const isOverTerminal = useCallback((position: { x: number; y: number }) => {
+    const element = containerRef.current;
+    if (!element) return true;
+    const rect = element.getBoundingClientRect();
+    const scale = window.devicePixelRatio || 1;
+    const x = position.x / scale;
+    const y = position.y / scale;
+    return x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom;
+  }, []);
+
+  const dragHandlerRef = useRef<(event: TauriEvent<DragDropEvent>) => void>(() => {});
+  dragHandlerRef.current = (event) => {
+    if (event.payload.type === "leave") {
+      setDragOver(false);
+      return;
+    }
+    if (!isOverTerminal(event.payload.position)) {
+      setDragOver(false);
+      return;
+    }
+    if (event.payload.type === "drop") {
+      setDragOver(false);
+      if (event.payload.paths.length === 0) return;
+      const sources: ClipboardSource[] = event.payload.paths.map((path) => ({
+        kind: "path",
+        path,
+        name: basenameOf(path),
+      }));
+      void stageClipboardSources(sources);
+      return;
+    }
+    setDragOver(true);
+  };
+
+  useEffect(() => {
+    if (!surfaceOpen) {
+      setDragOver(false);
+      return;
+    }
+    let unlisten: (() => void) | undefined;
+    let disposed = false;
+    void (async () => {
+      try {
+        const stop = await getCurrentWebview().onDragDropEvent((event) => {
+          dragHandlerRef.current(event);
+        });
+        if (disposed) {
+          stop();
+          return;
+        }
+        unlisten = stop;
+      } catch {
+        // drag-drop events unavailable (mobile)
+      }
+    })();
+    return () => {
+      disposed = true;
+      unlisten?.();
+      setDragOver(false);
+    };
+  }, [surfaceOpen]);
+
+  // Capture phase: xterm's own paste listener calls stopPropagation(),
+  // so a bubble-phase onPaste here would never fire for terminal
+  // pastes. Intercept files/images first, then leave text to xterm.
+  const handlePasteCapture = useCallback(
+    (event: ClipboardEvent<HTMLDivElement>) => {
+      const data = event.clipboardData;
+      if (!data) return;
+      const hasFiles = data.files && data.files.length > 0;
+      const imageItem = hasFiles
+        ? undefined
+        : Array.from(data.items ?? []).find((item) =>
+            item.type.startsWith("image/"),
+          );
+      if (!hasFiles && !imageItem) return;
+      // Screenshots and Copy-Image arrive as image items with an empty
+      // files list. Stage them here so xterm never sees the raw bytes.
+      event.preventDefault();
+      event.stopPropagation();
+      if (hasFiles) {
+        void stageClipboardBlobs(Array.from(data.files));
+        return;
+      }
+      const file = imageItem?.getAsFile();
+      if (!file) return;
+      const ext = imageItem?.type.split("/")[1] ?? "bin";
+      const named = file.name
+        ? file
+        : new File([file], `paste.${ext}`, { type: imageItem?.type });
+      void stageClipboardBlobs([named]);
+    },
+    [stageClipboardBlobs],
+  );
+
+  const readClipboardImages = useCallback(async (): Promise<boolean> => {
+    try {
+      if (typeof navigator === "undefined" || !navigator.clipboard?.read) return false;
+      const permission = await navigator.permissions
+        ?.query({ name: "clipboard-read" as PermissionName })
+        .catch(() => null);
+      if (permission?.state === "denied") return false;
+      const items = await navigator.clipboard.read();
+      const files: File[] = [];
+      for (const item of items) {
+        const imageType = item.types.find((type) => type.startsWith("image/"));
+        if (!imageType) continue;
+        const blob = await item.getType(imageType);
+        files.push(new File([blob], `paste.${imageType.split("/")[1] ?? "bin"}`));
+      }
+      if (files.length === 0) return false;
+      await stageClipboardBlobs(files);
+      return true;
+    } catch {
+      // clipboard unreadable — paste event or Attach covers the rest
+      return false;
+    }
+  }, [stageClipboardBlobs]);
+
+  const stageOsClipboardFiles = useCallback(async (): Promise<boolean> => {
+    try {
+      const paths = await readClipboardFilePaths();
+      if (paths.length === 0) return false;
+      const sources: ClipboardSource[] = paths.map((path) => ({
+        kind: "path",
+        path,
+        name: basenameOf(path),
+      }));
+      await stageClipboardSources(sources);
+      return true;
+    } catch {
+      return false;
+    }
+  }, [stageClipboardSources]);
+
+  const readClipboardFallback = useCallback(async () => {
+    if (await readClipboardImages()) return;
+    await stageOsClipboardFiles();
+  }, [readClipboardImages, stageOsClipboardFiles]);
+
+  useEffect(() => {
+    if (!surfaceOpen) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      const pasteChord =
+        (event.ctrlKey || event.metaKey) &&
+        !event.shiftKey &&
+        !event.altKey &&
+        (event.key === "v" || event.key === "V");
+      if (!pasteChord) return;
+      if (!containerRef.current?.contains(document.activeElement)) return;
+      void readClipboardFallback();
+    };
+    window.addEventListener("keydown", onKeyDown, true);
+    return () => window.removeEventListener("keydown", onKeyDown, true);
+  }, [surfaceOpen, readClipboardFallback]);
 
   const sendToActive = useCallback(
     (data: string) => {
@@ -217,6 +413,7 @@ export function TerminalHost({
 
   return (
     <div
+      onPasteCapture={handlePasteCapture}
       className={
         surfaceOpen
           ? "relative flex min-h-0 flex-1 flex-col"
@@ -224,7 +421,10 @@ export function TerminalHost({
       }
       aria-hidden={!surfaceOpen}
     >
-      <div className="relative flex min-h-0 flex-1 flex-col bg-[oklch(0.12_0.012_250)]">
+      <div
+        ref={containerRef}
+        className="relative flex min-h-0 flex-1 flex-col bg-[oklch(0.12_0.012_250)]"
+      >
         {terminals.map(({ workspaceId, session }) => {
           const channelId = session.channelId;
           if (!channelId) return null;
@@ -309,6 +509,14 @@ export function TerminalHost({
             Attaching {sessionDisplayTitle(pendingSession)}…
           </div>
         ) : null}
+
+        {dragOver ? (
+          <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center border-2 border-dashed border-primary bg-background/70">
+            <p className="text-sm text-muted-foreground">
+              Drop files to paste paths
+            </p>
+          </div>
+        ) : null}
       </div>
 
       {showKeyBar ? (
@@ -316,8 +524,15 @@ export function TerminalHost({
           mods={stickyMods}
           onToggleMod={toggleStickyMod}
           onSend={sendToActive}
+          onAttach={() => void pickClipboardFiles()}
         />
       ) : null}
+
+      <ClipboardUploadDialog
+        upload={clipboardUpload}
+        onCancel={cancelClipboardUpload}
+        onDismiss={dismissClipboardUpload}
+      />
     </div>
   );
 }

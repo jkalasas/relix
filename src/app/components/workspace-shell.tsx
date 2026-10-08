@@ -24,6 +24,7 @@ import {
   type WorkspaceId,
 } from "@/features/projects";
 import type { OpenFileState, SessionTab } from "@/features/session-tabs";
+import type { ClipboardController } from "@/features/clipboard";
 import {
   TerminalHost,
   type LiveTerminal,
@@ -65,6 +66,7 @@ type WorkspaceChromeProps = {
   onRenameShell: (shellId: string, name: string) => void;
   onReorderTabs: (orderedIds: string[]) => void;
   onNewShell: (launchId?: ShellLaunchId) => void;
+  onAttach?: () => void;
   onOpenFiles: () => void;
   onOpenPorts: () => void;
   onOpenGit: () => void;
@@ -100,6 +102,7 @@ export function createWorkspaceSessionChrome({
   onReorderTabs,
   onNewShell,
   onOpenFiles,
+  onAttach,
   onOpenPorts,
   onOpenGit,
   notificationCenter,
@@ -121,6 +124,7 @@ export function createWorkspaceSessionChrome({
         onRenameShell={onRenameShell}
         onReorder={onReorderTabs}
         onNewShell={onNewShell}
+        onAttach={onAttach}
         onOpenFiles={onOpenFiles}
         onOpenPorts={onOpenPorts}
         onOpenGit={onOpenGit}
@@ -378,6 +382,7 @@ type WorkspaceTerminalProps = {
     cwd?: string,
   ) => void | Promise<void>;
   onSessionCwd: (sessionId: string, cwd: string) => void;
+  clipboard: ClipboardController;
   getProjectPath: (
     hostId: string,
     projectId: string,
@@ -396,6 +401,7 @@ export function WorkspaceTerminal({
   onConnect,
   onOpenShell,
   onSessionCwd,
+  clipboard,
   getProjectPath,
 }: WorkspaceTerminalProps) {
   return (
@@ -421,6 +427,7 @@ export function WorkspaceTerminal({
         void onOpenShell(workspaceId, hostId, launchId, root);
       }}
       onSessionCwd={onSessionCwd}
+      clipboard={clipboard}
     />
   );
 }

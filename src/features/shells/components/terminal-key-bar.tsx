@@ -10,11 +10,13 @@ type TerminalKeyBarProps = {
   mods: StickyMods;
   onToggleMod: (key: keyof StickyMods) => void;
   onSend: (data: string) => void;
+  onAttach?: () => void;
 };
 
 type KeyDef =
   | { kind: "mod"; id: keyof StickyMods; label: string }
-  | { kind: "special"; id: TerminalSpecialKey; label: string };
+  | { kind: "special"; id: TerminalSpecialKey; label: string }
+  | { kind: "action"; id: "attach"; label: string };
 
 const ROW_ONE: KeyDef[] = [
   { kind: "special", id: "esc", label: "Esc" },
@@ -70,11 +72,13 @@ function KeyRow({
   mods,
   onToggleMod,
   onSpecial,
+  onAction,
 }: {
   keys: KeyDef[];
   mods: StickyMods;
   onToggleMod: (key: keyof StickyMods) => void;
   onSpecial: (key: TerminalSpecialKey) => void;
+  onAction?: (id: "attach") => void;
 }) {
   return (
     <div className="flex gap-1.5">
@@ -85,6 +89,12 @@ function KeyRow({
             label={key.label}
             active={mods[key.id]}
             onPress={() => onToggleMod(key.id)}
+          />
+        ) : key.kind === "action" ? (
+          <KeyButton
+            key={key.id}
+            label={key.label}
+            onPress={() => onAction?.(key.id)}
           />
         ) : (
           <KeyButton
@@ -102,10 +112,15 @@ export function TerminalKeyBar({
   mods,
   onToggleMod,
   onSend,
+  onAttach,
 }: TerminalKeyBarProps) {
   const handleSpecial = (key: TerminalSpecialKey) => {
     onSend(encodeSpecialKey(key, mods));
   };
+
+  const rowTwo: KeyDef[] = onAttach
+    ? [...ROW_TWO, { kind: "action", id: "attach", label: "Attach" }]
+    : ROW_TWO;
 
   return (
     <div
@@ -121,10 +136,11 @@ export function TerminalKeyBar({
           onSpecial={handleSpecial}
         />
         <KeyRow
-          keys={ROW_TWO}
+          keys={rowTwo}
           mods={mods}
           onToggleMod={onToggleMod}
           onSpecial={handleSpecial}
+          onAction={() => onAttach?.()}
         />
       </div>
     </div>

@@ -13,6 +13,7 @@ import { useWorktreeWindows } from "@/app/hooks/use-worktree-windows";
 import { useWorkspaceActions } from "@/app/hooks/use-workspace-actions";
 import { useWorkspaceView } from "@/app/hooks/use-workspace-view";
 import { useForwards } from "@/features/forwards";
+import { useClipboardUpload } from "@/features/clipboard";
 import {
   buildNotificationItems,
   findTabWorkspace,
@@ -48,6 +49,7 @@ export function useAppController() {
   const sidePanelWidth = useSidebarWidth("relix.sidepanel-width", 320);
 
   const forwards = useForwards();
+  const clipboard = useClipboardUpload();
   const shells = useShells();
   const sessionTabs = useSessionTabs();
   const projects = useProjects();
@@ -522,6 +524,9 @@ export function useAppController() {
         onRenameShell: renameShell,
         onReorderTabs: reorderTabs,
         onNewShell: sessions.handleOpenShell,
+        onAttach: view.shellVisible
+          ? () => void clipboard.pickAndStage()
+          : undefined,
         onOpenFiles: openFilesTab,
         onOpenPorts: openPortsTab,
         onOpenGit: openGitTab,
@@ -543,6 +548,7 @@ export function useAppController() {
       reorderTabs,
       sessions.closeSessionTab,
       sessions.handleOpenShell,
+      clipboard.pickAndStage,
       sessions.selectSessionTab,
       useTitlebarSessionChrome,
       view.activeProject,
@@ -578,6 +584,7 @@ export function useAppController() {
     actions,
     projects,
     shells,
+    clipboard,
     androidBackground,
     sessionChrome,
     notificationCenter,

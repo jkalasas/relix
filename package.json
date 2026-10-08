@@ -49,6 +49,7 @@
     "@xterm/xterm": "6.1.0-beta.292",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "cn": "^0.4.0",
     "lucide-react": "^1.27.0",
     "pdfjs-dist": "^6.1.200",
     "react": "^19.1.0",
